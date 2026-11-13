@@ -58,6 +58,7 @@ pub(super) fn post(
             to,
             body,
             urgent: asked.urgent,
+            no_reply: false,
             answers: asked.answers.clone(),
             answering: asked.answering.as_ref().map(|answering| proto::msg_request::Answering {
                 question: answering.question,

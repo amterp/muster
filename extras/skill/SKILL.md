@@ -56,7 +56,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   agent once it is idle at an empty prompt; `pane send` types into the pane, and is for
   answering a prompt the agent is blocked on - with `--key` for a dialog, which ignores text.
   `--urgent` reaches the agent while it works, for what should change what it is doing now
-  rather than once it is done.
+  rather than once it is done. `--no-reply` marks a message that wants nothing back ("stand by",
+  "nothing further"), so a helper that reads it and stops is not reported to you as idle.
 - **After posting, end your turn.** An answer wakes you. Exit 6 means nobody live heard the post
   and no answer is coming; a post that says `its prompt cannot be read` reached a harness the
   doorbell cannot ring. When you are woken, run the `muster msg read` the wake names before

@@ -260,6 +260,15 @@ still holds: nothing typed into the pane for three seconds, the agent still runn
 its prompt box read as empty just before the ring. So a draft in the box, a dialog, a menu, or
 a blocked agent is never rung; the post waits, and says what for.
 
+**A post can ask for no reply.** `post --no-reply` marks a message that wants nothing back, as
+"stand by" or "nothing further" does. It wakes whom it is for as any post does, but a turn it
+starts is not their going to work, so a helper that reads it and ends its turn without posting is
+not reported to its maker as gone idle without posting:
+
+    muster msg post --no-reply --to maple "Landed, thanks. Stand by for the next brief."
+
+A machine whose daemon is older than this drops the mark, which only means that report may come.
+
 An agent at work can open a dialog at any moment, and a Return there answers it: Claude Code's
 permission dialog and Codex's approval prompt both take Return as "Yes". So a ring at work is typed
 without its Return. About a second later, a second look presses Return only if the prompt box holds
@@ -633,7 +642,7 @@ the human's alone: an agent running it is refused, since it reads its own with `
 | `join [--name N] [--group G] [--pull]` | registers you, and joins a group, creating it if absent |
 | `leave [--group G]` | leaves a group; with none, leaves every group and stops taking part |
 | `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, their groups, and what waits on each unread and why |
-| `post [--group G] [--to A,B] [--urgent] [--option A]... [--recommend N] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--option` offers an answer; `--recommend` marks the Nth as yours |
+| `post [--group G] [--to A,B] [--urgent] [--no-reply] [--option A]... [--recommend N] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--no-reply` asks for nothing back; `--option` offers an answer; `--recommend` marks the Nth as yours |
 | `post --group G --answer Q:N [TEXT \| --file F \| -]` | answers question #Q with its Nth offered answer, TEXT as a note |
 | `post --group G --answer Q TEXT \| --file F \| -` | answers question #Q in your own words, picking none of its answers |
 | `read [--group G] [--if-unread] [--from-hook]` | prints your unread messages and moves your place |

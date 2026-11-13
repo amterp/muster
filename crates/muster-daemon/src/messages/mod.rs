@@ -1544,6 +1544,7 @@ fn draft_of<'a>(
         found,
         body: &post.body,
         urgent: post.urgent,
+        no_reply: post.no_reply,
         answers: &post.answers,
         recommended: post.recommended.as_deref(),
         answering,
@@ -2425,12 +2426,22 @@ pub(super) fn entry_of(entry: &Entry) -> msg_answer::Entry {
     use msg_answer::entry::What as Said;
     let what = match &entry.what {
         What::Message {
-            author, to, body, urgent, answers, recommended, answering, via, ..
+            author,
+            to,
+            body,
+            urgent,
+            no_reply,
+            answers,
+            recommended,
+            answering,
+            via,
+            ..
         } => Said::Message(msg_answer::Message {
             author: author.clone(),
             to: to.clone(),
             body: body.clone(),
             urgent: *urgent,
+            no_reply: *no_reply,
             answers: answers.clone(),
             recommended: recommended.clone(),
             answering: answering.as_ref().map(answering_of),

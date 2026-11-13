@@ -1411,7 +1411,8 @@ impl<S: Store> Messaging<S> {
     /// Whether somebody has posted the agent in `pane` a message since `after_ms`, in the
     /// milliseconds of the group's home: one addressed to it, or to nobody in particular in a
     /// group whose policy rings it for that author. Muster's own notices do not count, nor does
-    /// anything the agent posted itself: neither asks it for work.
+    /// anything the agent posted itself or a message its author wanted no reply to: none asks it
+    /// for work.
     pub fn asked_since(&self, pane: &str, after_ms: u64) -> bool {
         let names = self.in_pane(pane);
         self.groups.values().any(|group| {
@@ -1419,8 +1420,10 @@ impl<S: Store> Messaging<S> {
                 names.iter().copied().filter(|name| group.members.contains(*name)).collect();
             !members.is_empty()
                 && group.log.iter().rev().take_while(|entry| entry.at_ms > after_ms).any(|entry| {
-                    let What::Message { author, to, .. } = &entry.what else { return false };
-                    if is_muster(author) || names.contains(&author.as_str()) {
+                    let What::Message { author, to, no_reply, .. } = &entry.what else {
+                        return false;
+                    };
+                    if *no_reply || is_muster(author) || names.contains(&author.as_str()) {
                         return false;
                     }
                     members.iter().any(|name| {

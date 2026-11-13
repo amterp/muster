@@ -997,6 +997,11 @@ message MsgRequest {
     // when the group is kept on a machine whose daemon speaks a protocol before 1.10, which
     // would drop it.
     optional string recommended = 8;
+    // Since 1.16. Its author wants no reply, as a "stand by" does: it wakes whom it is for as
+    // any post does, but a turn it starts is not their going to work, so a helper that reads it
+    // and ends its turn without posting is not reported to its maker as gone idle without
+    // posting. A machine before 1.16 drops it, which only means that report may come.
+    bool no_reply = 9;
   }
 
   // A program's operation id for a post (MIP-10, section 5).
@@ -1354,6 +1359,8 @@ message MsgAnswer {
     optional string via = 7;
     // Since 1.10. The offered answer its author recommends.
     optional string recommended = 8;
+    // Since 1.16. Its author wants no reply.
+    bool no_reply = 9;
   }
 
   message Members {
@@ -2656,6 +2663,8 @@ message PeerCall {
     optional MsgRequest.Operation operation = 10;
     // Since 1.10.
     optional string recommended = 11;
+    // Since 1.16.
+    bool no_reply = 12;
   }
 
   message Since {

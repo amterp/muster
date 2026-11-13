@@ -36,7 +36,8 @@ something you lack, say what to the director.
 
 **Pass the turn by ending it.** Never post "standing by", "passing to X" or "done for now";
 never run `muster msg wait` or poll `read` in the foreground to wait for others. You will be
-woken, with a line saying how to read what came.
+woken, with a line saying how to read what came. A director telling a member to stand by posts
+it with `--no-reply`, so the member's silence after it is not reported as an error.
 
 **Read before you post.** A post is refused while you have unread messages in its group, so
 run the `muster msg read` the wake names, then decide whether your post still needs saying.

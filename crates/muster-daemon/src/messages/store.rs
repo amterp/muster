@@ -355,6 +355,7 @@ mod tests {
                 to: Vec::new(),
                 body: body.to_string(),
                 urgent: false,
+                no_reply: false,
                 answers: Vec::new(),
                 recommended: None,
                 answering: None,

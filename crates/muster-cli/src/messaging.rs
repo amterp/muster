@@ -54,7 +54,8 @@ with the people you address, or to a new group of exactly you and them.
 
 An agent in a pane is woken once it is idle. `--urgent` reaches it while it works, typed into \
 its prompt for the turn it is running: keep it for what should change what the agent is doing \
-now, since it interrupts.
+now, since it interrupts. `--no-reply` says you want no answer, as \"stand by\" does: it wakes \
+as usual, and a helper of yours that reads it and stops is not reported as idle without posting.
 
 Who you are: `--as NAME` if given, else the Claude Code session you run in (from \
 $CLAUDE_CODE_MESSAGING_SOCKET), else the agent in the pane you run in (from $MUSTER_PANE), else \
@@ -133,6 +134,10 @@ pub enum Verb {
         /// Reach agents in panes while they work, not once they are idle
         #[arg(long)]
         urgent: bool,
+        /// Ask for no reply, as "stand by" or "nothing further" does: it wakes whom it is for as
+        /// usual, but a helper that reads it and stops is not reported as idle without posting
+        #[arg(long)]
+        no_reply: bool,
         /// An answer to offer, which makes the post a question; repeat it for each, at most six
         #[arg(long = "option", value_name = "ANSWER", conflicts_with = "answer")]
         options: Vec<String>,
@@ -354,7 +359,17 @@ pub fn parse(
         }
         Verb::Leave { group } => Asked::Leave(msg_request::Leave { group: group.clone() }),
         Verb::Who { group } => Asked::Who(msg_request::Who { group: group.clone() }),
-        Verb::Post { group, to, file, urgent, options, recommend, answer: pick, text } => {
+        Verb::Post {
+            group,
+            to,
+            file,
+            urgent,
+            no_reply,
+            options,
+            recommend,
+            answer: pick,
+            text,
+        } => {
             answer = *pick;
             let body = if let Some(file) = file {
                 body_from = Some(TextSource::File(crate::args::file_to_read(file, here)?));
@@ -375,6 +390,7 @@ pub fn parse(
                 to: to.clone(),
                 body,
                 urgent: *urgent,
+                no_reply: *no_reply,
                 answers: options.clone(),
                 recommended: recommended_option(options, *recommend)?,
                 ..Default::default()

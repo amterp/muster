@@ -26,6 +26,7 @@ pub(super) fn call_to(call: &Call) -> Called {
             to,
             body,
             urgent,
+            no_reply,
             answers,
             recommended,
             answering,
@@ -40,6 +41,7 @@ pub(super) fn call_to(call: &Call) -> Called {
             cursor,
             head,
             urgent,
+            no_reply,
             answers,
             recommended,
             answering: answering.as_ref().map(answering_of),
@@ -71,6 +73,7 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
             to: post.to,
             body: post.body,
             urgent: post.urgent,
+            no_reply: post.no_reply,
             answers: post.answers,
             recommended: post.recommended,
             answering: post.answering.map(answering_from),
@@ -117,6 +120,7 @@ fn entry_from(entry: msg_answer::Entry) -> Option<Entry> {
             to: message.to,
             body: message.body,
             urgent: message.urgent,
+            no_reply: message.no_reply,
             answers: message.answers,
             recommended: message.recommended,
             answering: message.answering.map(answering_from),
@@ -613,8 +617,8 @@ mod tests {
     }
 
     /// A forwarded post keeps the answers it offers and the one it picks, which the group's home
-    /// holds the reply to, the answer it recommends, and the program that made it with its
-    /// operation id.
+    /// holds the reply to, the answer it recommends, whether it wants no reply, and the program
+    /// that made it with its operation id.
     #[test]
     fn a_post_crosses_the_link_with_its_answers_and_operation() {
         let call = Call::Post {
@@ -623,6 +627,7 @@ mod tests {
             to: vec!["@human".into()],
             body: "Answer: Yes".into(),
             urgent: false,
+            no_reply: true,
             answers: vec!["Again?".into()],
             recommended: Some("Again?".into()),
             answering: Some(muster_msg::Answering { question: 4, answer: "Yes".into() }),
@@ -654,6 +659,7 @@ mod tests {
                         to: vec!["b".into()],
                         body: "x".into(),
                         urgent: true,
+                        no_reply: true,
                         answers: vec!["Yes".into(), "No".into()],
                         recommended: Some("No".into()),
                         answering: None,
@@ -669,6 +675,7 @@ mod tests {
                         to: vec!["a".into()],
                         body: "Answer: Yes".into(),
                         urgent: false,
+                        no_reply: false,
                         answers: Vec::new(),
                         recommended: None,
                         answering: Some(muster_msg::Answering {

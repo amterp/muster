@@ -560,9 +560,16 @@ fn body(
                     format!("the wait it declared on {waited} ran out after {limit} with nothing ending it")
                 },
             );
+            // A maker that told it to stand by wanted no reply, and learns here how to say so.
+            let no_reply = if helper.ran_out.is_none() {
+                " If you told it to stand by or that nothing further is needed, post that with \
+                 `muster msg post --no-reply` and Muster will not say this."
+            } else {
+                ""
+            };
             format!(
-                "{named} went idle without posting to you since it went to work {worked} ago: \
-                 {why}. `muster pane read --pane {pane} --turn` shows what it printed. Muster \
+                "{named} went idle without posting since it went to work {worked} ago: {why}. \
+                 `muster pane read --pane {pane} --turn` shows what it printed.{no_reply} Muster \
                  says this once each time it goes idle.",
                 worked = said_as_time(worked_ms),
             )
@@ -1330,7 +1337,7 @@ mod tests {
         unreported.judge(&[maple(Activity::Idle)], &called, 400_000);
         let tells = unreported.judge(&[maple(Activity::Idle)], &called, 410_000);
         assert_eq!(needs(&tells), [Need::Unreported]);
-        assert!(tells[0].body.contains("went idle without posting to you since it went to work 5"));
+        assert!(tells[0].body.contains("went idle without posting since it went to work 5"));
 
         let mut reporting = makers();
         reporting.judge(&[maple(Activity::Working)], &called, 0);
