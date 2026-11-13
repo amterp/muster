@@ -14,3 +14,17 @@ six performance cores. Six checks passed, three failed:
 
 The nine-check baseline earlier in the same assignment passed. These failures
 are recorded rather than hidden by repeating the full tier until it passes.
+
+A later full run passed eight checks and failed only startup. The same20s wait
+expired, then its new failure diagnostic immediately read the expected dialog:
+
+Hooks need review
+  1 hook is new or changed.
+  Hooks can run outside the sandbox after you trust them.
+
+
+› 1. Review hooks
+  2. Trust all and continue
+  3. Continue without trusting (hooks won't run)
+
+  enter confirm · esc skip
