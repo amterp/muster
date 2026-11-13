@@ -617,7 +617,6 @@ fn a_sends_return_after_keys_submits_at_a_shell_left_in_the_kitty_keyboard_proto
         text: format!("echo sent > {}", marker.display()),
         keys: vec!["end".to_string()],
         enter: true,
-        ..Default::default()
     };
     expect(&mut control, pane(proto::pane_request::Request::Send(send)), proto::Outcome::Done);
     until("the shell to run what was sent", || marker.exists(), ());
