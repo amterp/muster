@@ -1700,9 +1700,8 @@ if lint:
     announce("style")
     $`cargo fmt --all --check`
     $`swift format lint --recursive --strict Sources Tests Package.swift`
-    // The Python under tools/ is dev tooling rather than a component, so it gets a syntax
-    // check and no more.
     $`python3 -m compileall -q tools`
+    $`python3 tools/dev-timing-test.py`
     check_entitlements()
 
 if deps:
