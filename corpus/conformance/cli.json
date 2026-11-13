@@ -1790,8 +1790,8 @@
       }
     },
     {
-      "name": "hiding with no --tab hides the tab this is running in",
-      "why": "As `tab close` falls back: a menu item means the tab the keyboard is in, and so does a command run from inside it.",
+      "name": "hiding with no --tab hides the tab the window's keyboard is in",
+      "why": "As `tab close` falls back: the request names no tab, and the window reads that as the one its keyboard is in, which is what a menu item means. That need not be the tab the command runs in, so an agent hiding its own tab passes --tab.",
       "given": {
         "argv": [
           "tab",

@@ -512,9 +512,11 @@ A whole tab is hidden the same way, from its right-click menu or by name:
 
     muster tab hide --tab t1w3r07bsd
 
-`tab hide` with no `--tab` hides the tab it runs in. The tab is not taken apart: each machine
-holding part of it keeps that part hidden, splits and name included, and its panes are listed
-with the other hidden ones. Showing any of them brings the whole tab back, after the window's
+`tab hide` with no `--tab` hides the tab the window's keyboard is in, as the menu item does, which
+need not be the tab it runs in: an agent putting its own tab away reads that tab's name from
+`muster window` and passes `--tab`. The tab is not taken apart: each machine holding part of it
+keeps that part hidden, splits and name included, and its panes are listed with the other hidden
+ones. Showing any of them brings the whole tab back, after the window's
 other tabs. Hiding a hidden tab changes nothing and exits 0.
 
 Hidden is its daemon's fact, not a window's, so a hidden pane stays hidden across the app quitting,
