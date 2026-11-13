@@ -30,7 +30,7 @@ use crate::daemon_log::DaemonLog;
 use crate::data::Data;
 use crate::descriptors::Sealing;
 use crate::effects::Reported;
-use crate::messages::Need;
+use crate::messages::{Block, Need, StallTold};
 use crate::pane::{Turns, TypedBy};
 use crate::persist::{self, Persister};
 use crate::pty::Grid;
@@ -721,6 +721,19 @@ fn adopt_panes(
             height_px: u16::try_from(grid.height_px).unwrap_or(u16::MAX),
         };
         let maker_told = need(pane.maker_told());
+        let stalls_told: Vec<StallTold> = pane
+            .stalls_told
+            .iter()
+            .map(|told| StallTold {
+                name: told.name.clone(),
+                group: told.group.clone(),
+                first: told.first,
+                escalated: told.escalated,
+            })
+            .collect();
+        let block = pane
+            .block
+            .map(|block| Block { since_ms: block.since_ms, person_told: block.person_told });
         let turn = (
             typed(pane.turn_typed_by()),
             pane.turn_ms_ago
@@ -758,6 +771,8 @@ fn adopt_panes(
                 resume,
                 oldest_row: pane.oldest_row,
                 maker_told,
+                stalls_told: &stalls_told,
+                block,
                 turn,
                 quiet_before_orphaned,
                 nudged: pane.nudged,
@@ -799,6 +814,20 @@ fn send_pane(link: &mut UnixStream, pane: &HandedPane) -> Result<(), String> {
             session_id: pane.session_id.clone(),
             oldest_row: pane.io.screen().handed_over_oldest_row(),
             maker_told: told(pane.maker_told).into(),
+            stalls_told: pane
+                .stalls_told
+                .iter()
+                .map(|told| handoff::StallTold {
+                    name: told.name.clone(),
+                    group: told.group.clone(),
+                    first: told.first,
+                    escalated: told.escalated,
+                })
+                .collect(),
+            block: pane.block.map(|block| handoff::Block {
+                since_ms: block.since_ms,
+                person_told: block.person_told,
+            }),
             wait_started_ms: pane.turns.wait_started_ms,
             wait_noticed: pane.turns.wait_noticed,
             nudged: pane.nudged,

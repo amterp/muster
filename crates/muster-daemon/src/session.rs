@@ -50,7 +50,9 @@ use crate::data::Data;
 use crate::detect::{self, Detecting, Loaded};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
-use crate::messages::{Declared, Doorbell, Messages, Need, Over, Peers, agent_to_come};
+use crate::messages::{
+    Block, Declared, Doorbell, Messages, Need, Over, Peers, StallTold, agent_to_come,
+};
 use crate::operations::{Operations, Record};
 use crate::pane::{Ended, Pane, PaneIo, Process, Turns, TypedBy, Watching};
 use crate::persist::{self, Persister};
@@ -193,6 +195,8 @@ impl Shared {
                     orphans: Vec::new(),
                     reopens: Vec::new(),
                     carried_told: BTreeMap::new(),
+                    carried_stalls: Vec::new(),
+                    carried_blocks: BTreeMap::new(),
                     detecting,
                     app_manifests: Vec::new(),
                     manifest_loads: 0,
@@ -409,6 +413,10 @@ pub(crate) struct Session {
     /// What the daemon that handed these panes over had told each helper's maker, for the
     /// doorbell's thread to take ([`Session::take_carried_told`]).
     carried_told: BTreeMap<String, Need>,
+    /// The stalls and dialogs the daemon that handed these panes over had told of, for the
+    /// doorbell's thread to take ([`Session::take_carried_watches`]).
+    carried_stalls: Vec<StallTold>,
+    carried_blocks: BTreeMap<String, Block>,
     /// The manifests every pane's agent is detected by, which each pane's reader reads.
     detecting: Arc<Detecting>,
     /// The manifests the app last sent, by name, which every reload layers in.
@@ -636,6 +644,8 @@ pub(crate) struct Resuming<'a> {
     /// The number of the oldest row the replay holds.
     pub(crate) oldest_row: u64,
     pub(crate) maker_told: Option<Need>,
+    pub(crate) stalls_told: &'a [StallTold],
+    pub(crate) block: Option<Block>,
     /// Who typed what started the agent's turn, and when it started.
     pub(crate) turn: (Option<TypedBy>, Option<std::time::Instant>),
     pub(crate) quiet_before_orphaned: Option<bool>,
@@ -651,6 +661,8 @@ pub(crate) struct HandedPane {
     pub(crate) turns: Turns,
     pub(crate) session_id: Option<String>,
     pub(crate) maker_told: Option<Need>,
+    pub(crate) stalls_told: Vec<StallTold>,
+    pub(crate) block: Option<Block>,
     pub(crate) nudged: bool,
 }
 
@@ -3711,6 +3723,26 @@ impl Session {
         std::mem::take(&mut self.carried_told)
     }
 
+    /// What the daemon that handed these panes over had told of stalls, and the dialog each pane
+    /// was at, since this was last asked.
+    pub(crate) fn take_carried_watches(&mut self) -> (Vec<StallTold>, BTreeMap<String, Block>) {
+        (std::mem::take(&mut self.carried_stalls), std::mem::take(&mut self.carried_blocks))
+    }
+
+    /// Keeps the stalls of each pane's agent whoever waits was told of, for a handoff to carry.
+    pub(crate) fn set_stalls_told(&mut self, told: &BTreeMap<String, Vec<StallTold>>) {
+        for pane in &mut self.panes {
+            pane.stalls_told = told.get(&pane.record.pane).cloned().unwrap_or_default();
+        }
+    }
+
+    /// Keeps `pane`'s dialog, or that it is at none, for a handoff to carry.
+    pub(crate) fn set_block(&mut self, pane: &str, block: Option<Block>) {
+        if let Some(index) = self.pane_index(pane) {
+            self.panes[index].block = block;
+        }
+    }
+
     /// Keeps what each helper's maker has been told it needs, for a handoff to carry.
     pub(crate) fn set_makers_told(&mut self, told: &BTreeMap<String, Need>) {
         for pane in &mut self.panes {
@@ -4803,6 +4835,8 @@ impl Session {
                     turns: pane.turns,
                     session_id: pane.session_id.clone(),
                     maker_told: pane.maker_told,
+                    stalls_told: pane.stalls_told.clone(),
+                    block: pane.block,
                     nudged: pane.compaction.nudged(),
                 })
                 .collect(),
@@ -4933,6 +4967,12 @@ impl Session {
         pane.kept_after_maker_closed = resuming.kept_after_maker_closed;
         let (by, at) = resuming.turn;
         pane.io.resume_turn(by, at);
+        pane.stalls_told = resuming.stalls_told.to_vec();
+        pane.block = resuming.block;
+        self.carried_stalls.extend_from_slice(resuming.stalls_told);
+        if let Some(block) = resuming.block {
+            self.carried_blocks.insert(name.clone(), block);
+        }
         if let Some(need) = resuming.maker_told {
             self.carried_told.insert(name, need);
         }
@@ -5987,6 +6027,8 @@ mod tests {
                     resume: None,
                     oldest_row: 0,
                     maker_told: None,
+                    stalls_told: &[],
+                    block: None,
                     turn: (None, None),
                     quiet_before_orphaned: None,
                     nudged: false,

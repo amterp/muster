@@ -28,6 +28,26 @@ mod wire;
 pub(crate) use compact_nudges::Due as NudgeDue;
 pub(crate) use doorbell::Doorbell;
 pub(crate) use makers::Need;
+
+/// A stall of a pane's agent that whoever waits was told of, which a handoff carries so the new
+/// daemon does not tell it again (`stalls`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StallTold {
+    pub(crate) name: String,
+    pub(crate) group: String,
+    /// The first unread message's number when it was told: one read since is another stall.
+    pub(crate) first: u64,
+    pub(crate) escalated: bool,
+}
+
+/// The dialog a pane is at, which a handoff carries so the new daemon neither starts its clock
+/// again nor tells the person twice (`makers`, `long_blocks`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Block {
+    /// When it began, in UTC milliseconds.
+    pub(crate) since_ms: u64,
+    pub(crate) person_told: bool,
+}
 pub(crate) use peer::Peers;
 pub(crate) use presence::agent_to_come;
 pub(crate) use waits::{Declared, Over, exists as process_exists};

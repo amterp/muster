@@ -29,7 +29,7 @@ use crate::compaction::Compaction;
 use crate::detect::{self, Detecting, Detection};
 use crate::effects::{self, Happened, Reported, Reports};
 use crate::hold::{Hold, Leaving};
-use crate::messages::Need;
+use crate::messages::{Block, Need, StallTold};
 use crate::persist::Persister;
 use crate::process;
 use crate::pty;
@@ -978,6 +978,12 @@ pub(crate) struct Pane {
     /// What its maker has been told it needs and it still needs, as the maker watch
     /// (`messages::makers`) last said, for a handoff to carry.
     pub(crate) maker_told: Option<Need>,
+    /// The stalls of its agent whoever waits was told of, as the stall watch last said, for a
+    /// handoff to carry.
+    pub(crate) stalls_told: Vec<StallTold>,
+    /// The dialog it is at, as the maker watch or the long-block watch last said, for a handoff to
+    /// carry.
+    pub(crate) block: Option<Block>,
     /// Whether it was quiet before its maker closed (`persist::Pane::quiet_before_orphaned`).
     pub(crate) quiet_before_orphaned: Option<bool>,
     /// The person took it over after its maker closed
@@ -1221,6 +1227,8 @@ impl Pane {
             resume: None,
             resume_missed: None,
             maker_told: None,
+            stalls_told: Vec::new(),
+            block: None,
             quiet_before_orphaned: None,
             kept_after_maker_closed: false,
         })

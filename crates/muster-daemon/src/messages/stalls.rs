@@ -32,7 +32,7 @@ use super::long_blocks::{self, Blocked, LongBlocks};
 use super::makers::{self, Makers};
 use super::presence::Panes;
 use super::prompt::{Judged, Unseen};
-use super::{Messages, delivering, notices, now_ms, ring, told, words};
+use super::{Block, Messages, StallTold, delivering, notices, now_ms, ring, told, words};
 use crate::session::Shared;
 
 /// How long a message may wait on a member that is not working before Muster calls its group
@@ -160,11 +160,14 @@ struct Episode {
     pending: Option<Pending>,
     /// The human has been told of it, as a stall only a person can free.
     escalated: bool,
+    /// The member's pane, which a handoff carries what was told of it with.
+    pane: String,
 }
 
 impl Episode {
-    fn new(first: u64, since_ms: u64) -> Episode {
+    fn new(first: u64, since_ms: u64, pane: &str) -> Episode {
         Episode {
+            pane: pane.to_string(),
             first,
             since_ms,
             stage: Stage::Watching,
@@ -225,6 +228,11 @@ pub(crate) struct Stalls {
     human_in_reach: bool,
     /// Every pane at a dialog, which the person is told of once it has sat there for hours.
     long_blocks: LongBlocks,
+    /// What the daemon that handed the panes over had told of, taken as told by the episode it
+    /// matches.
+    carried: Vec<StallTold>,
+    /// What was last given the session to carry, by pane.
+    kept: BTreeMap<String, Vec<StallTold>>,
 }
 
 impl Stalls {
@@ -247,6 +255,8 @@ impl Stalls {
             started_ms,
             human_in_reach: true,
             long_blocks: LongBlocks::new(),
+            carried: Vec::new(),
+            kept: BTreeMap::new(),
         }
     }
 
@@ -282,7 +292,15 @@ impl Stalls {
             holding.push(key.clone());
             let free_since = self.working.get(&key.0).copied().unwrap_or(self.started_ms);
             let since_ms = member.holding.first_at_ms.max(free_since);
-            let episode = episode(&mut self.episodes, &key, member, since_ms, now_ms, &mut acts);
+            let episode = episode(
+                &mut self.episodes,
+                &mut self.carried,
+                &key,
+                member,
+                since_ms,
+                now_ms,
+                &mut acts,
+            );
             episode.since_ms = episode.since_ms.max(since_ms);
             match episode.pending.as_ref().map(|pending| pending.why) {
                 Some(Why::Stalled) => release(episode, member, called, now_ms, &mut acts),
@@ -407,7 +425,8 @@ impl Stalls {
         if now_ms.saturating_sub(since_ms) < self.worked_after_ms {
             return false;
         }
-        let episode = episode(&mut self.episodes, &key, member, since_ms, now_ms, acts);
+        let episode =
+            episode(&mut self.episodes, &mut self.carried, &key, member, since_ms, now_ms, acts);
         if !episode.told {
             let unlock = if waiting_on(member).is_empty() { Unlock::Nothing } else { Unlock::Tell };
             let held_ms = now_ms.saturating_sub(episode.since_ms);
@@ -425,6 +444,32 @@ impl Stalls {
     }
 
     /// Whoever a notice is held for, with the group it would be told in.
+    /// Takes what the daemon that handed the panes over had told of: its stalls, and the dialog
+    /// each pane was at.
+    pub(crate) fn carry(&mut self, told: Vec<StallTold>, blocks: &BTreeMap<String, Block>) {
+        self.carried.extend(told);
+        self.long_blocks.carry(blocks);
+    }
+
+    /// The stalls whoever waits, or the person, has been told of, by the member's pane.
+    fn told(&self) -> BTreeMap<String, Vec<StallTold>> {
+        let mut told: BTreeMap<String, Vec<StallTold>> = BTreeMap::new();
+        for ((name, group), episode) in &self.episodes {
+            if episode.told || episode.escalated {
+                told.entry(episode.pane.clone()).or_default().push(StallTold {
+                    name: name.clone(),
+                    group: group.clone(),
+                    first: episode.first,
+                    escalated: episode.escalated,
+                });
+            }
+        }
+        for stalls in told.values_mut() {
+            stalls.sort_by(|a, b| (&a.name, &a.group).cmp(&(&b.name, &b.group)));
+        }
+        told
+    }
+
     fn held_for(&self) -> Vec<(String, String)> {
         self.episodes
             .iter()
@@ -443,8 +488,11 @@ impl Stalls {
 
 /// The episode of `member` holding its group up, begun now if none is, or begun again when it
 /// has read some of what waited, since what is left is a stall of its own.
+/// One the daemon that handed the panes over told of, with the same message first unread, is
+/// begun told.
 fn episode<'a>(
     episodes: &'a mut HashMap<(String, String), Episode>,
+    carried: &mut Vec<StallTold>,
     key: &(String, String),
     member: &Member,
     since_ms: u64,
@@ -452,10 +500,21 @@ fn episode<'a>(
     acts: &mut Vec<Act>,
 ) -> &'a mut Episode {
     let first = member.holding.first;
-    let episode = episodes.entry(key.clone()).or_insert_with(|| Episode::new(first, since_ms));
+    let pane = &member.holding.pane;
+    let begun = |carried: &mut Vec<StallTold>| {
+        let mut episode = Episode::new(first, since_ms, pane);
+        let told = carried
+            .iter()
+            .position(|told| told.name == key.0 && told.group == key.1 && told.first == first);
+        if let Some(told) = told.map(|at| carried.swap_remove(at)) {
+            (episode.told, episode.stage, episode.escalated) = (true, Stage::Told, told.escalated);
+        }
+        episode
+    };
+    let episode = episodes.entry(key.clone()).or_insert_with(|| begun(carried));
     if episode.first != first {
         ended(key, episode, now_ms, "read", acts);
-        *episode = Episode::new(first, since_ms);
+        *episode = begun(carried);
     }
     episode
 }
@@ -835,13 +894,16 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -
             unread: members.iter().any(|member| member.holding.pane == *pane),
         })
         .collect();
-    let long = stalls.long_blocks.judge(&blocked, &escalated, stalls.human_in_reach, now_ms());
+    let seen: HashSet<&str> = panes.iter().map(|(pane, _)| pane.as_str()).collect();
+    let long =
+        stalls.long_blocks.judge(&blocked, &seen, &escalated, stalls.human_in_reach, now_ms());
     for act in acts {
         act_on(shared, &panes, act, &others);
     }
     for (pane, held_ms) in long {
         tell_of_long_block(shared, &panes, &pane, held_ms);
     }
+    keep_told(shared, stalls);
     let held = stalls.held_for();
     for (name, group) in held.iter().filter(|(name, _)| elsewhere.contains(name)) {
         makers.busy.ask(shared, name, Some(group.clone()));
@@ -1129,6 +1191,24 @@ fn escalate(shared: &Arc<Shared>, panes: &Panes, name: &str, pane: &str, group: 
         "msg.group.escalated",
         untold,
     );
+}
+
+/// Gives the session what this watch has told of, and the dialogs it is timing, when either has
+/// changed, for a handoff to carry.
+fn keep_told(shared: &Shared, stalls: &mut Stalls) {
+    let told = stalls.told();
+    let blocks = stalls.long_blocks.changed_blocks();
+    if told == stalls.kept && blocks.is_empty() {
+        return;
+    }
+    let mut session = shared.lock();
+    if told != stalls.kept {
+        session.set_stalls_told(&told);
+        stalls.kept = told;
+    }
+    for (pane, block) in blocks {
+        session.set_block(&pane, block);
+    }
 }
 
 /// Tells the person of `pane`, at a dialog for `held_ms` with nothing waiting on it.

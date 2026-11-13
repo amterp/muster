@@ -2484,6 +2484,28 @@ message Handoff {
     // crossing `compact_at` is not carried, because the compaction queued for it is not: a new
     // daemon that believed the crossing spent would leave a full agent uncompacted.
     bool nudged = 16;
+    // Since 1.16. Each stall of the pane's agent holding a group up that whoever waits, or the
+    // person, has been told of, so the new daemon does not tell it again while the same message
+    // is the first one unread.
+    repeated StallTold stalls_told = 17;
+    // Since 1.16. When the dialog the pane is at began, in UTC milliseconds, and whether the
+    // person has been told of it, so the new daemon neither starts its clock again nor tells them
+    // twice. Absent: not at a dialog, or a daemon that sends none.
+    optional Block block = 18;
+  }
+
+  message StallTold {
+    string name = 1;
+    string group = 2;
+    // The first unread message's number when it was told.
+    uint64 first = 3;
+    // The person was told too, as a stall only a person can free.
+    bool escalated = 4;
+  }
+
+  message Block {
+    uint64 since_ms = 1;
+    bool person_told = 2;
   }
 
   enum TypedBy {

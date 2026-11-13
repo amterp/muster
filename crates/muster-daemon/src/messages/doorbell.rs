@@ -1117,6 +1117,8 @@ fn run(shared: &Weak<Shared>) {
         sleep = look(&shared, &mut before, &mut typing, &mut compacting, &mut moving);
         // On its own clock rather than the doorbell's: a stall is a group nothing moves, which
         // is exactly when nothing would wake the doorbell to look.
+        let (stalls_told, blocks) = shared.lock().take_carried_watches();
+        stalls.carry(stalls_told, &blocks);
         sleep = sleep.min(stalls::look(&shared, &mut stalls, &makers));
         // On every wake rather than a clock of its own: every change in an agent wakes it.
         sleep = sleep.min(makers::look(&shared, &mut makers));
