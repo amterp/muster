@@ -90,3 +90,17 @@ The live tier's existing shared-app-server check now uses the real CLI to accept
 `--key 2 --key enter` in one pane and `--key down --key enter` in the other. It waits for the
 dialog to disappear, then requires the trusted hook to run. This checks the selected action as
 well as the screen change, without another model turn or another ignored test.
+
+## 6. Return submits shell commands once shell mode is open
+
+`corpus/codex-0.167.2/shell-return.txt` records `pane send --key shift+1` opening shell mode,
+followed by a pasted `printf` command with `--enter`. The command runs and writes its scratch
+marker. A second command, pasted after reopening shell mode, writes no marker until a separate
+`pane send --key enter`; that key runs it and writes a different marker. The commands contact
+no model. A bare-PTY comparison also runs its shell command with kitty-protocol Enter
+(`ESC[13u`), before any raw CR is sent.
+
+Pasting a complete line beginning with `!` does not enter shell mode: the pane used for the
+preliminary probe queued it as a follow-up prompt. Entering the mode with an actual exclamation
+keypress is necessary for this measurement. The Return failure reported on 0.160.0 did not
+reproduce on 0.167.2, so no input encoding changes follow from it.

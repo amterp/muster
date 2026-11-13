@@ -1,0 +1,225 @@
+Codex 0.167.2, macOS arm64, 2026-11-13. This checkout's daemon and CLI, 80x24 pane.
+Fresh isolated project and home. Provider at 127.0.0.1:9; no model is contacted.
+After startup dialogs are accepted:
+  muster pane send --pane $PANE --key shift+1 --no-window
+  muster pane send --pane $PANE "printf shell-ok > $PROBE_ROOT/shell-marker" --enter --no-window
+  shell-marker appears and contains shell-ok.
+  muster pane send --pane $PANE --key shift+1 --no-window
+  muster pane send --pane $PANE "printf named-ok > $PROBE_ROOT/named-marker" --no-window
+  named-marker does not exist yet.
+  muster pane send --pane $PANE --key enter --no-window
+  named-marker appears and contains named-ok.
+Every command exits 0. Shell mode is entered by an actual exclamation key, not a paste.
+
+04b-shell-mode
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+  dummy default · $PROBE_ROOT/project
+                                                                    Shell mode
+
+
+05-shell-combined
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+• You ran printf shell-ok > /var/folders/5p/tw1cmgbs6xnd5wl087xjm9sc0000gn/T/
+  │ muster-slot4c-keys-oi8he32i/shell-marker
+  └ (no output)
+
+  Worked for <1s • 09:13
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  dummy default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts
+
+
+06-shell-before-named-enter
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+• You ran printf shell-ok > /var/folders/5p/tw1cmgbs6xnd5wl087xjm9sc0000gn/T/
+  │ muster-slot4c-keys-oi8he32i/shell-marker
+  └ (no output)
+
+  Worked for <1s • 09:13
+
+
+
+
+
+
+
+
+
+
+! printf named-ok > /var/folders/5p/tw1cmgbs6xnd5wl087xjm9sc0000gn/T/muster-
+  slot4c-keys-oi8he32i/named-marker
+
+  dummy default · $PROBE_ROOT/project
+                                                                    Shell mode
+
+
+07-shell-named-enter
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+• You ran printf shell-ok > /var/folders/5p/tw1cmgbs6xnd5wl087xjm9sc0000gn/T/
+  │ muster-slot4c-keys-oi8he32i/shell-marker
+  └ (no output)
+
+  Worked for <1s • 09:13
+
+• You ran printf named-ok > /var/folders/5p/tw1cmgbs6xnd5wl087xjm9sc0000gn/T/
+  │ muster-slot4c-keys-oi8he32i/named-marker
+  └ (no output)
+
+  Worked for <1s • 09:13
+
+
+
+
+
+› Ask Codex to do anything
+
+  dummy default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts
+
+
+Bare-PTY comparison, 100x30, isolated home and project:
+Raw ! opens Shell mode. Bracketed-paste command followed by CSI 13 u runs it:
+marker exists and contains shell-ok before any raw CR is sent.
+Raw CR afterward also leaves Codex responsive.
+
+codex 0.167.2: shell mode opened
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+
+  probe default · $PROBE_ROOT/project
+                                                                                        Shell mode
+
+
+codex 0.167.2: kitty Enter after shell command
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+• You ran printf shell-ok > $PROBE_ROOT/marker
+  │ cq_ed8a8/project/marker
+  └ (no output)
+
+  Worked for <1s • 09:13
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts
+
+
+codex 0.167.2: raw CR after shell command
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+• You ran printf shell-ok > $PROBE_ROOT/marker
+  │ cq_ed8a8/project/marker
+  └ (no output)
+
+  Worked for <1s • 09:13
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts
+
+
