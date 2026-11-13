@@ -176,7 +176,7 @@ fn codex_is_installed_again_over_an_earlier_musters_marketplace() {
             "features disable daemon_auto_start".to_string(),
         ]
     );
-    assert!(text(&ran.stdout).contains("run this again after updating Muster"));
+    assert!(text(&ran.stdout).contains("refreshes Codex's copy"));
 }
 
 /// One added from anywhere else is somebody's choice: the add is left to fail, saying so.
@@ -387,4 +387,94 @@ fn a_failed_refresh_reports_which_command_failed_and_preserves_the_copy() {
     assert!(said.contains("codex plugin marketplace list --json"), "{said}");
     assert!(said.contains("muster harness install codex"), "{said}");
     assert_eq!(std::fs::read_to_string(home.copy().join("hooks/hooks.json")).unwrap(), "{}");
+}
+
+#[test]
+fn concurrent_refreshes_do_not_run_codex_twice() {
+    use std::os::fd::AsRawFd;
+    let home = Home::new("refresh-locked");
+    home.copied_plugin();
+    std::fs::write(home.copy().join("hooks/hooks.json"), "{}").unwrap();
+    home.harness("codex", 0);
+    let lock =
+        std::fs::File::create(home.0.join("home/.codex/plugins/.muster-refresh.lock")).unwrap();
+    // SAFETY: lock owns the open file descriptor until this test ends.
+    assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) }, 0);
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert!(home.asked("codex").is_empty());
+    assert!(text(&ran.stdout).contains("already refreshing"), "{}", text(&ran.stdout));
+}
+
+#[test]
+fn an_invalid_marketplace_listing_is_a_refresh_failure() {
+    let home = Home::new("refresh-invalid-listing");
+    home.copied_plugin();
+    std::fs::write(home.copy().join("hooks/hooks.json"), "{}").unwrap();
+    home.codex("not JSON", "exit 93");
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(1));
+    assert!(text(&ran.stderr).contains("not JSON"), "{}", text(&ran.stderr));
+    assert_eq!(home.asked("codex"), ["plugin marketplace list --json"]);
+}
+
+#[test]
+fn codex_success_without_a_refreshed_copy_is_reported_as_a_failure() {
+    let home = Home::new("refresh-still-stale");
+    home.copied_plugin();
+    std::fs::write(home.copy().join("hooks/hooks.json"), "{}").unwrap();
+    home.codex(&Home::listing(&home.extras().canonicalize().unwrap()), "exit 93");
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(1));
+    assert!(text(&ran.stderr).contains("still differs"), "{}", text(&ran.stderr));
+    assert_eq!(home.asked("codex").last().unwrap(), "plugin add muster-codex@muster");
+}
+
+#[test]
+fn automatic_refresh_uses_the_login_profiles_path_and_codex_home() {
+    let home = Home::new("refresh-login");
+    home.copied_plugin();
+    std::fs::write(home.copy().join("hooks/hooks.json"), "{}").unwrap();
+    home.refresh_codex(&Home::listing(&home.extras().canonicalize().unwrap()));
+    let custom = home.0.join("custom-codex");
+    std::fs::rename(home.0.join("home/.codex"), &custom).unwrap();
+    let copy = custom.join("plugins/cache/muster/muster-codex/local");
+    let codex = home.0.join("bin/codex");
+    let script = std::fs::read_to_string(&codex)
+        .unwrap()
+        .replace(&home.copy().display().to_string(), &copy.display().to_string());
+    std::fs::write(codex, script).unwrap();
+    std::fs::write(
+        home.0.join("home/.zprofile"),
+        format!(
+            "echo 'login profile output'\nexport PATH='{}:/usr/bin:/bin'\nexport CODEX_HOME='{}'\n",
+            home.0.join("bin").display(),
+            custom.display()
+        ),
+    )
+    .unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_muster"))
+        .args(["harness", "refresh", "codex", "--login"])
+        .env_clear()
+        .env("HOME", home.0.join("home"))
+        .env("SHELL", "/bin/zsh")
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert!(text(&ran.stdout).contains("refreshed"), "{}", text(&ran.stdout));
+    assert!(!text(&ran.stdout).contains("login profile output"));
+    assert_eq!(
+        std::fs::read(copy.join("hooks/hooks.json")).unwrap(),
+        std::fs::read(Path::new(EXTRAS).join("codex/hooks/hooks.json")).unwrap()
+    );
+    assert_eq!(
+        home.asked("codex"),
+        [
+            "plugin marketplace list --json".to_string(),
+            format!("plugin marketplace add {}", home.extras().display()),
+            "plugin add muster-codex@muster".to_string(),
+        ]
+    );
 }
