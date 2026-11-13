@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-pane-closed-from",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794583390240,
+  "creator": "Alexander Terp",
+  "description": "Close.by is a pane id from the closing machine, and the other machine's daemon cannot resolve it to that machine's participant (name@lap), so the stall watch's 'closed by its sender' suppression never applies across machines. Found in review of the Close.by change on 2026-11-13. Fixing it means carrying the closer's messaging identity across the link.",
+  "id": "a_2z9361thq",
+  "position": "b36",
+  "title": "A pane closed from another machine by the agent waiting on it is still reported as a stall",
+  "type": "bug",
+  "updated_at_millis": 1794583390240,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794583390240}
+  ]
+}

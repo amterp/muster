@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-send-queued-behind",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794583390462,
+  "creator": "Alexander Terp",
+  "description": "Minor. Found while moving a window's own pane send onto the answered control request (2026-11-13): a send that queues behind an image paste is answered client-side, so the exit 1 the daemon gives when nothing could be typed cannot reach it.",
+  "id": "a_2z936OCIL",
+  "position": "b37",
+  "title": "A send queued behind an image paste is answered without the daemon, so it cannot be refused",
+  "type": "bug",
+  "updated_at_millis": 1794583390462,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794583390462}
+  ]
+}
