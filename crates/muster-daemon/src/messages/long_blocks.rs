@@ -208,6 +208,28 @@ mod tests {
         assert_eq!(told(&mut watch, &[at("p1")], 3 * HOUR_MS + 1), ["p1"]);
     }
 
+    /// A block the daemon before this one was timing goes on from when it began, and one the
+    /// person was told of is not told again. One for a pane found at no dialog is dropped.
+    #[test]
+    fn a_carried_block_keeps_its_clock_and_whether_the_person_was_told() {
+        let mut watch = LongBlocks::after(LONG_BLOCK);
+        watch.carry(&BTreeMap::from([
+            ("p1".to_string(), Carried { since_ms: 0, person_told: false }),
+            ("p2".to_string(), Carried { since_ms: 0, person_told: true }),
+            ("p3".to_string(), Carried { since_ms: 0, person_told: false }),
+        ]));
+        let seen = HashSet::from(["p1", "p2", "p3"]);
+        let blocked = [at("p1"), at("p2")];
+        let told = watch.judge(&blocked, &seen, &HashSet::new(), true, 2 * HOUR_MS);
+        assert_eq!(told.into_iter().map(|(pane, _)| pane).collect::<Vec<_>>(), ["p1"]);
+        assert!(told_after(&mut watch, &[at("p1"), at("p2"), at("p3")], 3 * HOUR_MS).is_empty());
+        assert_eq!(told_after(&mut watch, &[at("p3")], 5 * HOUR_MS), ["p3"], "p3 began anew");
+    }
+
+    fn told_after(watch: &mut LongBlocks, blocked: &[Blocked<'_>], now_ms: u64) -> Vec<String> {
+        told(watch, blocked, now_ms)
+    }
+
     #[test]
     fn the_notice_names_the_pane_and_how_to_bring_it_forward() {
         let said = body("p1", Some("otter"), 2 * HOUR_MS);

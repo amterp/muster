@@ -34,7 +34,7 @@ use muster_msg::{Activity, Presence, Reach};
 use super::busy::{ASK_BUSY_AGAIN, Busy};
 use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
-use super::{delivering, notices, now_ms, told, waits, words};
+use super::{Block, delivering, notices, now_ms, told, waits, words};
 use crate::pane::TypedBy;
 use crate::session::{Orphaned, Session, Shared};
 
@@ -257,6 +257,11 @@ pub(crate) struct Makers {
     /// What the daemon that handed these panes over had told each helper's maker, by the helper,
     /// taken as told when the helper is first weighed here.
     carried: BTreeMap<String, Need>,
+    /// The dialog each helper was at when the daemon that handed these panes over had them, taken
+    /// up when the helper is first found blocked here, and dropped when it is found otherwise.
+    carried_blocks: HashMap<String, Block>,
+    /// The dialog each helper is at, as last given the session to carry.
+    blocks_kept: BTreeMap<String, Block>,
     /// Each need held since the last look, for it to log: the helper, its maker, and the need.
     newly_held: Vec<(String, String, Need)>,
     /// What the machines of participants elsewhere last said of whether each is busy, which the
@@ -291,6 +296,8 @@ impl Makers {
             agent_awaited: false,
             told: BTreeMap::new(),
             carried: BTreeMap::new(),
+            carried_blocks: HashMap::new(),
+            blocks_kept: BTreeMap::new(),
             newly_held: Vec::new(),
             busy: Busy::default(),
             held_elsewhere: false,
@@ -303,6 +310,23 @@ impl Makers {
     }
 
     /// What each helper's maker has been told it needs and it still needs.
+    /// Takes the dialog each helper was at when the daemon that handed these panes over had them.
+    pub(crate) fn carry_blocks(&mut self, blocks: &BTreeMap<String, Block>) {
+        self.carried_blocks.extend(blocks.iter().map(|(pane, block)| (pane.clone(), *block)));
+    }
+
+    /// The dialog each helper is at, and whether the person was told of it.
+    fn blocks(&self) -> BTreeMap<String, Block> {
+        let blocked = self.watches.iter().filter_map(|(pane, watch)| {
+            let (need, since_ms) = watch.need?;
+            (need == Need::Blocked).then(|| {
+                let person_told = watch.escalated_for == Some(since_ms);
+                (pane.clone(), Block { since_ms, person_told })
+            })
+        });
+        blocked.collect()
+    }
+
     fn telling(&self) -> BTreeMap<String, Need> {
         let told = self.watches.iter().filter(|(_, watch)| watch.told);
         told.filter_map(|(pane, watch)| Some((pane.clone(), watch.need?.0))).collect()
@@ -361,6 +385,18 @@ impl Makers {
                 Some(Activity::Blocked | Activity::Stuck) | None => {}
             }
             watch.update_need(helper, now_ms);
+            if let Some(need) = watch.need.as_mut().filter(|(need, _)| *need == Need::Blocked) {
+                // The same block the daemon before this one was timing: its clock goes on, and a
+                // person told of it then is not told again.
+                if let Some(block) = self.carried_blocks.remove(&helper.pane) {
+                    need.1 = block.since_ms;
+                    if block.person_told {
+                        watch.escalated_for = Some(block.since_ms);
+                    }
+                }
+            } else if helper.activity.is_some() {
+                self.carried_blocks.remove(&helper.pane);
+            }
             let waiting_since = helper.waiting.as_ref().map(|waiting| waiting.since_ms);
             let Some((need, since_ms)) = watch.need else { continue };
             let held_ms = now_ms.saturating_sub(since_ms);
@@ -687,6 +723,18 @@ fn keep_told(shared: &Shared, makers: &mut Makers) {
     if makers.told != telling {
         shared.lock().set_makers_told(&telling);
         makers.told = telling;
+    }
+    let blocks = makers.blocks();
+    if makers.blocks_kept != blocks {
+        let mut session = shared.lock();
+        for pane in makers.blocks_kept.keys().filter(|pane| !blocks.contains_key(*pane)) {
+            session.set_block(pane, None);
+        }
+        for (pane, block) in &blocks {
+            session.set_block(pane, Some(*block));
+        }
+        drop(session);
+        makers.blocks_kept = blocks;
     }
 }
 
@@ -1513,6 +1561,39 @@ mod tests {
             needs(&makers.judge(&[on(Activity::Idle)], &called, 20_000)),
             [Need::Unreported]
         );
+    }
+
+    /// A block the daemon before this one was timing goes on from when it began: told to the
+    /// person then, it is not told again; not told yet, it is told once its half hour is up, not
+    /// half an hour after the handover.
+    #[test]
+    fn a_carried_block_keeps_its_clock_and_whether_the_person_was_told() {
+        let called = called();
+        let blocked = maple(Activity::Blocked);
+        for person_told in [true, false] {
+            let mut makers = makers();
+            let carried = BTreeMap::from([("p2".to_string(), Block { since_ms: 0, person_told })]);
+            makers.carry_blocks(&carried);
+            makers.judge(std::slice::from_ref(&blocked), &called, ESCALATE_MS - SETTLE_MS);
+            makers.judge(std::slice::from_ref(&blocked), &called, ESCALATE_MS);
+            let told = makers.escalations.len();
+            assert_eq!(told, usize::from(!person_told), "person told before: {person_told}");
+            assert_eq!(makers.blocks()["p2"], Block { since_ms: 0, person_told: true });
+        }
+    }
+
+    /// A carried block for a helper found at no dialog is dropped: a block it meets later is new.
+    #[test]
+    fn a_carried_block_for_a_helper_no_longer_blocked_is_dropped() {
+        let called = called();
+        let mut makers = makers();
+        makers.carry_blocks(&BTreeMap::from([(
+            "p2".to_string(),
+            Block { since_ms: 0, person_told: false },
+        )]));
+        makers.judge(&[maple(Activity::Idle)], &called, ESCALATE_MS);
+        makers.judge(&[maple(Activity::Blocked)], &called, ESCALATE_MS + 1);
+        assert_eq!(makers.blocks()["p2"].since_ms, ESCALATE_MS + 1);
     }
 
     /// The person is told every helper a closed maker left running, and how to bring them back.
