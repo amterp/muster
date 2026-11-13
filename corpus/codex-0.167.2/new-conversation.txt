@@ -1,0 +1,143 @@
+Codex 0.167.2, macOS arm64, 2026-11-13, 100x30 PTY.
+Scratch Git repository and CODEX_HOME; local Responses stub, no account contacted.
+Project hooks record SessionStart, SessionEnd, UserPromptSubmit, Stop, and Interrupt.
+Commands are bracketed paste followed by a separate Return.
+
+old session: 01a1d55c-3372-7431-a9b3-8309e633c24c
+hooks before /new: [('SessionStart', '01a1d55c-3372-7431-a9b3-8309e633c24c', 'startup'), ('UserPromptSubmit', '01a1d55c-3372-7431-a9b3-8309e633c24c', None), ('Stop', '01a1d55c-3372-7431-a9b3-8309e633c24c', None)]
+hooks after /new before prompt: []
+hooks after new prompt: [('SessionStart', '01a1d55c-4690-7482-bb45-686c3dc2b067', 'startup'), ('UserPromptSubmit', '01a1d55c-4690-7482-bb45-686c3dc2b067', None), ('Stop', '01a1d55c-4690-7482-bb45-686c3dc2b067', None)]
+a new ID is first reported on the new prompt: 01a1d55c-4690-7482-bb45-686c3dc2b067
+
+codex 0.167.2: first conversation ended its turn
+title: new-conversation
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Reply ready.
+
+
+• probe ready
+
+  Worked for <1s • 08:42
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view
+
+codex 0.167.2: new worktree question
+title: new-conversation
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Reply ready.
+
+
+• probe ready
+
+  Worked for <1s • 08:42
+
+
+
+
+
+
+
+
+
+
+
+
+  Where should the new conversation run?
+
+
+› 1. Use current Git worktree  Keep using the current working directory
+  2. Create new Git worktree   Create a separate checkout of this repository in another directory
+
+  enter select · esc back
+
+codex 0.167.2: new composer before its first prompt
+title: new-conversation
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+
+codex 0.167.2: new conversation after its first prompt
+title: new-conversation
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Reply ready again.
+
+
+• probe ready
+
+  Worked for <1s • 08:42
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view
+

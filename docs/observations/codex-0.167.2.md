@@ -40,3 +40,18 @@ counts. The recorded screens are also cases in `agent-detection-recorded.json`.
 
 This is an opt-in because another harness can retain a working title for background agents
 while its main session is idle. The change does not alter report precedence for those harnesses.
+
+## 3. `/new` still reports no lifecycle event before its first prompt
+
+`corpus/codex-0.167.2/new-conversation.txt` and `new-conversation-hooks.jsonl` repeat the 0.166.0
+probe in a scratch Git repository. Project hooks record SessionStart, SessionEnd,
+UserPromptSubmit, Stop, and Interrupt. The first local-provider turn reports one session ID.
+`/new` opens the worktree question, and choosing the current worktree clears the composer. No
+hook runs between the old turn and that empty new composer. The title stays the same. The first
+new prompt reports a different ID through SessionStart with `source: startup`.
+
+A hook-only reader therefore still has the previous ID before that prompt. Restarting by the
+last reported ID cannot identify the empty new composer. The empty screen alone does not
+establish a lifecycle event: clearing a terminal can remove history without changing sessions.
+No resume behavior is changed from this recording; a fix needs a reliable command or lifecycle
+signal before the new prompt, beyond the hook signals measured here.
