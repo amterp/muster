@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1794280243882,
   "creator": "Alexander Terp",
   "description": "Owner decided 2026-11-09: a pane brought back with Show Pane should return to where it was hidden from, as Reopen Pane already places a closed pane (exactly there if the tab is unchanged, else beside a pane it was beside, else at the tab's end), instead of always arriving in a tab of its own after the others. Today's behavior is by design (docs/cli/agents.md, \"Out of sight\": the old place may have been rearranged or closed); this changes that design and its doc paragraph. Helpers hidden with --hidden were never shown and keep their shared tab.",
   "id": "a_2x5qs8mx1",
-  "position": "b2m",
+  "position": "YtT",
   "title": "Show Pane puts a hidden pane back where it was",
   "type": "enhancement",
-  "updated_at_millis": 1794280243882,
+  "updated_at_millis": 1794585639308,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794280243882}
+    {"field":"column","value":"backlog-lo","at":1794280243882},
+    {"field":"column","value":"done","at":1794585639308}
   ]
 }

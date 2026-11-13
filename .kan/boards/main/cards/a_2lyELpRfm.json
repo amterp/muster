@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1792636683098,
   "creator": "Alexander Terp",
   "description": "From report --waiting --until-exits (22ab94ce, 2026-10-21). The wait watch asks kill(pid, 0) once a second, which succeeds for a zombie nobody has reaped and for an unrelated process that took the pid. Neither has been seen: Codex's shells exit and reap their jobs. If it is, compare the process's start time at declaration with what is there now.",
   "id": "a_2lyELpRfm",
-  "position": "b1Y",
+  "position": "YtQ",
   "title": "A wait on a process treats a zombie as alive, and pid reuse is not guarded",
   "type": "bug",
-  "updated_at_millis": 1792636683098,
+  "updated_at_millis": 1794585639819,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792636683098}
+    {"field":"column","value":"backlog-lo","at":1792636683098},
+    {"field":"column","value":"done","at":1794585639819}
   ]
 }
