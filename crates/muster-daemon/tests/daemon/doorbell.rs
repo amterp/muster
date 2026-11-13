@@ -2209,6 +2209,24 @@ fn a_pane_at_a_dialog_for_hours_is_told_to_the_person_once() {
     assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new(), "told twice");
 }
 
+/// A quiet pane promises no notice when it blocks, and its long dialog is not told either.
+#[test]
+fn a_quiet_pane_at_a_dialog_for_hours_is_not_told() {
+    let daemon = Daemon::start_detecting_with(&[
+        ("MUSTER_DAEMON_LONG_BLOCK_MS", "1000"),
+        ("MUSTER_DAEMON_STALL_MS", "2000"),
+    ]);
+    let mut control = daemon.connect();
+    let quiet = proto::pane_request::Create { quiet: true, ..create("p1", in_new_tab("t1")) };
+    make(&mut control, quiet);
+    daemon.run_agent("p1");
+    let mut agent = Agent { daemon, control };
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+    std::thread::sleep(Duration::from_secs(5));
+    assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new(), "told");
+}
+
 /// A helper its maker closed with the maker's own message unread holds nobody up: the maker
 /// closed it on purpose and is not told it never read it. One closed with somebody else's
 /// message unread still is, since they did not close it.
