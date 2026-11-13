@@ -332,6 +332,27 @@ fn pick(text: &str) -> Result<Pick, String> {
 
 /// Turns a command line into a request, reading nothing: the caller's identity is what its
 /// environment names, and its inbox's inode is looked up when the request is sent.
+/// A post's body as given, or where to read it from: a file or stdin, read once sent.
+fn post_body(
+    file: Option<&str>,
+    text: &[String],
+    answer: Option<Pick>,
+    here: Option<&Path>,
+) -> Result<(String, Option<TextSource>), Failure> {
+    if let Some(file) = file {
+        Ok((String::new(), Some(TextSource::File(crate::args::file_to_read(file, here)?))))
+    } else if text == ["-"] {
+        Ok((String::new(), Some(TextSource::Stdin)))
+    } else if text.is_empty() && answer.is_none_or(|pick| pick.answer.is_none()) {
+        Err(Failure::Refused(format!(
+            "`{}` needs a message: as text, as `-` to read stdin, or with --file.",
+            spelling::command(POST, "")
+        )))
+    } else {
+        Ok((text.join(" "), None))
+    }
+}
+
 pub fn parse(
     verb: &Verb,
     identity: &Identity,
@@ -371,20 +392,8 @@ pub fn parse(
             text,
         } => {
             answer = *pick;
-            let body = if let Some(file) = file {
-                body_from = Some(TextSource::File(crate::args::file_to_read(file, here)?));
-                String::new()
-            } else if text == &["-"] {
-                body_from = Some(TextSource::Stdin);
-                String::new()
-            } else if text.is_empty() && answer.is_none_or(|pick| pick.answer.is_none()) {
-                return Err(Failure::Refused(format!(
-                    "`{}` needs a message: as text, as `-` to read stdin, or with --file.",
-                    spelling::command(POST, "")
-                )));
-            } else {
-                text.join(" ")
-            };
+            let (body, source) = post_body(file.as_deref(), text, answer, here)?;
+            body_from = source;
             Asked::Post(msg_request::Post {
                 group: group.clone(),
                 to: to.clone(),

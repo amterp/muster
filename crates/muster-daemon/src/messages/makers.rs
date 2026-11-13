@@ -86,6 +86,7 @@ fn settle() -> Duration {
 /// A helper with an agent in it, whose maker is a pane here or one another machine has, as this
 /// daemon sees it now.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(clippy::struct_excessive_bools, reason = "independent facts about a helper, one each")]
 pub(crate) struct Helper {
     pub(crate) pane: String,
     pub(crate) maker: String,

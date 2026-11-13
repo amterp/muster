@@ -111,6 +111,31 @@ pub(crate) struct Panes {
     closed_helpers: HashMap<String, String>,
 }
 
+/// The declared waits the maker watch tells of once they run long, by pane: every wait but a
+/// limited one that nothing but its limit ends.
+fn long_waits(session: &Session) -> HashMap<String, super::makers::Waiting> {
+    session
+        .declared_waits()
+        .into_iter()
+        .filter(|wait| {
+            !wait.limited
+                || wait.carried
+                || wait.until_exits.is_some()
+                || wait.until_message_from.is_some()
+        })
+        .filter_map(|wait| {
+            Some((
+                wait.pane,
+                super::makers::Waiting {
+                    reason: wait.waiting,
+                    since_ms: wait.started_ms?,
+                    noticed: wait.noticed,
+                },
+            ))
+        })
+        .collect()
+}
+
 impl Panes {
     pub(crate) fn of(shared: &Shared) -> Panes {
         // Until the manifests load, nothing can say whether an agent's prompt is readable, so no
@@ -119,26 +144,7 @@ impl Panes {
         let loaded = manifests.is_some();
         let agent_to_come = agent_to_come();
         let session = shared.lock();
-        let waits: HashMap<_, _> = session
-            .declared_waits()
-            .into_iter()
-            .filter(|wait| {
-                !wait.limited
-                    || wait.carried
-                    || wait.until_exits.is_some()
-                    || wait.until_message_from.is_some()
-            })
-            .filter_map(|wait| {
-                Some((
-                    wait.pane,
-                    super::makers::Waiting {
-                        reason: wait.waiting,
-                        since_ms: wait.started_ms?,
-                        noticed: wait.noticed,
-                    },
-                ))
-            })
-            .collect();
+        let waits = long_waits(&session);
         let naming = session.names_sessions();
         let read = session.each_pane(|pane| {
             let (record, io) = (&pane.record, &pane.io);
