@@ -2,17 +2,18 @@
   "_v": 4,
   "alias": "a-one-to-one-conversation",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1794201798132,
   "creator": "Alexander Terp",
   "description": "The banner and the Needs you strip name a one-to-one conversation after its agent, but the open conversation's header still reads `human+otter`. Name it after the agent too, so one conversation has one name everywhere.",
   "id": "a_2wYw8mVs8",
-  "position": "Zj",
+  "position": "Yt4",
   "title": "A one-to-one conversation's own header is still named after the group",
   "type": "enhancement",
-  "updated_at_millis": 1794368031083,
+  "updated_at_millis": 1794591917830,
   "history": [
     {"field":"column","value":"uncommitted","at":1794201798132},
-    {"field":"column","value":"backlog-lo","at":1794368031083}
+    {"field":"column","value":"backlog-lo","at":1794368031083},
+    {"field":"column","value":"done","at":1794591917830}
   ]
 }
