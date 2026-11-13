@@ -156,3 +156,23 @@ Session-to-pane naming remains unimplemented. A safe implementation needs a port
 reader and a refresh mechanism, rather than assuming every index entry is a deliberate rename.
 The old 0.154.0 recording shows automatic names in that same index format. Neither an unbounded
 file scan on each hook nor a new watcher for every session follows from this measurement.
+
+## 10. Live workers need a task, and context checks need completed turns
+
+`corpus/codex-0.167.2/idle-reply-worker.txt` records a live worker receiving and reading its
+message, then summarizing the reply command rather than executing it. The scratch project had
+no task authorizing that sender to assign work. Its fixture now says that `integrator` assigns
+its tasks and asks it to execute the requested message replies. The exact reply assertion and
+its timeout remain unchanged.
+
+`live-readiness.txt` records the other failures from that run and the missing evidence. The
+context check previously slept fifteen seconds before `/compact`, without establishing that
+the first turn had ended. It now observes working and then idle before the next command and
+waits for the requested context-change event. Ordinary turns still require the hook-reported
+state sequence; compaction can finish from native screen states because it has no
+UserPromptSubmit or Stop hook. Clear and new also wait for the previous visible history to
+leave before sending their next prompt.
+
+The startup check's deadline is unchanged. Its failure now includes the actual screen, so a
+future missing hooks-review dialog can be distinguished from another dialog or a failed start.
+The original startup failure did not retain that screen, so its cause remains unestablished.

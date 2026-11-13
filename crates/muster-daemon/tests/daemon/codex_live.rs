@@ -207,22 +207,24 @@ pub(super) fn type_line(input: &mut Input, pane: &str, text: &str) {
 
 const PANES: [&str; 2] = ["hooked", "screen"];
 
-fn codex_turn_settled(seen: &[proto::Pane], hooked: bool) -> bool {
+fn codex_turn_settled(seen: &[proto::Pane], reported: Option<bool>) -> bool {
+    let from_source =
+        |record: &proto::Pane| reported.is_none_or(|reported| record.state_reported == reported);
     seen.last().is_some_and(|record| {
-        record.agent_state() == proto::AgentState::Idle && record.state_reported == hooked
-    }) && seen.iter().any(|record| {
-        record.agent_state() == proto::AgentState::Working && record.state_reported == hooked
-    })
+        record.agent_state() == proto::AgentState::Idle && from_source(record)
+    }) && seen
+        .iter()
+        .any(|record| record.agent_state() == proto::AgentState::Working && from_source(record))
 }
 
-fn until_settled<const N: usize>(control: &mut Control, panes: [&str; N]) -> [Vec<proto::Pane>; N] {
+fn until_settled<const N: usize>(
+    control: &mut Control,
+    panes: [&str; N],
+    reported: [Option<bool>; N],
+) -> [Vec<proto::Pane>; N] {
     let deadline = Instant::now() + TURN;
     let mut seen = std::array::from_fn(|_| Vec::new());
-    while !seen
-        .iter()
-        .enumerate()
-        .all(|(index, seen)| codex_turn_settled(seen, panes[index] == "hooked"))
-    {
+    while !seen.iter().enumerate().all(|(index, seen)| codex_turn_settled(seen, reported[index])) {
         let Some(left) = deadline.checked_duration_since(Instant::now()) else {
             for pane in panes {
                 eprintln!("codex: {pane} shows:\n{}", read_text(control, pane, 0, 0).text);
@@ -252,18 +254,22 @@ fn an_earlier_idle_frame_does_not_finish_a_codex_turn_that_is_still_working() {
         record(proto::AgentState::Idle, false),
         record(proto::AgentState::Working, true),
     ];
-    assert!(!codex_turn_settled(&seen, true));
+    assert!(!codex_turn_settled(&seen, Some(true)));
     seen.push(record(proto::AgentState::Idle, false));
-    assert!(!codex_turn_settled(&seen, true));
+    assert!(!codex_turn_settled(&seen, Some(true)));
     seen.push(record(proto::AgentState::Idle, true));
-    assert!(codex_turn_settled(&seen, true));
+    assert!(codex_turn_settled(&seen, Some(true)));
     seen.push(record(proto::AgentState::Working, true));
-    assert!(!codex_turn_settled(&seen, true));
+    assert!(!codex_turn_settled(&seen, Some(true)));
     let mut hookless =
         vec![record(proto::AgentState::Working, false), record(proto::AgentState::Idle, false)];
-    assert!(codex_turn_settled(&hookless, false));
+    assert!(codex_turn_settled(&hookless, Some(false)));
     hookless.push(record(proto::AgentState::Working, false));
-    assert!(!codex_turn_settled(&hookless, false));
+    assert!(!codex_turn_settled(&hookless, Some(false)));
+    let compacting =
+        vec![record(proto::AgentState::Working, false), record(proto::AgentState::Idle, true)];
+    assert!(!codex_turn_settled(&compacting, Some(true)));
+    assert!(codex_turn_settled(&compacting, None));
 }
 
 #[test]
@@ -296,7 +302,7 @@ fn codex_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
             "Without using any tools, write the numbers from 1 to 80, one per line, and nothing else.",
         );
     }
-    let settled = until_settled(&mut control, PANES);
+    let settled = until_settled(&mut control, PANES, [Some(true), Some(false)]);
     for (name, seen) in PANES.into_iter().zip(settled) {
         let summary: Vec<_> =
             seen.iter().map(|record| (record.agent_state(), record.state_reported)).collect();
@@ -332,6 +338,32 @@ fn codex_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
     assert!(facts(&mut control, "screen").is_none_or(|facts| facts.context_used.is_none()));
 }
 
+fn after_context_change(
+    control: &mut Control,
+    events: &mut Control,
+    input: &mut Input,
+    line: &str,
+    kind: proto::ContextChangeKind,
+    reported: Option<bool>,
+) {
+    let mut change = || {
+        snapshot(control)
+            .panes
+            .into_iter()
+            .find(|pane| pane.pane == "hooked")
+            .and_then(|pane| pane.context_change)
+    };
+    let before = change();
+    // An earlier turn's idle event cannot establish that this command finished.
+    events.ask(snapshot_request());
+    type_line(input, "hooked", line);
+    until_settled(events, ["hooked"], [reported]);
+    let said = until_turns(TURN, &format!("{kind:?} after {line}"), || {
+        change().is_some_and(|now| now.kind() == kind && Some(now) != before)
+    });
+    assert!(said, "{line} never said {kind:?}");
+}
+
 /// Esc ends a Codex turn with `Interrupt` and no `Stop`; the hooks report that idle, rather than
 /// leaving a working report to lapse ten quiet seconds later and the screen to decide.
 /// Codex's hooks say when its context was compacted, at once, and when it was cleared, at the
@@ -344,39 +376,50 @@ fn codexs_hooks_say_when_its_context_was_compacted_and_cleared() {
     }
     let daemon = codex_daemon();
     let mut control = daemon.connect();
+    let mut events = daemon.connect();
+    events.ask(subscribe_request());
     let (folder, command) = project(&daemon, "hooked", true, &[]);
     make_pane(&mut control, "hooked", &folder, command, true);
     let mut input = Input::connect(daemon.socket_path());
     until_ready(&mut control, "hooked");
-    std::thread::sleep(Duration::from_secs(4));
-    let mut change = || {
-        snapshot(&mut control)
-            .panes
-            .into_iter()
-            .find(|pane| pane.pane == "hooked")
-            .and_then(|pane| pane.context_change)
-    };
-    let mut after = |input: &mut Input, line: &str, kind: proto::ContextChangeKind| {
-        let before = change();
-        type_line(input, "hooked", line);
-        let said = until_turns(TURN, &format!("{kind:?} after {line}"), || {
-            change().is_some_and(|now| now.kind() == kind && Some(now) != before)
-        });
-        assert!(said, "{line} never said {kind:?}");
-    };
     let answer = "Reply with only the word ok.";
 
     type_line(&mut input, "hooked", answer);
-    std::thread::sleep(Duration::from_secs(15));
-    after(&mut input, "/compact", proto::ContextChangeKind::Compacted);
-    std::thread::sleep(Duration::from_secs(5));
+    until_settled(&mut events, ["hooked"], [Some(true)]);
+    after_context_change(
+        &mut control,
+        &mut events,
+        &mut input,
+        "/compact",
+        proto::ContextChangeKind::Compacted,
+        None,
+    );
     type_line(&mut input, "hooked", "/clear");
-    std::thread::sleep(Duration::from_secs(5));
-    after(&mut input, answer, proto::ContextChangeKind::Cleared);
-    std::thread::sleep(Duration::from_secs(10));
+    let cleared = until_turns(TURN, "clear to remove the compacted history", || {
+        !read_text(&mut control, "hooked", 0, 0).text.contains("Context compacted")
+    });
+    assert!(cleared, "clear did not remove the previous conversation");
+    after_context_change(
+        &mut control,
+        &mut events,
+        &mut input,
+        answer,
+        proto::ContextChangeKind::Cleared,
+        Some(true),
+    );
     type_line(&mut input, "hooked", "/new");
-    std::thread::sleep(Duration::from_secs(5));
-    after(&mut input, answer, proto::ContextChangeKind::Cleared);
+    let cleared = until_turns(TURN, "new to remove the previous prompt", || {
+        !read_text(&mut control, "hooked", 0, 0).text.contains(answer)
+    });
+    assert!(cleared, "new did not remove the previous conversation");
+    after_context_change(
+        &mut control,
+        &mut events,
+        &mut input,
+        answer,
+        proto::ContextChangeKind::Cleared,
+        Some(true),
+    );
 }
 
 #[test]
@@ -884,7 +927,10 @@ fn a_report_through_codexs_shared_app_server_is_refused_and_the_setting_keeps_it
                 ..create(name, placement)
             },
         );
-        until_text(&mut control, name, "Hooks need review");
+        let shown = until_turns(Duration::from_secs(20), "the hooks review to appear", || {
+            read_text(&mut control, name, 0, 0).text.contains("Hooks need review")
+        });
+        assert!(shown, "{name}: {}", read_text(&mut control, name, 0, 0).text);
         let blocked =
             until_turns(Duration::from_secs(20), "the hooks review to read blocked", || {
                 snapshot(&mut control).panes.into_iter().any(|pane| {
