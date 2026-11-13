@@ -2104,6 +2104,38 @@ fn a_helper_blocked_across_a_handoff_tells_its_maker_once() {
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told again");
 }
 
+/// A post from the agent in `pane` to `to`, as `muster msg post --to` from inside that pane.
+fn post_from_pane(control: &mut Control, pane: &str, to: &str, body: &str) {
+    let asked = Asked::Post(msg_request::Post {
+        body: body.to_string(),
+        to: vec![to.to_string()],
+        ..Default::default()
+    });
+    let caller = msg_request::Caller { pane: Some(pane.to_string()), ..Default::default() };
+    let service = Service::Msg(proto::MsgRequest { caller: Some(caller), request: Some(asked) });
+    expect(control, service, proto::Outcome::Done);
+}
+
+/// A helper that ended its turn with a post to somebody other than its maker has reported, and
+/// one that went idle while a helper of its own works is waiting on that work: neither is told
+/// to its maker as gone idle without posting.
+#[test]
+fn a_helper_that_posted_to_anybody_or_waits_on_its_own_helpers_is_not_reported() {
+    let mut agent = a_maker_with_idle_helpers(&[("p2", "p1"), ("p3", "p2")]);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    post_from_pane(&mut agent.control, "p2", "p3", "a brief for my reviewer");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Idle);
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "posted to its own helper");
+
+    agent.type_in_pane("p2", "the next brief", true);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p3", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Idle);
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "its own helper works");
+}
+
 /// A daemon whose helper watch settles in a second, with the fake agent idle in pane `p1` and in
 /// each of `helpers`, quiet helpers each in a hidden tab of its own: `(helper, maker)`.
 fn a_maker_with_idle_helpers(helpers: &[(&str, &str)]) -> Agent {
