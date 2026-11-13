@@ -927,10 +927,11 @@ fn a_report_through_codexs_shared_app_server_is_refused_and_the_setting_keeps_it
                 ..create(name, placement)
             },
         );
-        let shown = until_turns(TURN, "the hooks review to appear", || {
-            read_text(&mut control, name, 0, 0).text.contains("Hooks need review")
-        });
-        assert!(shown, "{name}: {}", read_text(&mut control, name, 0, 0).text);
+        until(
+            &format!("pane {name} to show its hooks review"),
+            || read_text(&mut control, name, 0, 0).text.contains("Hooks need review"),
+            || screen_text(&mut daemon.connect(), name),
+        );
         let blocked =
             until_turns(Duration::from_secs(20), "the hooks review to read blocked", || {
                 snapshot(&mut control).panes.into_iter().any(|pane| {

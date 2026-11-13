@@ -28,3 +28,11 @@ Hooks need review
   3. Continue without trusting (hooks won't run)
 
   enter confirm · esc skip
+
+Review found that the added diagnostic had replaced until_some's10ms polling
+with until_turns'2s polling, which makes no final check after its last sleep.
+The captured dialog could have appeared in that final gap. It therefore does
+not establish that native startup required more than20s. The fixture restores
+the original20s budget and10ms polling via until, adding only a failure-detail
+callback. The proposed TURN extension was withdrawn. The original failure,
+before the diagnostic change, still has no screen identifying its exact cause.

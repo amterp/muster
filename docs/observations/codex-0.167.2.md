@@ -173,7 +173,8 @@ state sequence; compaction can finish from native screen states because it has n
 UserPromptSubmit or Stop hook. Clear and new also wait for the previous visible history to
 leave before sending their next prompt.
 
-A later run captured the expected hooks-review dialog immediately after the twenty-second wait
-expired. Startup now uses the live tier's existing budget, which includes starting native Codex,
-and its failure still prints the screen. That recording establishes a deadline boundary for the
-later failure; the first failure's missing screen cannot establish its cause.
+A later run captured the expected hooks-review dialog after the diagnostic wait expired. Review
+found that the diagnostic had switched from ten-millisecond polling to a two-second helper,
+which could miss the end of the wait. The fixture now keeps the original twenty-second budget
+and polling interval, and includes the failure screen through the harness's detail callback.
+The original failure's missing screen cannot establish its cause.
