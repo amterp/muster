@@ -26,6 +26,7 @@ mod image_paste;
 mod inherited;
 mod just_made;
 mod late_daemon;
+mod marked_unread;
 mod messages_for_the_human;
 mod new_tab_directory;
 mod numbering;

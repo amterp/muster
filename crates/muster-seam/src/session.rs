@@ -2190,6 +2190,7 @@ impl Session {
             compaction: pane.compaction,
             thresholds: pane.thresholds.clone().map(Box::new),
             clearable: pane.clearable,
+            markable_unread: pane.agent.is_some() && state == AgentState::Idle,
         }
     }
 
@@ -3034,6 +3035,7 @@ pub(crate) fn submit_from(
             | BackendIntent::RenamePane { .. }
             | BackendIntent::CompactPane { .. }
             | BackendIntent::ClearPane { .. }
+            | BackendIntent::MarkUnread { .. }
             | BackendIntent::SetPaneCompaction { .. }
             | BackendIntent::RestartAgent { .. }
             | BackendIntent::RenameTab { .. }
@@ -5212,6 +5214,9 @@ pub(crate) struct PaneAgent {
     pub thresholds: Option<Box<muster_core::compaction::Applied>>,
     /// Whether its agent can be cleared, by the manifests its daemon holds.
     pub clearable: bool,
+    /// Whether it can be marked unread: an agent this window paints idle, which has finished
+    /// and been seen, as its daemon holds it.
+    pub markable_unread: bool,
 }
 
 /// The session a pane's agent runs, as it reported it, and how its daemon resumes it.
@@ -6611,6 +6616,25 @@ pub(crate) fn partner_refresh_progress(daemon: &str) -> (u64, u64) {
 
 pub(crate) fn partner_notice_progress(daemon: &str, group: &str) -> u64 {
     partners::notice_progress(daemon, group)
+}
+
+/// Somebody marked the pane unread (`Attention::marked_unread`). Before its daemon is told, so
+/// that the finish it sends back is nothing new and raises no banner.
+pub(crate) fn mark_unread(pane: &PaneKey) {
+    let changed = poison::lock(&SESSION, "session").attention.marked_unread(pane);
+    if changed {
+        announce_state(pane);
+    }
+    announce_asking();
+}
+
+/// The pane's daemon refused to mark it unread, so it reads as its daemon has it again.
+pub(crate) fn mark_unread_refused(pane: &PaneKey) {
+    let changed = poison::lock(&SESSION, "session").attention.unmarked(pane);
+    if changed {
+        announce_state(pane);
+    }
+    announce_asking();
 }
 
 /// A daemon refused this window's report that it saw these panes, so they are `done` here again,

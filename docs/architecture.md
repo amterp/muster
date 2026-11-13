@@ -306,6 +306,13 @@ refuses, as it refuses every change partway through a handoff, is taken back the
 until the next look reports it again. It is not sent again at once, since a daemon still handing over would refuse
 that too.
 
+**Marking a pane unread is the one way a person sets seen-ness**, as an email's "mark as unread" does: an idle agent
+is given the finish back, with `PaneRequest.Unseen`, and reads `done` everywhere until somebody sees it. The window
+takes the finish first, so the daemon's echo raises no banner, and the pane asks without one. What counts as seeing it
+again is the one rule that changes: a pane is marked from its row, which is usually the pane in front, so a pane marked
+while seen counts as unseen until it has been out of sight - off screen, or its window without the keyboard - and the
+next look after that settles it. A daemon that refuses the mark has it taken back.
+
 **One legend, and the window holds it.** working cyan, blocked orange, stuck purple, waiting indigo, done green, idle
 grey, and unknown a fainter grey rather than a hue of its own, which unreachable shares: neither is an answer the
 window can vouch for. The window's palette is canonical because that is where attention lives: a person reads
@@ -723,7 +730,7 @@ rule: seen-ness is already computed for exactly that pane, and a finish there is
 So the notification set is the same fold the state is, with the file's answer laid over it.
 
 **Notifying and seen-ness are two sets, deliberately.** Seen-ness decides what a pane *is* and is not a person's to
-configure; the unread set decides what Muster does about it and is. A muted window still paints `done` on its
+configure, beyond marking one unread; the unread set decides what Muster does about it and is. A muted window still paints `done` on its
 borders, still lists it in the roster, and still prints it from `muster window` - what mute takes away is the
 interruption. Folded together, a preference about banners would quietly change the state vocabulary the product is
 built on.

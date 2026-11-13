@@ -265,6 +265,12 @@ pub struct Attention {
     /// back. Painted `idle` meanwhile, and let go of when the daemon clears the fact.
     reported: BTreeSet<PaneKey>,
 
+    /// Panes somebody marked unread while looking at them, which do not count as seen until
+    /// they have been out of sight: off screen, or in a window without the keyboard. Marking
+    /// is done on the pane in front as often as not, and a mark the next look cleared would
+    /// clear at once.
+    marked: BTreeSet<PaneKey>,
+
     /// The panes asking for somebody right now, and what each is asking - the unread set
     /// `architecture.md` says the core owns, and what going to the pane that asked walks.
     ///
@@ -657,6 +663,9 @@ impl Attention {
     /// pane you already looked at does not un-see it.
     pub fn window_focused(&mut self, focused: bool) -> Noticed {
         self.focused = focused;
+        if !focused {
+            self.marked.clear();
+        }
         if focused { self.noticed() } else { Noticed::default() }
     }
 
@@ -665,6 +674,7 @@ impl Attention {
     /// Returns the panes whose presentation this changed, on the same terms as
     /// [`Attention::window_focused`].
     pub fn showing(&mut self, visible: BTreeSet<PaneKey>) -> Noticed {
+        self.marked.retain(|pane| visible.contains(pane));
         self.visible = visible;
         if self.focused { self.noticed() } else { Noticed::default() }
     }
@@ -684,6 +694,7 @@ impl Attention {
         self.reported.remove(pane);
         self.visible.remove(pane);
         self.blocked_since.remove(pane);
+        self.marked.remove(pane);
         self.withdraw(pane)
     }
 
@@ -728,12 +739,12 @@ impl Attention {
         let reported: Vec<PaneKey> = self
             .finished
             .intersection(&self.visible)
-            .filter(|pane| !self.reported.contains(*pane))
+            .filter(|pane| !self.reported.contains(*pane) && !self.marked.contains(*pane))
             .cloned()
             .collect();
         self.reported.extend(reported.iter().cloned());
         let looked_at: Vec<PaneKey> =
-            self.raised.keys().filter(|pane| self.visible.contains(*pane)).cloned().collect();
+            self.raised.keys().filter(|pane| self.seen(pane)).cloned().collect();
         let withdrawn: Vec<PaneKey> =
             looked_at.into_iter().filter(|pane| self.withdraw(pane).is_some()).collect();
         let heard: Vec<PaneKey> = self.rang.intersection(&self.visible).cloned().collect();
@@ -807,8 +818,34 @@ impl Attention {
         self.raised.remove(pane).filter(|raised| raised.announced).map(|_| Attend::Withdrawn)
     }
 
-    /// Whether somebody is looking at the pane: the window is focused and showing it.
+    /// Whether somebody is looking at the pane: the window is focused and showing it, and it is
+    /// not marked unread since it was last out of sight.
     pub fn seen(&self, pane: &PaneKey) -> bool {
-        self.focused && self.visible.contains(pane)
+        self.focused && self.visible.contains(pane) && !self.marked.contains(pane)
+    }
+
+    /// Somebody marked the pane unread, as an email is: it reads `done` and asks, without a
+    /// banner, until somebody sees it again - which, for a pane being looked at now, is the
+    /// first look after it has been out of sight. Its daemon is told separately, and its
+    /// finish arriving back from there is then nothing new.
+    ///
+    /// Returns whether that changed how the pane presents.
+    pub fn marked_unread(&mut self, pane: &PaneKey) -> bool {
+        if self.seen(pane) {
+            self.marked.insert(pane.clone());
+        }
+        let changed = self.finished.insert(pane.clone()) | self.reported.remove(pane);
+        self.ask_silently(pane, Alert::Done);
+        changed
+    }
+
+    /// The pane's daemon refused to mark it unread, so it is as its daemon has it again: not
+    /// finished. Returns whether that changed how the pane presents.
+    pub fn unmarked(&mut self, pane: &PaneKey) -> bool {
+        self.marked.remove(pane);
+        if self.alert(pane) == Some(Alert::Done) {
+            self.withdraw(pane);
+        }
+        self.finished.remove(pane)
     }
 }

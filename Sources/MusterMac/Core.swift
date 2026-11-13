@@ -601,6 +601,16 @@ public enum Core {
     return refusal(send(request))
   }
 
+  /// Marks an agent's pane unread, so it reads `done` and asks until somebody next sees it.
+  public static func markUnread(daemonID: String, paneID: String) -> String? {
+    var mark = Muster_MarkUnread()
+    mark.daemonID = daemonID
+    mark.paneID = paneID
+    var request = Muster_Request()
+    request.markUnread = mark
+    return refusal(send(request))
+  }
+
   /// Restarts the agent in a pane, in its session, and calls `then` on the main thread with the
   /// core's refusal, or nil once the daemon has typed the resume.
   ///
@@ -1867,6 +1877,7 @@ public enum Core {
     case .renamePane: return "rename_pane"
     case .compactPane: return "compact_pane"
     case .clearAgent_p: return "clear_agent"
+    case .markUnread: return "mark_unread"
     case .restartAgent: return "restart_agent"
     case .reopenPane: return "reopen_pane"
     case .readClosedPanes: return "read_closed_panes"

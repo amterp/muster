@@ -1516,6 +1516,7 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
         "adapter": agent.map(|agent| agent.adapter.as_str()).filter(|adapter| !adapter.is_empty()),
         "compaction": agent.map(|agent| agent.compaction.as_str()).filter(|queued| !queued.is_empty()),
         "clearable": agent.is_some_and(|agent| agent.clearable),
+        "markable_unread": agent.is_some_and(|agent| agent.markable_unread),
         "unread_input": agent.and_then(|agent| agent.unread_input.as_ref()).map_or(Value::Null, |unread| {
             json!({
                 "bytes": unread.bytes,

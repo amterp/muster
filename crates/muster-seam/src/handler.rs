@@ -462,6 +462,7 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         request::Payload::RenamePane(rename) => rename_pane(window, &rename),
         request::Payload::CompactPane(compact) => compact_pane(window, &compact),
         request::Payload::ClearAgent(clear) => clear_agent(window, &clear),
+        request::Payload::MarkUnread(mark) => mark_unread(window, &mark),
         request::Payload::PaneCompaction(set) => pane_compaction(window, &set),
         request::Payload::RestartAgent(restart) => restart_agent(window, restart),
         request::Payload::ReopenPane(reopen) => reopen_pane(window, &reopen),
@@ -636,6 +637,26 @@ fn clear_agent(window: WindowId, clear: &proto::ClearAgent) -> Response {
     };
     let intent = BackendIntent::ClearPane { pane: pane.clone(), then };
     queued_at_prompt(window, &target, &pane, &intent)
+}
+
+/// Marks an agent's pane unread, in this window first and then on its daemon, which every other
+/// window hears it from. The keyboard stays where it is.
+fn mark_unread(window: WindowId, mark: &proto::MarkUnread) -> Response {
+    let target = match target(window, &mark.daemon_id, &mark.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(window, &target.daemon);
+    };
+    let key = PaneKey::new(&target.daemon, &pane);
+    session::mark_unread(&key);
+    let intent = BackendIntent::MarkUnread { pane };
+    let answer = placed(submit(window, &target.daemon, &intent, Keyboard::StaysPut), &target);
+    if matches!(answer.payload, Some(response::Payload::Failure(_))) {
+        session::mark_unread_refused(&key);
+    }
+    answer
 }
 
 /// Hands a line for an agent's prompt to its daemon, with the keyboard left where it is, and

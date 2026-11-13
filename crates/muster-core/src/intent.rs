@@ -362,6 +362,9 @@ pub enum BackendIntent {
         then: Option<String>,
     },
 
+    /// Marks a pane unread: its idle agent reads as finished and unseen until somebody sees it.
+    MarkUnread { pane: PaneId },
+
     /// Brings back a pane its daemon remembers closing, under its id, callsign and name, where it
     /// was ([`crate::mirror::ClosedPane`]).
     ///

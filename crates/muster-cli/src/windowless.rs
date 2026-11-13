@@ -52,6 +52,7 @@ pub fn can_answer(request: &Request) -> bool {
                     | request::Payload::WatchPanes(_)
                     | request::Payload::CompactPane(_)
                     | request::Payload::ClearAgent(_)
+                    | request::Payload::MarkUnread(_)
                     | request::Payload::PaneCompaction(_)
                     | request::Payload::RestartAgent(_)
                     | request::Payload::HidePane(_)
@@ -130,6 +131,10 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         Some(request::Payload::ClearAgent(clear)) => {
             let pane = named(&clear.pane_id, "cleared")?;
             respond(clear_pane(&socket, pane, &clear.then)?)
+        }
+        Some(request::Payload::MarkUnread(mark)) => {
+            let pane = named(&mark.pane_id, "marked unread")?;
+            respond(mark_unread(&socket, pane)?)
         }
         Some(request::Payload::RestartAgent(restart)) => {
             let pane = named(&restart.pane_id, "restarted")?;
@@ -580,6 +585,19 @@ fn queued_at_prompt(
             });
             note.map_or_else(|| changed(answer), Response::noted)
         }
+        _ => changed(answer),
+    })
+}
+
+/// Marks a pane unread on its daemon. With no window, nobody has seen it either, so that is all.
+fn mark_unread(socket: &Path, pane: &str) -> Result<Response, Trouble> {
+    let service = pane_service(daemon_proto::pane_request::Request::Unseen(
+        daemon_proto::pane_request::Unseen { pane: pane.to_string() },
+    ));
+    let since = daemon_proto::version::MARKS_UNREAD;
+    let answer = asked_of_one_since(socket, service, since, "mark a pane unread")?;
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::NotThere => not_held(socket, pane, "marked unread"),
         _ => changed(answer),
     })
 }
@@ -1188,6 +1206,7 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         .to_string(),
         thresholds: pane_thresholds(pane).map(Box::new),
         clearable: pane.agent_clears,
+        markable_unread: pane.agent.is_some() && state_of(pane) == AgentState::Idle,
     }
 }
 

@@ -247,6 +247,8 @@ One entry per pane every followed daemon holds, on screen or not.
   `unreachable` pane, where they say what to resume once its machine is back.
 - `clearable` - whether its agent can be cleared (`muster pane clear`), by the manifests its
   daemon holds: false for a pane running no agent, and from a daemon too old to say.
+- `markable_unread` - whether it can be marked unread (`muster pane unread`): true for an agent
+  that reads `idle`.
 - `compaction` - what its daemon holds to type at the agent's next idle, empty prompt: `queued`,
   a compaction (`muster pane compact`, or `compact_at`) or a clear (`muster pane clear`);
   `follow_up`, the prompt either was asked to carry on with, once it has run. `null` while neither waits. What it waits for follows

@@ -39,6 +39,50 @@ fn message_and_notification_keep_their_first_raise_time() {
     );
 }
 
+/// A pane marked unread while somebody looks at it reads `done` and asks without a banner, and
+/// stays so until it has been out of sight and is looked at again.
+#[test]
+fn a_pane_marked_unread_is_done_until_seen_again_after_leaving_sight() {
+    let mut attention = Attention::new();
+    let pane = PaneKey::new(&DaemonId::new("local"), &PaneId::new("p1"));
+    let shown = BTreeSet::from([pane.clone()]);
+    attention.window_focused(true);
+    attention.showing(shown.clone());
+    assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Idle);
+
+    assert!(attention.marked_unread(&pane));
+    assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Done);
+    assert_eq!(attention.asking(), vec![(Asker::Pane(pane.clone()), Alert::Done)]);
+    let echoed = attention.observed(&pane, AgentState::Idle, true);
+    assert_eq!((echoed.attend, echoed.reported), (None, false), "no banner, not reported seen");
+    let still = attention.showing(shown.clone());
+    assert!(still.reported.is_empty(), "still on screen, so still unread");
+
+    attention.showing(BTreeSet::new());
+    let looked = attention.showing(shown);
+    assert_eq!(looked.reported, vec![pane.clone()], "seen again once it came back");
+    assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Idle);
+    assert!(attention.asking().is_empty());
+}
+
+/// A pane marked unread out of sight is seen at the next look, and one its daemon refused to
+/// mark is not finished after all.
+#[test]
+fn a_pane_marked_unread_out_of_sight_is_seen_at_the_next_look_and_a_refusal_undoes_it() {
+    let mut attention = Attention::new();
+    let pane = PaneKey::new(&DaemonId::new("local"), &PaneId::new("p1"));
+    attention.marked_unread(&pane);
+    assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Done);
+    assert!(attention.unmarked(&pane));
+    assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Idle);
+    assert!(attention.asking().is_empty());
+
+    attention.marked_unread(&pane);
+    attention.window_focused(true);
+    let looked = attention.showing(BTreeSet::from([pane.clone()]));
+    assert_eq!(looked.reported, vec![pane]);
+}
+
 #[test]
 fn attention_conformance() {
     let corpus = Conformance::load("attention.json");

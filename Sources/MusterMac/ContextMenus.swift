@@ -26,6 +26,9 @@ public enum ContextChoice: Equatable, Sendable {
   case hideHelpers
   /// Take a pane whose machine is not answering out of its tab, without closing it.
   case removeFromTab
+  /// `muster pane unread`, for an agent's row. Not one of the core's actions: nothing a chord
+  /// is pressed on would be worth marking, since the keyboard is on what somebody is looking at.
+  case markUnread
 }
 
 /// One line of a right-click menu.
@@ -149,9 +152,11 @@ public enum ContextMenuModel {
   /// neither, which is most panes.
   public static func agentRow(
     onScreen: Bool, canCompact: Bool = false, canClear: Bool = false, canRestart: Bool = false,
-    quiet: Bool = false, helpers: Helpers? = nil
+    canMarkUnread: Bool = false, quiet: Bool = false, helpers: Helpers? = nil
   ) -> [ContextEntry] {
     [
+      .item(.markUnread, enabled: canMarkUnread),
+      .separator,
       .item(.action("rename_pane")),
       .item(.action("compact_pane"), enabled: canCompact),
       .item(.action("clear_pane"), enabled: canClear),
@@ -287,6 +292,7 @@ final class ContextMenu: NSMenu {
     case .showHelpers: "Show Helpers"
     case .hideHelpers: "Hide Helpers"
     case .removeFromTab: "Remove from Tab"
+    case .markUnread: "Mark as Unread"
     }
   }
 }
@@ -323,6 +329,7 @@ public enum PaneRefusal {
   public static let moveToNewTab = "The pane was not moved to a new tab"
   public static let compact = "The agent was not compacted"
   public static let clear = "The agent's context was not cleared"
+  public static let markUnread = "The pane was not marked unread"
   public static let removeFromTab = "The pane was not removed from its tab"
 }
 
@@ -394,8 +401,9 @@ public enum ContextMenus {
   /// too; a menu with no `close` closes at once, which only a test wants.
   public static func agentRow(
     _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, canClear: Bool = false,
-    canRestart: Bool = false, quiet: Bool = false, helpers: ContextMenuModel.Helpers? = nil,
-    pasteboard: NSPasteboard = .general, window: String = "",
+    canRestart: Bool = false, canMarkUnread: Bool = false, quiet: Bool = false,
+    helpers: ContextMenuModel.Helpers? = nil, pasteboard: NSPasteboard = .general,
+    window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void,
     restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
     close: (@MainActor (PaneKey) -> Void)? = nil,
@@ -404,7 +412,7 @@ public enum ContextMenus {
     ContextMenu.build(
       ContextMenuModel.agentRow(
         onScreen: onScreen, canCompact: canCompact, canClear: canClear, canRestart: canRestart,
-        quiet: quiet, helpers: helpers),
+        canMarkUnread: canMarkUnread, quiet: quiet, helpers: helpers),
       subject: subject(pane), window: window
     ) { choice in
       if case .action("restart_agent") = choice {
@@ -538,6 +546,10 @@ public enum ContextMenus {
     case .action("quiet_pane"):
       if let why = Core.quietPane(daemonID: pane.daemon, paneID: pane.pane) {
         refused(PaneRefusal.quiet, why)
+      }
+    case .markUnread:
+      if let why = Core.markUnread(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.markUnread, why)
       }
     case .showPane:
       if let why = Core.showPane(daemonID: pane.daemon, paneID: pane.pane) {

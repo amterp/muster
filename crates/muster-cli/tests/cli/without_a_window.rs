@@ -163,6 +163,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     let p2 = p2.unwrap_or_else(|| panic!("p2 is listed: {listed}"));
     assert_eq!((&p2["tab"], &p2["state"]), (&json!("t1"), &json!("idle")), "{listed}");
     the_daemon_says_since_when(&here, p2, &text);
+    a_pane_is_marked_unread_by_the_daemon(&here);
     the_layout_is_the_daemons_trees(&here);
 
     ok(&here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm", "echo typed-in"]));
@@ -351,6 +352,21 @@ fn a_wait_on_context_ends_when_the_agent_says_it(here: &Here) {
     );
     // `done`: the wait before this one left a finish nobody has looked at.
     assert_eq!(ok(&wait.wait_with_output().unwrap()), "p2  done  85% context");
+}
+
+/// With no window, `pane unread` asks the daemon, which paints the idle agent `done` until it is
+/// seen; a pane with no agent has nothing to mark.
+fn a_pane_is_marked_unread_by_the_daemon(here: &Here) {
+    ok(&here.muster(&["pane", "unread", "p2"]));
+    let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).unwrap();
+    let p2 = listed["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!("p2"));
+    assert_eq!(p2.map(|p2| &p2["state"]), Some(&json!("done")), "{listed}");
+    let refused = refused_with(&here.muster(&["pane", "unread", "--pane", "p1"]), 1);
+    assert!(refused.contains("runs no agent"), "{refused}");
+
+    let seen = proto::pane_request::Seen { panes: vec!["p2".to_string()] };
+    let seen = pane(proto::pane_request::Request::Seen(seen));
+    expect(&mut here.daemon.connect(), seen, proto::Outcome::Done);
 }
 
 /// With no window, `pane compact` asks the daemon, and a shell, which has no context, is refused.

@@ -57,6 +57,8 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
   public var adapter = ""
   /// Set while the pane's program has stopped reading its input, agent or not.
   public var unreadInput: UnreadInput?
+  /// Whether the core would mark it unread: an agent it paints idle.
+  public var markableUnread = false
 
   public init(state: String) {
     self.state = state
@@ -74,6 +76,7 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
     unreadable = changed.unreadable
     rang = changed.rang
     adapter = changed.adapter
+    markableUnread = changed.markableUnread
     if changed.hasFacts {
       let facts = changed.facts
       contextUsed = facts.hasContextUsed ? facts.contextUsed : nil

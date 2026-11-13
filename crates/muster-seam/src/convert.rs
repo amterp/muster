@@ -64,6 +64,7 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
         compaction: agent.compaction.as_str().to_string(),
         thresholds: agent.thresholds.as_deref().map(|applied| Box::new(thresholds(applied))),
         clearable: agent.clearable,
+        markable_unread: agent.markable_unread,
     }
 }
 

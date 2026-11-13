@@ -119,6 +119,7 @@ message Request {
     PaneCompaction pane_compaction = 110;
     RemoveFromTab remove_from_tab = 111;
     ClearAgent clear_agent = 112;
+    MarkUnread mark_unread = 113;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -385,6 +386,17 @@ message ClearAgent {
   // A prompt typed at the agent's next idle, empty prompt once the clear has run. One line.
   // Empty: none.
   string then = 3;
+}
+
+// Marks an agent's pane unread, as an email is: it reads `done` and asks, without a banner, until
+// somebody sees it again - for a pane on screen in front of somebody, the first look after it has
+// been out of sight. Refused, saying why, for a pane running no agent or one whose agent is not
+// idle (`PaneStateChanged.markable_unread`).
+message MarkUnread {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on.
+  string pane_id = 2;
 }
 
 // Restarts the agent in a pane, in the session it reported: its pane's daemon empties what waits
@@ -3760,6 +3772,9 @@ message PaneStateChanged {
   bool clearable = 19;
   // Why a wake for the pane's agent is held at its prompt, in words; absent while none is.
   optional string wake_held = 20;
+
+  // Whether it can be marked unread (MarkUnread): an agent this window paints idle.
+  bool markable_unread = 21;
 }
 
 // The command that resumes a pane's agent session, run in the pane's directory.

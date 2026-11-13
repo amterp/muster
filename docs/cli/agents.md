@@ -343,6 +343,21 @@ Codex reports its new session only at the first prompt after a clear, so until t
 pane's `resume` still names the conversation the clear left, and a restart or a daemon restart in
 that window brings the old one back. `--then` closes the window at once.
 
+## Marking an agent unread
+
+An agent you glanced at when it finished reads `idle` from then on. To have it keep asking until
+you come back to it, as an email marked unread does, mark it:
+
+    muster pane unread otter
+
+It reads `done` again, in every window, and is among what the chord to the pane asking for you
+goes to, with no banner raised. The first look at it clears that, as it clears any finish: on a
+pane you are looking at when you mark it, the first look after it has been off screen or its
+window has lost the keyboard. Only an agent that reads `idle` can be marked; a busy one asks for
+you on its own when it next finishes or blocks. An agent row's right-click menu offers the same as
+Mark as Unread, and `muster window --json` says where it would work as each agent's
+`markable_unread`.
+
 ## Restarting an agent
 
     muster pane restart --pane p1w3r0ab2n

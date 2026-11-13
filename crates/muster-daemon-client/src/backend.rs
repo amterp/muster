@@ -448,6 +448,15 @@ impl BackendChannel for DaemonBackend {
                 self.pane_request(pane_request::Request::Clear(clear))?;
                 done
             }
+            BackendIntent::MarkUnread { pane } => {
+                self.speaks_since(
+                    muster_daemon_proto::version::MARKS_UNREAD,
+                    "mark a pane unread",
+                )?;
+                let unseen = pane_request::Unseen { pane: pane.to_string() };
+                self.pane_request(pane_request::Request::Unseen(unseen))?;
+                done
+            }
             BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear } => {
                 let since = muster_daemon_proto::version::SCOPED_COMPACTION;
                 self.speaks_since(since, "set compaction thresholds for one pane")?;

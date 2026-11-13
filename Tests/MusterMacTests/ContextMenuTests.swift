@@ -324,6 +324,25 @@ struct ContextMenuTests {
     #expect(sent.allSatisfy { $0.then.isEmpty })
   }
 
+  @Test("Mark as Unread is offered where the core says, and marks the row that was right-clicked")
+  func markUnreadNamesItsPane() {
+    let recorder = recorder()
+    let menu = { (can: Bool) in
+      ContextMenus.agentRow(laptopPane, onScreen: true, canMarkUnread: can, rename: { _ in })
+    }
+    #expect(item("Mark as Unread", in: menu(false))?.isEnabled == false)
+    #expect(item("Mark as Unread", in: menu(true))?.isEnabled == true)
+    let mark = recorder.requests.count
+
+    choose("Mark as Unread", in: menu(true))
+
+    let sent = recorder.sent(since: mark) {
+      if case .markUnread = $0.payload { true } else { false }
+    }.map(\.markUnread)
+    #expect(sent.count == 1)
+    #expect(sent.allSatisfy { $0.daemonID == "laptop" && $0.paneID == "p1w3r07bsd" })
+  }
+
   /// A restart ends the agent, so a pick asks the window, which asks the person, rather than
   /// sending anything; and it is offered only where there is a session to resume.
   @Test("Restart Agent asks the window about the pane that was right-clicked, and sends nothing")
@@ -384,6 +403,7 @@ struct ContextMenuTests {
 
     #expect(
       titles(offScreen) == [
+        "Mark as Unread", "-",
         "Rename Pane…", "Compact Agent", "Clear Context", "Restart Agent…", "Move Pane to New Tab",
         "Hide Pane",
         "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
@@ -455,6 +475,7 @@ struct ContextMenuTests {
 
     #expect(
       titles(menu) == [
+        "Mark as Unread", "-",
         "Rename Pane…", "Compact Agent", "Clear Context", "Restart Agent…", "Move Pane to New Tab",
         "Hide Pane",
         "Show Helpers", "Hide Helpers", "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",

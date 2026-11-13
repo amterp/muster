@@ -1449,7 +1449,8 @@ extension MusterWindow {
       let menu = ContextMenus.agentRow(
         pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
         canClear: namedPane(pane)?.clearable ?? false,
-        canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true), quiet: row.quiet,
+        canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true),
+        canMarkUnread: row.agent?.markableUnread ?? false, quiet: row.quiet,
         helpers: roster.helpers(of: pane),
         window: name, rename: { [weak self] in self?.rename(pane: $0) },
         restart: { [weak self] in self?.confirmRestart($0) },
