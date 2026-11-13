@@ -207,10 +207,11 @@ pub(super) fn type_line(input: &mut Input, pane: &str, text: &str) {
 
 const PANES: [&str; 2] = ["hooked", "screen"];
 
-fn codex_turn_settled(seen: &[proto::Pane], _hooked: bool) -> bool {
-    let working = seen.iter().position(|record| record.agent_state() == proto::AgentState::Working);
-    working.is_some_and(|at| {
-        seen[at..].iter().any(|record| record.agent_state() == proto::AgentState::Idle)
+fn codex_turn_settled(seen: &[proto::Pane], hooked: bool) -> bool {
+    seen.last().is_some_and(|record| {
+        record.agent_state() == proto::AgentState::Idle && record.state_reported == hooked
+    }) && seen.iter().any(|record| {
+        record.agent_state() == proto::AgentState::Working && record.state_reported == hooked
     })
 }
 
@@ -252,10 +253,17 @@ fn an_earlier_idle_frame_does_not_finish_a_codex_turn_that_is_still_working() {
         record(proto::AgentState::Working, true),
     ];
     assert!(!codex_turn_settled(&seen, true));
+    seen.push(record(proto::AgentState::Idle, false));
+    assert!(!codex_turn_settled(&seen, true));
     seen.push(record(proto::AgentState::Idle, true));
     assert!(codex_turn_settled(&seen, true));
     seen.push(record(proto::AgentState::Working, true));
     assert!(!codex_turn_settled(&seen, true));
+    let mut hookless =
+        vec![record(proto::AgentState::Working, false), record(proto::AgentState::Idle, false)];
+    assert!(codex_turn_settled(&hookless, false));
+    hookless.push(record(proto::AgentState::Working, false));
+    assert!(!codex_turn_settled(&hookless, false));
 }
 
 #[test]
