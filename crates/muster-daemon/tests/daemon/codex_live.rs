@@ -240,6 +240,12 @@ fn codex_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
             seen.iter().map(|record| (record.agent_state(), record.state_reported)).collect();
         eprintln!("codex: {name}: {summary:?}");
         let hooked = name == "hooked";
+        if !hooked {
+            assert!(
+                seen.iter().all(|record| !record.state_reported),
+                "{name}: a pane without project hooks reported state: {summary:?}"
+            );
+        }
         // Codex draws its spinner before its first hook has run, so the screen says working a
         // moment before the hooks do.
         let reported_working = seen.iter().any(|record| {
