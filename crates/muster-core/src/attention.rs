@@ -506,9 +506,16 @@ impl Attention {
         since_ms: Option<u64>,
     ) -> Observed {
         let newly_finished = finished && self.finished.insert(pane.clone());
-        if !finished {
+        let busy = matches!(
+            state,
+            AgentState::Working | AgentState::Blocked | AgentState::Waiting | AgentState::Stuck
+        );
+        // A pane marked unread keeps its finish through a record its daemon sent before it took
+        // the mark; new work is what ends it, and the reason not to count a look as seeing it.
+        if !finished && (busy || !self.marked.contains(pane)) {
             self.finished.remove(pane);
             self.reported.remove(pane);
+            self.marked.remove(pane);
         }
         if self.seen(pane) {
             let reported = finished && self.reported.insert(pane.clone());

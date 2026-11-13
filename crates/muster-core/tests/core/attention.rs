@@ -53,6 +53,9 @@ fn a_pane_marked_unread_is_done_until_seen_again_after_leaving_sight() {
     assert!(attention.marked_unread(&pane));
     assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Done);
     assert_eq!(attention.asking(), vec![(Asker::Pane(pane.clone()), Alert::Done)]);
+    let before_the_mark = attention.observed(&pane, AgentState::Idle, false);
+    assert_eq!(before_the_mark.attend, None, "a record sent before the daemon took the mark");
+    assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Done);
     let echoed = attention.observed(&pane, AgentState::Idle, true);
     assert_eq!((echoed.attend, echoed.reported), (None, false), "no banner, not reported seen");
     let still = attention.showing(shown.clone());
