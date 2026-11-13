@@ -2136,10 +2136,41 @@ fn a_helper_that_posted_to_anybody_or_waits_on_its_own_helpers_is_not_reported()
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "its own helper works");
 }
 
+/// A helper its maker closed with the maker's own message unread holds nobody up: the maker
+/// closed it on purpose and is not told it never read it. One closed with somebody else's
+/// message unread still is, since they did not close it.
+#[test]
+fn a_helper_closed_with_only_its_makers_message_unread_is_no_stall() {
+    let mut agent = a_maker_with_idle_helpers_and(
+        &[("MUSTER_DAEMON_STALL_MS", "2000")],
+        &[("p2", "p1"), ("p3", "p1")],
+    );
+    let mut logging = following(&agent.daemon);
+    post_from_pane(&mut agent.control, "p1", "p2", "Thanks, that is everything.");
+    agent.posting_as("critic", "p3", "one more question", false);
+    expect(&mut agent.control, close_request("p2"), proto::Outcome::Done);
+    expect(&mut agent.control, close_request("p3"), proto::Outcome::Done);
+
+    logging.logged_until(r#""event":"msg.group.told""#, Duration::from_secs(30));
+    let critic = agent.read_as("critic");
+    assert_eq!(critic.len(), 1, "{critic:?}");
+    assert!(critic[0].contains("no agent is in its pane any more"), "{critic:?}");
+    std::thread::sleep(Duration::from_secs(3));
+    let maker = agent.read_in_its_pane();
+    assert!(maker.iter().all(|said| !said.contains("(p2)")), "the maker was told: {maker:?}");
+}
+
 /// A daemon whose helper watch settles in a second, with the fake agent idle in pane `p1` and in
 /// each of `helpers`, quiet helpers each in a hidden tab of its own: `(helper, maker)`.
 fn a_maker_with_idle_helpers(helpers: &[(&str, &str)]) -> Agent {
-    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    a_maker_with_idle_helpers_and(&[], helpers)
+}
+
+/// [`a_maker_with_idle_helpers`], on a daemon with more in its environment.
+fn a_maker_with_idle_helpers_and(environment: &[(&str, &str)], helpers: &[(&str, &str)]) -> Agent {
+    let mut said = vec![("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")];
+    said.extend_from_slice(environment);
+    let mut agent = Agent::in_a_pane_with(&said);
     for (index, (helper_pane, maker)) in helpers.iter().enumerate() {
         let tab = format!("t{}", index + 2);
         let quiet_helper = proto::pane_request::Create {
