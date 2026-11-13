@@ -8,9 +8,9 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    AttentionChanged, ClosePane, Event, FocusHistory, FocusPane, HideHelpers, HidePane, OpenWindow,
-    QuietPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged, ShowHelpers,
-    ShowPane, SplitPane, Startup, event, request, response,
+    AttentionChanged, ClosePane, Event, FocusHistory, FocusPane, HideHelpers, HidePane, HideTab,
+    OpenWindow, QuietPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged,
+    ShowHelpers, ShowPane, SplitPane, Startup, event, request, response,
 };
 use muster_daemon_proto::{Side, input_event};
 use muster_harness::requests::{beside, create, in_new_tab, make, snapshot, until_text};
@@ -69,6 +69,54 @@ fn a_hidden_pane_leaves_the_window_and_comes_back_where_it_was() {
                 keyboard()
             )
         },
+    );
+}
+
+/// Hiding a tab takes every pane in it out of the window without taking the tab apart: its
+/// daemon holds the same tab as hidden, and showing one of its panes brings the tab back whole,
+/// splits included.
+#[test]
+fn a_hidden_tab_keeps_its_panes_together_and_comes_back_whole() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", in_new_tab("t2")));
+    make(&mut control, create("p3", beside("p2", Side::Right)));
+    open_window(&daemon);
+    until("both tabs to be listed", || tabs() == 2, || format!("rows: {:?}", rows()));
+    let tab = roster()
+        .tabs
+        .iter()
+        .find(|tab| tab.panes.iter().any(|pane| pane.pane_id == "p2"))
+        .map(|tab| tab.tab_id.clone())
+        .expect("p2's tab is listed");
+
+    let hide = || {
+        assert_ok(&answer(request::Payload::HideTab(HideTab { tab_id: tab.clone() })));
+    };
+    hide();
+    until(
+        "p2 and p3 to leave the window for the hidden list",
+        || rows() == ["p1"] && hidden() == ["p2", "p3"],
+        || format!("the window lists {:?} and hides {:?}", rows(), hidden()),
+    );
+    let held = snapshot(&mut control);
+    let part = held.tabs.iter().find(|held| tab_holds(held, "p2")).expect("p2 is in a tab");
+    assert!(part.hidden, "the daemon does not hold p2's tab as hidden: {part:?}");
+    assert!(tab_holds(part, "p3"), "hiding the tab took it apart: {part:?}");
+
+    // Hiding it again changes nothing, and says so as a success.
+    hide();
+
+    assert_ok(&answer(request::Payload::ShowPane(ShowPane {
+        pane_id: "p3".to_string(),
+        ..ShowPane::default()
+    })));
+    until(
+        "the tab to come back whole",
+        || hidden().is_empty() && tabs() == 2 && rows_in_tab_of("p3") == ["p2", "p3"],
+        || format!("the window lists {:?} in {} tabs, hides {:?}", rows(), tabs(), hidden()),
     );
 }
 

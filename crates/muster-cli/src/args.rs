@@ -25,7 +25,7 @@ use muster_core::names::could_be_minted;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClearAgent, ClosePane, CloseTab, CompactPane, CreateTab,
     EqualizePanes, FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab,
-    FocusTabRelative, HideHelpers, HidePane, LeaveConversation, MarkUnread, MoveTab,
+    FocusTabRelative, HideHelpers, HidePane, HideTab, LeaveConversation, MarkUnread, MoveTab,
     PaneCompaction, QuietPane, ReadClosedPanes, ReadDaemons, ReadPane, ReadWindow, ReattachPane,
     ReloadConfig, RemoveFromTab, RenamePane, RenameTab, ReopenPane, Request, ResizePane,
     RestartAgent, SendToPane, ShowConversation, ShowHelpers, ShowPane, SplitPane, ToggleSidebar,
@@ -1219,6 +1219,14 @@ enum WithTab {
         tab: Option<String>,
     },
 
+    /// Hide a tab from every window, with every pane in it still running. Showing any of its
+    /// panes brings the whole tab back
+    Hide {
+        /// The tab to hide, or the one the window's keyboard is in
+        #[arg(long, value_name = "REF", value_parser = reference)]
+        tab: Option<String>,
+    },
+
     /// Hand a tab to another window, with every pane in it still running
     //
     // Where it goes is the global `--window`: a window's name, as `muster window` prints it, open
@@ -1767,6 +1775,9 @@ fn tab(
             tab_id: tab.clone().unwrap_or_default(),
             ..CloseTab::default()
         })),
+        WithTab::Hide { tab } => {
+            send(request::Payload::HideTab(HideTab { tab_id: tab.clone().unwrap_or_default() }))
+        }
         WithTab::Move { tab } => send(request::Payload::MoveTab(MoveTab {
             tab_id: tab.clone().unwrap_or_default(),
             window: window.unwrap_or_default().to_string(),

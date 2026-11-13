@@ -508,6 +508,15 @@ restarting. The keyboard goes to it only with `--focus`. Going to a hidden pane 
 whatever is asking, `muster focus` - brings it back first. Hiding a hidden pane changes nothing
 and exits 0, and so does showing one that is not hidden, which with `--focus` goes to it.
 
+A whole tab is hidden the same way, from its right-click menu or by name:
+
+    muster tab hide --tab t1w3r07bsd
+
+`tab hide` with no `--tab` hides the tab it runs in. The tab is not taken apart: each machine
+holding part of it keeps that part hidden, splits and name included, and its panes are listed
+with the other hidden ones. Showing any of them brings the whole tab back, after the window's
+other tabs. Hiding a hidden tab changes nothing and exits 0.
+
 Hidden is its daemon's fact, not a window's, so a hidden pane stays hidden across the app quitting,
 another window opening and the daemon restarting, and a devenv's hidden pane is hidden in every
 window attached to that devenv.

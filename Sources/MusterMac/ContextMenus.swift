@@ -125,6 +125,7 @@ public enum ContextMenuModel {
       .separator,
       .item(.action("rename_tab")),
       .moveTabToWindow,
+      .item(.action("hide_tab")),
       .separator,
       .item(.copyTabID),
       .separator,
@@ -339,6 +340,7 @@ public enum TabRefusal {
   public static let create = "No tab was made"
   public static let close = "The tab was not closed"
   public static let move = "The tab was not moved"
+  public static let hide = "The tab was not hidden"
 }
 
 @MainActor
@@ -479,6 +481,8 @@ public enum ContextMenus {
         } else if let why = Core.closeTab(tabID: tab) {
           refused(TabRefusal.close, why)
         }
+      case .action("hide_tab"):
+        if let why = Core.hideTab(tabID: tab) { refused(TabRefusal.hide, why) }
       case .newTabOn(let machine):
         Core.createTab(daemonID: machine) { why in
           if let why { refused(TabRefusal.create, why) }

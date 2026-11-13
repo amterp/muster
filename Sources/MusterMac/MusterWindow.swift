@@ -1193,6 +1193,12 @@ extension MusterWindow {
     close(tab: tab)
   }
 
+  /// Takes the tab the keyboard is in out of the window with every pane in it, their agents still
+  /// running. It asks nothing first: showing any of its panes brings the tab back whole.
+  @objc public func hideTab(_ sender: Any?) {
+    if let why = Core.hideTab() { tell(TabRefusal.hide, why) }
+  }
+
   /// Closes a tab by its id, asking first when it holds an agent. The one place both the keyboard
   /// and the tab's context menu close a tab through, so a way of closing one cannot skip the
   /// question. The close names the tab asked about, so a focus change while the sheet is up

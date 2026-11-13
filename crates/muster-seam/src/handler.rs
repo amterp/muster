@@ -474,6 +474,7 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         request::Payload::QuietPane(quiet) => quiet_pane(window, &quiet),
         request::Payload::RenameTab(rename) => rename_tab(window, &rename),
         request::Payload::CloseTab(close) => close_tab(window, &close),
+        request::Payload::HideTab(hide) => hide_tab(window, &hide),
         // Answered when the panes have been handed back, not when the message was read. The
         // shell is holding its own termination open on this reply, which is the whole point:
         // everything here has to happen while its bridges are still alive to relay it.
@@ -994,6 +995,36 @@ fn close_tab(window: WindowId, close: &proto::CloseTab) -> Response {
         ));
     };
     relayed(session::close_tab(window, &daemon, &tab).map(|()| Response::ok()))
+}
+
+/// Takes a tab out of every window with every pane in it: the named one, or the one the
+/// keyboard is in.
+fn hide_tab(window: WindowId, hide: &proto::HideTab) -> Response {
+    let tab = if hide.tab_id.is_empty() {
+        let Some(pane) = session::focused_pane(window) else {
+            return Response::failure(
+                "no pane has this window's keyboard, so there was no tab to hide and nothing was \
+                 changed. A request that names no tab means the one the keyboard is in.",
+            );
+        };
+        let daemon = match resolve_daemon(window, "") {
+            Ok(daemon) => daemon,
+            Err(refusal) => return *refusal,
+        };
+        let Some(tab) = session::tab_of(&daemon, &pane) else {
+            return Response::failure(format!(
+                "the daemon {daemon} holds no pane called {pane}, so there is no tab to hide and \
+                 nothing was changed. Most likely it closed while this was in flight."
+            ));
+        };
+        tab
+    } else {
+        TabId::new(&hide.tab_id)
+    };
+    if session::daemon_holding_tab(&tab).is_none() {
+        return no_such_tab(&tab, "hidden");
+    }
+    relayed(session::hide_tab(window, &tab).map(|()| Response::ok()))
 }
 
 /// What a rename was asking for: a name, or none at all.

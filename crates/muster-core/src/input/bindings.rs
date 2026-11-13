@@ -104,6 +104,9 @@ pub enum Action {
     /// The tab half of `ClosePane`, and it ends more than it names. Unbound for that reason
     /// among others: a chord that destroys several panes is one somebody reaches by accident.
     CloseTab,
+    /// Takes the tab the keyboard is in out of every window with every pane in it, their agents
+    /// still running, into the hidden list; showing any of its panes brings the tab back whole.
+    HideTab,
     /// Takes the pane the keyboard is on out of its split and gives it a tab of its own.
     ///
     /// The only half of moving a pane that an action can carry. Moving one *beside* another
@@ -222,7 +225,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 67] = [
+    pub const ALL: [Action; 68] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -231,6 +234,7 @@ impl Action {
         Action::PreviousTab,
         Action::RenameTab,
         Action::CloseTab,
+        Action::HideTab,
         Action::SplitRight,
         Action::SplitDown,
         Action::SplitLeft,
@@ -319,6 +323,7 @@ impl Action {
             Action::RestartAgent => "restart_agent",
             Action::RenameTab => "rename_tab",
             Action::CloseTab => "close_tab",
+            Action::HideTab => "hide_tab",
             Action::MovePaneToNewTab => "move_pane_to_new_tab",
             Action::HidePane => "hide_pane",
             Action::QuietPane => "quiet_pane",
@@ -427,6 +432,7 @@ impl Action {
             | Action::HidePane
             | Action::QuietPane
             | Action::CloseTab
+            | Action::HideTab
             | Action::ReopenWindow
             | Action::QuitAndCloseSessions
             | Action::UpgradeMuster

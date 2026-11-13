@@ -1771,6 +1771,40 @@
       }
     },
     {
+      "name": "a tab is hidden by name",
+      "why": "Hiding a whole tab, as hiding a pane takes one: the tab keeps its splits on each machine holding part of it, and comes back whole when any of its panes is shown.",
+      "given": {
+        "argv": [
+          "tab",
+          "hide",
+          "--tab",
+          "t1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "request": {
+          "hide_tab": {
+            "tab_id": "t1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "hiding with no --tab hides the tab this is running in",
+      "why": "As `tab close` falls back: a menu item means the tab the keyboard is in, and so does a command run from inside it.",
+      "given": {
+        "argv": [
+          "tab",
+          "hide"
+        ]
+      },
+      "expect": {
+        "request": {
+          "hide_tab": {}
+        }
+      }
+    },
+    {
       "name": "a tab verb that does not exist is refused",
       "why": "`muster tab` has fewer verbs than `muster pane`, and the ones it lacks it lacks for a reason: nothing types into a tab, and nothing reads one. Somebody will try anyway, and a refusal that lists what there is beats a request nobody can build.\n\nThis case used to be `tab close`, on the argument that a tab closes when its last pane does. That argument was wrong about what it cost: emptying a tab one pane at a time was the only route to a thing people do, so `tab close` exists now (kan `a_2Ic6mB36E`) and the case moved to a verb that really has no meaning for a tab.",
       "given": {

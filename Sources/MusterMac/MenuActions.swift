@@ -91,6 +91,8 @@ public enum MenuActions {
     // every time, and a tab of shells closes at once, as Close Pane does.
     "close_tab": Described(
       title: "Close Tab", selector: #selector(MusterWindow.closeTab(_:)), group: .tab),
+    "hide_tab": Described(
+      title: "Hide Tab", selector: #selector(MusterWindow.hideTab(_:)), group: .tab),
     "split_right": Described(
       title: "Split Right", selector: #selector(MusterWindow.splitRight(_:)), group: .pane),
     "split_down": Described(

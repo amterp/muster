@@ -226,6 +226,9 @@ fn described_tab(payload: &request::Payload) -> Option<Value> {
         request::Payload::CloseTab(close) => json!({
             "close_tab": fields([("tab_id", said(&close.tab_id))])
         }),
+        request::Payload::HideTab(hide) => json!({
+            "hide_tab": fields([("tab_id", said(&hide.tab_id))])
+        }),
         request::Payload::MoveTab(moved) => json!({
             "move_tab": fields([("tab_id", said(&moved.tab_id)), ("window", said(&moved.window))])
         }),

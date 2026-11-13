@@ -246,6 +246,20 @@ struct ContextMenuTests {
         .isEmpty)
   }
 
+  @Test("Hide Tab on a tab's menu hides that tab, not the one the keyboard is in")
+  func hideTabNamesTheTab() {
+    let recorder = recorder()
+    let menu = ContextMenus.tab("t1w3r07bsd", firstPane: laptopPane, machines: [], rename: { _ in })
+    let mark = recorder.requests.count
+
+    choose("Hide Tab", in: menu)
+
+    let hidden = recorder.sent(since: mark) {
+      if case .hideTab = $0.payload { true } else { false }
+    }
+    #expect(hidden.map(\.hideTab.tabID) == ["t1w3r07bsd"])
+  }
+
   @Test("Copy Pane ID puts the id muster takes on the clipboard")
   func copyPaneID() {
     _ = recorder()
@@ -638,8 +652,8 @@ struct ContextMenuTests {
 
     #expect(
       titles(menu) == [
-        "New Tab", "New Tab on Machine", "-", "Rename Tab…", "Move Tab to Window", "-",
-        "Copy Tab ID", "-", "Close Tab",
+        "New Tab", "New Tab on Machine", "-", "Rename Tab…", "Move Tab to Window", "Hide Tab",
+        "-", "Copy Tab ID", "-", "Close Tab",
       ])
     choose("New Tab", in: menu)
     choose("devenv", in: item("New Tab on Machine", in: menu)?.submenu)

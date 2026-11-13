@@ -87,6 +87,7 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
     match payload {
         Payload::FocusTab(focus) => tab(&focus.tab_id),
         Payload::CloseTab(close) => tab(&close.tab_id),
+        Payload::HideTab(hide) => tab(&hide.tab_id),
         Payload::RenameTab(rename) => tab(&rename.tab_id),
         Payload::SetSplitRatio(set) => tab(&set.tab_id),
         Payload::ArrangePane(arrange) => tab(&arrange.tab_id)

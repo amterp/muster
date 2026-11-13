@@ -4212,8 +4212,35 @@ pub(crate) fn show_helpers(
 /// own arrangement, and hiding it would take that from them too. A maker with nothing on screen
 /// to hide is answered Ok.
 pub(crate) fn hide_helpers(window: WindowId, maker: &PaneId) -> Result<(), Refusal> {
-    let parts: Vec<HelpersTab> =
-        helpers_tabs(maker).into_iter().filter(|part| !part.hidden && part.only_helpers).collect();
+    let parts: Vec<(DaemonId, TabId)> = helpers_tabs(maker)
+        .into_iter()
+        .filter(|part| !part.hidden && part.only_helpers)
+        .map(|part| (part.daemon, part.tab))
+        .collect();
+    hide_tab_parts(window, &parts)
+}
+
+/// Takes a tab out of every window with every pane in it, their agents still running: each
+/// machine holding part of it marks that part hidden, so the tab keeps its splits and its name,
+/// and showing any of its panes brings it back whole. A tab already hidden is left as it is.
+pub(crate) fn hide_tab(window: WindowId, tab: &TabId) -> Result<(), Refusal> {
+    let parts: Vec<(DaemonId, TabId)> = {
+        let session = poison::lock(&SESSION, "session");
+        session
+            .backends
+            .iter()
+            .filter(|(_, backend)| {
+                poison::lock(&backend.mirror, "mirror").tab(tab).is_some_and(|held| !held.hidden)
+            })
+            .map(|(daemon, _)| (daemon.clone(), tab.clone()))
+            .collect()
+    };
+    hide_tab_parts(window, &parts)
+}
+
+/// Marks each part hidden on the machine holding it, and settles every window that was showing
+/// one, which opens a fresh tab in a window left with nothing.
+fn hide_tab_parts(window: WindowId, parts: &[(DaemonId, TabId)]) -> Result<(), Refusal> {
     let showing: Vec<WindowId> = {
         let mut session = poison::lock(&SESSION, "session");
         let showing: Vec<WindowId> = session
@@ -4221,7 +4248,7 @@ pub(crate) fn hide_helpers(window: WindowId, maker: &PaneId) -> Result<(), Refus
             .opened()
             .into_iter()
             .filter(|shown| {
-                parts.iter().any(|part| session.windows[*shown].composition.holds(&part.tab))
+                parts.iter().any(|(_, tab)| session.windows[*shown].composition.holds(tab))
             })
             .collect();
         for shown in &showing {
@@ -4230,10 +4257,9 @@ pub(crate) fn hide_helpers(window: WindowId, maker: &PaneId) -> Result<(), Refus
         showing
     };
     let mut hidden = Ok(());
-    for part in &parts {
-        let intent =
-            BackendIntent::SetTabHidden { tab: part.tab.clone(), hidden: true, name: None };
-        if let Err(refusal) = submit(window, &part.daemon, &intent, Keyboard::StaysPut) {
+    for (daemon, tab) in parts {
+        let intent = BackendIntent::SetTabHidden { tab: tab.clone(), hidden: true, name: None };
+        if let Err(refusal) = submit(window, daemon, &intent, Keyboard::StaysPut) {
             hidden = Err(refusal);
             break;
         }

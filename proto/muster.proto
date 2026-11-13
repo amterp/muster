@@ -120,6 +120,7 @@ message Request {
     RemoveFromTab remove_from_tab = 111;
     ClearAgent clear_agent = 112;
     MarkUnread mark_unread = 113;
+    HideTab hide_tab = 114;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -626,6 +627,16 @@ message CloseTab {
   // FocusTab this has a sensible fallback, because closing what you are looking at is the thing
   // a person picking a menu item is asking for.
   string tab_id = 2;
+}
+
+// Takes a tab out of every window with every pane in it, their agents still running: each
+// machine holding part of it keeps that part as a hidden tab (`Tab.hidden` on the daemon), so
+// the tab keeps its splits and its name. Its panes are listed with the other hidden panes, and
+// showing any of them (ShowPane) brings the whole tab back, after the window's other tabs. A
+// tab already hidden is answered Ok.
+message HideTab {
+  // Empty means the tab the window's keyboard is in, which is what a menu item means.
+  string tab_id = 1;
 }
 
 // Hands a tab to another window, with every pane in it still running.

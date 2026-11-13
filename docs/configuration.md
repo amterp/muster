@@ -100,7 +100,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `close_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `reopen_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
-`numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `clear_pane`, `restart_agent`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
+`numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `clear_pane`, `restart_agent`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `hide_tab`, `move_pane_to_new_tab`, `find`,
 `find_next`, `find_previous`, `send_message`, `leave_conversation`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
@@ -126,7 +126,7 @@ Ghostty's actions are about its own windows, tabs and clipboard, and are not off
 `rename_tab` used to ship unbound, on the theory that a tab is named once and a pane several
 times an hour; tabs turned out to be renamed often enough to want one.
 
-Eleven of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+Fourteen of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
 the menu, one click away and one `[keymap]` line from a chord.
 
@@ -181,6 +181,10 @@ same act (`muster docs overview`, "Upgrading").
 session, asking first, so a chord would only open a question; its menu item, Restart Agent…, is
 greyed out while that pane's agent has no session Muster can resume (`muster docs agents`,
 "Restarting an agent").
+
+`hide_tab` is the fourteenth, for the reason `hide_pane` is: Hide Tab takes the tab the keyboard
+is in out of the window with every pane in it, splits kept, and showing any of its panes brings it
+back whole.
 
 **The mouse's back and forward buttons go back to the pane you were on, and forward again.**
 Every pane the keyboard lands on is recorded, however it got there, so a step back can change

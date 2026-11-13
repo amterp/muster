@@ -1557,6 +1557,17 @@ public enum Core {
     return refusal(send(request))
   }
 
+  /// Takes a tab out of every window with every pane in it, their agents still running. Naming
+  /// no tab means the one the window's keyboard is in.
+  @discardableResult
+  public static func hideTab(tabID: String = "") -> String? {
+    var hide = Muster_HideTab()
+    hide.tabID = tabID
+    var request = Muster_Request()
+    request.hideTab = hide
+    return refusal(send(request))
+  }
+
   /// Takes the pane the window's keyboard is on into a tab of its own.
   ///
   /// The same request a drag sends, with the other destination set. Naming no pane means the
@@ -1893,6 +1904,7 @@ public enum Core {
     case .removeFromTab: return "remove_from_tab"
     case .renameTab: return "rename_tab"
     case .closeTab: return "close_tab"
+    case .hideTab: return "hide_tab"
     case .endNumberedChord: return "end_numbered_chord"
     case .quitting: return "quitting"
     case nil: return "(none)"
