@@ -77,3 +77,16 @@ the devenv were not supplied for this measurement. This is a macOS measurement, 
 report was on Linux. It establishes responsiveness for these inputs on 0.167.2, not that every
 wheel-related freeze is fixed. No wheel coalescing or other input behavior changes follow from
 this result.
+
+## 5. Named keys answer startup dialogs
+
+`corpus/codex-0.167.2/dialog-keys.txt` records this checkout's CLI driving a fresh Codex through
+its daemon, with an isolated home and Git project and an unreachable local provider. No model is
+contacted. At folder trust, `pane send --key 1` leaves the dialog open; a following `--key enter`
+accepts it. At hooks review, `--key down` moves to `Trust all and continue`, and `--key enter`
+accepts it. These are keystrokes, rather than pasted text.
+
+The live tier's existing shared-app-server check now uses the real CLI to accept hooks review:
+`--key 2 --key enter` in one pane and `--key down --key enter` in the other. It waits for the
+dialog to disappear, then requires the trusted hook to run. This checks the selected action as
+well as the screen change, without another model turn or another ignored test.

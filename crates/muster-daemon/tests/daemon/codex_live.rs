@@ -886,12 +886,19 @@ fn a_report_through_codexs_shared_app_server_is_refused_and_the_setting_keeps_it
                 })
             });
         assert!(blocked, "{name}: {}", read_text(&mut control, name, 0, 0).text);
-        // "Trust all and continue", by its keys, as `muster pane send --key down` then `--enter`.
-        let down = vec!["down".to_string()];
-        input.send(name, Event::Send(input_event::Send { keys: down, ..Default::default() }));
-        std::thread::sleep(Duration::from_millis(500));
-        type_line(&mut input, name, "");
-        until_ready(&mut control, name);
+        eprintln!("codex: {name} before dialog keys: {}", read_text(&mut control, name, 0, 0).text);
+        let select = if index == 0 { "2" } else { "down" };
+        let sent = as_integrator(
+            &built_muster(),
+            &daemon,
+            &["pane", "send", "--pane", name, "--key", select, "--key", "enter", "--no-window"],
+        );
+        assert!(sent.status.success(), "{name}: {sent:?}");
+        let closed = until_turns(Duration::from_secs(20), "the hooks dialog to close", || {
+            !read_text(&mut control, name, 0, 0).text.contains("Hooks need review")
+        });
+        assert!(closed, "the named keys must accept the hooks dialog");
+        eprintln!("codex: {name} after dialog keys: {}", read_text(&mut control, name, 0, 0).text);
         std::thread::sleep(Duration::from_secs(1));
         type_line(&mut input, name, "hi");
         let answered = until_turns(Duration::from_secs(30), "the hook's report to answer", || {
