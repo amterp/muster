@@ -239,6 +239,11 @@ impl Panes {
     }
 
     /// Whether the pane is open, agent or not.
+    /// Every pane open here, agent or none.
+    pub(crate) fn open(&self) -> impl Iterator<Item = &String> {
+        self.open.keys()
+    }
+
     pub(crate) fn exists(&self, pane: &str) -> bool {
         self.open.contains_key(pane)
     }

@@ -1166,6 +1166,7 @@ fn look(
             return LOOK_AGAIN;
         }
         forget_gone(&mut messages, &panes);
+        agents_found(&mut messages, &panes);
         went_idle(&mut messages, before, &panes, now, &mut next);
         for wake in std::mem::take(&mut messages.pending) {
             let Via::Pane(pane) = &wake.via else { continue };
@@ -1245,6 +1246,39 @@ fn look(
 
 fn ring_dropped(wake: &Wake, pane: &str, why: &str) {
     log::info("msg.ring.dropped", fields! { "name" => wake.name, "pane" => pane, "why" => why });
+}
+
+/// Wakes the participants of each pane whose agent could not be rung at the last look and can
+/// now, for what they still have unread: a wake for them while no agent was there was dropped,
+/// and nothing else would ring the agent started or found since (MIP-4, section 14).
+fn agents_found(messages: &mut Messages, panes: &Panes) {
+    let now: HashMap<String, Ringable> =
+        panes.open().map(|pane| (pane.clone(), panes.doorbell(pane))).collect();
+    let found: Vec<String> = now
+        .iter()
+        .filter(|(pane, ringable)| {
+            **ringable == Ringable::Rings
+                && messages.ringable.get(*pane).is_some_and(|was| *was != Ringable::Rings)
+        })
+        .map(|(pane, _)| pane.clone())
+        .collect();
+    messages.ringable = now;
+    for pane in found {
+        let wakes = messages.service.agent_found(&pane, panes);
+        for wake in wakes {
+            let pending = messages
+                .pending
+                .iter()
+                .any(|queued| queued.name == wake.name && queued.notice.group == wake.notice.group);
+            if !pending {
+                log::info(
+                    "msg.ring.agent_found",
+                    fields! { "name" => wake.name, "pane" => pane, "group" => wake.notice.group },
+                );
+                messages.pending.push(wake);
+            }
+        }
+    }
 }
 
 /// Records the wakes a look is about to ring or hand to a command without the lock, which no

@@ -3808,6 +3808,41 @@ impl<S: Store> Messaging<S> {
         Some(Wake { name: name.to_string(), via, notice })
     }
 
+    /// An agent was found in `pane` where none could be rung before: started again after its
+    /// own exited, or found after a dialog. Every participant there is woken for each group it
+    /// still has unread, whatever it was woken for before, since no wake for it could have landed
+    /// while no agent was there; and one taken as gone, because a wake for it went nowhere, is
+    /// back. Saving is best effort, as for a wake.
+    pub fn agent_found(&mut self, pane: &str, presence: &dyn Presence) -> Vec<Wake> {
+        let mut wakes = Vec::new();
+        let names: Vec<String> = self.in_pane(pane).into_iter().map(str::to_string).collect();
+        for name in names {
+            let groups: Vec<String> = self
+                .groups
+                .iter()
+                .filter(|(_, group)| group.members.contains(&name))
+                .map(|(group, _)| group.clone())
+                .collect();
+            let Some(participant) = self.participants.get_mut(&name) else { continue };
+            participant.gone = false;
+            let Ok(via) = Self::via(self.participants.get(&name).expect("just found"), presence)
+            else {
+                continue;
+            };
+            for group in groups {
+                let Some(notice) = self.notice(&name, &group) else { continue };
+                let participant = self.participants.get_mut(&name).expect("just found");
+                participant.woken.insert(group.clone());
+                participant.rewoken.remove(&group);
+                wakes.push(Wake { name: name.clone(), via: via.clone(), notice });
+            }
+        }
+        if !wakes.is_empty() {
+            let _ = self.save();
+        }
+        wakes
+    }
+
     /// `name`'s agent went idle. For each group it was woken for and has still not read, wake
     /// it once more, saying so, and never again until it reads (MIP-4, section 5): the first
     /// wake may have landed while it was busy with something it then finished.

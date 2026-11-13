@@ -65,8 +65,8 @@ use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
 use muster_msg::{
     Action, Activity, AnsweredWait, Answering, Away, Caller, Change, Changed, Draft, Entry, Found,
     Inbox, LARGEST_BODY, LONGEST_ANSWER, LONGEST_GROUP, Liveness, MOST_ANSWERS, Messaging,
-    Operation, Page, Paged, Participant, Policy, Presence, Reach, Refusal, Repeat, Route, Settled,
-    Tell, Via, Wake, What,
+    Operation, Page, Paged, Participant, Policy, Presence, Reach, Refusal, Repeat, Ringable, Route,
+    Settled, Tell, Via, Wake, What,
 };
 use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
@@ -86,6 +86,9 @@ pub(crate) const LOOK_UP: Duration = Duration::from_millis(500);
 #[derive(Debug)]
 pub(crate) struct Messages {
     service: Messaging<Files>,
+    /// Whether each pane's agent could be rung at the doorbell's last look, to see one found
+    /// where none could be (`doorbell::agents_found`).
+    ringable: HashMap<String, Ringable>,
     /// The API request whose change is being made under this lock, for the events it causes to
     /// carry its correlation id; none for every other change. Set and cleared within one hold.
     cause: Option<Cause>,
@@ -180,6 +183,7 @@ impl Messages {
             hook_grace: HashMap::new(),
             left: HashMap::new(),
             held: HashMap::new(),
+            ringable: HashMap::new(),
             service,
             handing_over: false,
             waits: HashMap::new(),
