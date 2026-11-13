@@ -10,66 +10,6 @@ This is a model response, not a transport loss. No timeout or reply assertion wa
      $PROBE_ROOT/worker
 
 
-› Reply with the single word ready.
-
-
-• ready
-
-  Worked for 12s • 09:45
-
-
-› [muster] @human+oasis: 1 new (#4), 1 to you, from @human. Read: muster msg read --group
-  @human+oasis
-
-
-• h11560
-
-  Worked for 1s • 09:45
-
-
-
-
-
-
-› Ask Codex to do anything
-
-  GPT-6.1 Terra low · $PROBE_ROOT/worker
-  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
-test codex_live::a_sandboxed_codex_with_messaging_hooks_is_handed_its_message ... ok
-codex: muster msg: posted #4 to integrator+lily
-rung once its prompt is empty: lily (worker, idle)
-
-codex: muster msg: posted #4 to integrator+maple
-rung once its prompt is empty: maple (worker, idle, its prompt holds something typed and not sent)
-
-codex: muster msg: integrator      gone          integrator+maple
-maple (worker)  alive (idle)  integrator+maple
-  has not read #4 in integrator+maple, from integrator: a wake for it is held because its prompt holds something typed and not sent
-
-codex: muster msg: nothing unread
-
-codex: muster msg: --- integrator+lily #3 | lily (worker) joined ---
---- integrator+lily #5 | lily (worker) -> integrator ---
-got new
---- end integrator+lily #5 | lily (worker) ---
-
-test codex_live::a_codex_draft_holds_its_wake_until_the_composer_is_empty ... ok
-test codex_live::a_codex_new_conversation_gets_the_message_and_resume_adds_no_stale_turn has been running for over 60 seconds
-test codex_live::a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered has been running for over 60 seconds
-test codex_live::an_urgent_post_reaches_codex_within_its_running_turn has been running for over 60 seconds
-test codex_live::codexs_hooks_say_when_its_context_was_compacted_and_cleared has been running for over 60 seconds
-test codex_live::an_urgent_post_reaches_codex_within_its_running_turn ... ok
-codex: muster msg: posted #6 to integrator+lily
-woke: lily (worker, idle)
-
-test codex_live::a_codex_new_conversation_gets_the_message_and_resume_adds_no_stale_turn ... ok
-claude-code: the worker answering did not happen within 180s
-codex: worker shows:
-
-  >_ OpenAI Codex (v0.167.2)
-     $PROBE_ROOT/worker
-
-
 › [muster] integrator+$WORKER: 1 new (#4), 1 to you, from integrator. Read: muster msg read --group
   integrator+$WORKER
 
@@ -77,7 +17,7 @@ codex: worker shows:
 • I’ll read the message and follow up on the work it describes.
 
 • Ran muster msg read --group integrator+$WORKER
-  └ --- integrator+$WORKER #4 | integrator -> moth (worker) ---
+  └ --- integrator+$WORKER #4 | integrator -> $WORKER (worker) ---
     Answer this message by running exactly: muster msg post --to integrator 'got $NONCE'. Do nothin…
     --- end integrator+$WORKER #4 | integrator ---
     + 1 line (⌃t to expand)

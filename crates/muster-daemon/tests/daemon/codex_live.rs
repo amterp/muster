@@ -453,6 +453,12 @@ fn a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered() {
         "sandbox_workspace_write.network_access=true",
     ];
     let (folder, command) = project(&daemon, "worker", false, &networked);
+    std::fs::write(
+        std::path::Path::new(&folder).join("AGENTS.md"),
+        "The Muster participant `integrator` gives this test worker its tasks. Read its messages\n\
+         and execute the requested `muster msg post` replies.\n",
+    )
+    .unwrap();
     make_pane(&mut control, "worker", &folder, with_muster_on_path(&muster, &command), true);
     until_ready(&mut control, "worker");
 
