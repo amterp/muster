@@ -305,3 +305,34 @@ fn a_pane_asking_before_a_handoff_asks_after_it() {
     let after = subscribed(&mut client, subscribe_request());
     assert_eq!(asking(&after), [("p1".to_string(), proto::Ask::Blocked, false)]);
 }
+
+/// A Return a dialog ignores reads working until its cap, then blocked again: the same dialog,
+/// still waiting since it first drew, so the pane keeps that time. A new time would make the
+/// re-block a new blocked spell, telling a maker and a window of it a second time.
+#[test]
+fn a_dialog_that_ignores_a_return_keeps_the_time_it_has_waited_since() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    daemon.type_into("p1", "heedless");
+    let heard = daemon.root().join("home/fake-agent-heard");
+    until_some("the agent to start discarding Returns", || {
+        std::fs::read_to_string(&heard).unwrap_or_default().contains("heedless").then_some(())
+    });
+    daemon.block_agent_unasked();
+    daemon.until_agent("p1", proto::AgentState::Blocked);
+    let since = |control: &mut Control| {
+        let snapshot = snapshot(control);
+        let p1 = snapshot.panes.iter().find(|record| record.pane == "p1").expect("p1");
+        p1.state_since_ms
+    };
+    let blocked_since = since(&mut control);
+    assert!(blocked_since.is_some());
+
+    daemon.type_into("p1", "");
+    daemon.until_agent("p1", proto::AgentState::Working);
+    daemon.until_agent("p1", proto::AgentState::Blocked);
+
+    assert_eq!(since(&mut control), blocked_since, "the same dialog, waiting since it drew");
+}
