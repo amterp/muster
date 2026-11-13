@@ -7547,9 +7547,11 @@ pub(crate) fn toggle_sidebar(window: WindowId) {
 
 /// Types text into a pane by name, whether or not a region is showing it.
 ///
-/// Through the daemon's input connection, which never blocks and answers nothing: the daemon
-/// writes it as a paste it never holds, then presses each key, then Return if asked. Whether it
-/// arrived is what a caller's read-back is for.
+/// By the daemon's answered send, the step a send with no window and the API's `pane.send` type
+/// by: refused, saying why, when the daemon could not queue it, and unanswered when the answer
+/// was lost. The round trip is made with the session let go, as a read's is. A daemon older than
+/// that send gets it on its input connection, which answers nothing, so there a send nothing
+/// could type is lost without a word.
 pub(crate) fn send_to_pane(
     daemon: &DaemonId,
     pane: &PaneId,
@@ -7557,7 +7559,7 @@ pub(crate) fn send_to_pane(
     keys: Vec<String>,
     enter: bool,
 ) -> Result<(), Refusal> {
-    let input = {
+    let (channel, input, answers_sends) = {
         let session = poison::lock(&SESSION, "session");
         let backend = session.backends.get(daemon).ok_or_else(|| {
             Refusal::Declined(format!(
@@ -7570,24 +7572,35 @@ pub(crate) fn send_to_pane(
                  closed while this was in flight."
             )));
         }
+        let speaks =
+            backend.follower.connection().control().map(|control| control.welcome().protocol);
+        let older_than = |since: u32, what: &str| {
+            speaks.as_ref().and_then(|protocol| {
+                muster_daemon_proto::version::too_old(
+                    &format!("the daemon {daemon}"),
+                    protocol.as_ref(),
+                    since,
+                    what,
+                    "sent",
+                )
+            })
+        };
         // An older daemon would ignore the keys and press the Return alone, which can take a
         // dialog's other answer. A window hands an older daemon over to this build's when it can,
         // so this is a daemon that refused the handover.
-        let control = backend.follower.connection().control();
         if !keys.is_empty()
-            && let Some(control) = control
-            && let Some(refused) = muster_daemon_proto::version::too_old(
-                &format!("the daemon {daemon}"),
-                control.welcome().protocol.as_ref(),
-                muster_daemon_proto::version::KEYS_IN_A_SEND,
-                "press keys",
-                "sent",
-            )
+            && let Some(refused) =
+                older_than(muster_daemon_proto::version::KEYS_IN_A_SEND, "press keys")
         {
             return Err(Refusal::Declined(refused));
         }
-        Arc::clone(&backend.input)
+        let answers_sends = speaks.is_some()
+            && older_than(muster_daemon_proto::version::SENDS_ANSWERED, "answer a send").is_none();
+        (Arc::clone(&backend.channel), Arc::clone(&backend.input), answers_sends)
     };
+    if answers_sends {
+        return channel.send(pane, text, keys, enter);
+    }
     input.send(pane, InputEvent::Send { text, keys, enter }).map_err(|not_sent| {
         Refusal::Declined(format!(
             "nothing was sent to {pane}: {not_sent}. The window reconnects to a daemon on its \

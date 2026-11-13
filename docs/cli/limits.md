@@ -132,9 +132,9 @@ older than it, which says to read with `--no-window` until it is updated.
 This is about the keyboard. To tell an agent something, post it a message
 (`muster docs msg`): it arrives whole, and the post says whom it woke.
 
-`muster pane send` exits 0 when the window queued the text for the pane's daemon, and the daemon
-answers nothing about it (below). That is not the same as the program in the pane having received
-the text, and three things routinely make them differ.
+`muster pane send` exits 0 when the pane's daemon queued the text for the program in the pane
+(below). That is not the same as the program having received the text, and three things routinely
+make them differ.
 
 A **dialog or a menu reads keys and ignores text.** The text goes to the pane as a paste, and the
 select lists in Claude Code's and Codex's dialogs redraw unchanged when pasted at, digits and
@@ -280,23 +280,15 @@ What to do instead of making the request again: `muster window` shows whether it
 only exit 3, where the request was written to no window: none was there, or none answered when
 asked what it is showing.
 
-A daemon does not answer a send, so without `--confirm` a `pane send` exits 4 only when the
-window itself did not answer: the window queues the text on its input connection to the pane's daemon and answers at
-once. Exit 0 says the text was queued for
-a daemon the window was connected to, which is not proof that it arrived - a connection that
-drops a moment later loses what was still queued on it. Exit 1 says nothing was queued, and the
-message says why: the window is not connected to that daemon right now, or the daemon has stopped
-reading. So a send that exited 1 is safe to send again once `muster window` shows the daemon
-`connected`, and `--confirm` is what turns a 0 into proof, by reading the text back off the pane.
-
-With no window answering, the CLI asks the daemon itself to type the send, and the daemon answers.
-Exit 0 then says the daemon queued the text for the pane's program. Exit 1 says nothing was typed,
-and why: the pane's agent is restarting, or its program has stopped reading and the daemon already
-holds as much of its input as it will. Either way, sending it again later is safe. Exit 4 says the
-daemon was asked and its answer was lost, so the text may be on the pane: read it before sending
-again. This is the
-step the API's `pane.send` types by. A daemon older than 0.27 answers no send, so against one the
-CLI types as a window does and exits 0 even when nothing was typed.
+Whether or not a window answers, the pane's daemon types the send and answers, by the step the
+API's `pane.send` types by. Exit 0 says the daemon queued the text for the pane's program, which
+is not proof that the program took it. Exit 1 says nothing was typed, and the message says why:
+the window is not connected to that daemon right now, the pane's agent is restarting, or its
+program has stopped reading and the daemon already holds as much of its input as it will. So a
+send that exited 1 is safe to send again once the reason has passed. Exit 4 says the send went to
+the daemon or the window and the answer was lost, so the text may be on the pane: read it before
+sending again. `--confirm` is what turns a 0 into proof, by reading the text back off the pane. A
+daemon older than 0.27 answers no send, so against one a send exits 0 even when nothing was typed.
 
 A window is slow to answer for reasons that have nothing to do with the request - a loaded
 machine makes every one of them slower, and a devenv is a round trip away - so a 4 says more

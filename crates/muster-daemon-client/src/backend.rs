@@ -627,6 +627,22 @@ impl BackendChannel for DaemonBackend {
         Ok(read.prompt)
     }
 
+    fn send(
+        &self,
+        pane: &PaneId,
+        text: String,
+        keys: Vec<String>,
+        enter: bool,
+    ) -> Result<(), Refusal> {
+        self.pane_request(pane_request::Request::Send(pane_request::Send {
+            pane: pane.to_string(),
+            text,
+            keys,
+            enter,
+        }))
+        .map(|_| ())
+    }
+
     fn description(&self) -> &str {
         &self.description
     }

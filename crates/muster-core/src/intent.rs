@@ -684,6 +684,19 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
         Ok(None)
     }
 
+    /// Types into a pane - the text, then each key, then Return - and says whether it was queued
+    /// for the pane's program: refused, with why, when nothing was typed, and unanswered when
+    /// the backend took it and the answer was lost. A backend that cannot answer a send says so.
+    fn send(
+        &self,
+        _pane: &PaneId,
+        _text: String,
+        _keys: Vec<String>,
+        _enter: bool,
+    ) -> Result<(), Refusal> {
+        Err(Refusal::Declined(format!("{} cannot answer a send", self.description())))
+    }
+
     /// Hears the callsigns every other machine this window follows holds, for the panes it asks
     /// for after to be drawn none of them. A backend with no callsigns has nothing to do.
     fn callsigns_elsewhere(&self, _held: Vec<String>) {}
