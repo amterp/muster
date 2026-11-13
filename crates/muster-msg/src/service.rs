@@ -3922,7 +3922,7 @@ impl<S: Store> Messaging<S> {
 
 /// The refusal for a name nothing answers to now, when panes here went by it before: it names
 /// each by what it is called now, its callsign and its id, as `muster_core::pane_address` does.
-fn renamed(typed: &str, presence: &dyn Presence) -> Option<Refusal> {
+pub(crate) fn renamed(typed: &str, presence: &dyn Presence) -> Option<Refusal> {
     let once = presence.panes_once_named(typed);
     if once.is_empty() {
         return None;
@@ -3937,6 +3937,18 @@ fn renamed(typed: &str, presence: &dyn Presence) -> Option<Refusal> {
         })
         .collect();
     Some(Refusal::Renamed { name: typed.to_string(), panes })
+}
+
+/// The panes of a [`Refusal::Renamed`] another machine gave, with each id as this machine writes
+/// it: `"reef" (otter, p2@devenv)`. The id is last in each, as [`renamed`] writes them.
+pub fn renamed_on(panes: Vec<String>, machine: &str) -> Vec<String> {
+    panes
+        .into_iter()
+        .map(|pane| match pane.strip_suffix(')') {
+            Some(named) => format!("{named}@{machine})"),
+            None => format!("{pane}@{machine}"),
+        })
+        .collect()
 }
 
 /// The refusal for a `--to` that is no pane's name and cannot be a participant's, when it is

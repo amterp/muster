@@ -2923,3 +2923,12 @@ fn an_owed_fold_the_home_cannot_take_yet_is_asked_again() {
     assert_eq!(members_on(&wire, Side::Laptop, "review"), ["director", "tracer@devenv"]);
     assert!(wire.devenv.folds_owed_to("lap").is_empty());
 }
+
+#[test]
+fn a_linked_machines_renamed_panes_are_named_as_this_machine_writes_them() {
+    let panes = vec!["\"reef\" (otter, p2)".to_string(), "p3".to_string()];
+    assert_eq!(
+        muster_msg::renamed_on(panes, "devenv"),
+        ["\"reef\" (otter, p2@devenv)", "p3@devenv"]
+    );
+}

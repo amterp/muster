@@ -1628,9 +1628,8 @@ fn finding<T>(
     let mut asked = BTreeSet::new();
     for name in addressed.iter().filter(|name| panes.pane_named(name).is_some()) {
         if asked.insert(name.clone()) {
-            found.extend(
-                whom(shared, name)?.into_iter().map(|there| Found { name: name.clone(), there }),
-            );
+            let there = whom(shared, name)?.found;
+            found.extend(there.into_iter().map(|there| Found { name: name.clone(), there }));
         }
     }
     loop {
@@ -1646,11 +1645,35 @@ fn finding<T>(
         if !asked.insert(name.clone()) {
             return Err(refusal);
         }
-        let there = whom(shared, name)?;
+        let Whom { found: there, renamed } = whom(shared, name)?;
         if there.is_empty() {
-            return Err(refusal);
+            return Err(with_renamed(refusal, renamed));
         }
         found.extend(there.into_iter().map(|there| Found { name: name.clone(), there }));
+    }
+}
+
+/// What the machines linked to this one said a name means there.
+#[derive(Debug, Default)]
+pub(crate) struct Whom {
+    /// Whom it means, as this machine writes it.
+    pub(crate) found: Vec<String>,
+    /// The panes that went by it before a rename, on machines where nobody does now
+    /// ([`muster_msg::renamed_on`]).
+    pub(crate) renamed: Vec<String>,
+}
+
+/// A refusal of a name nobody here goes by, with the panes linked machines said went by it
+/// before a rename: nobody by it anywhere is better said as what those panes are called now.
+fn with_renamed(refusal: Refusal, mut there: Vec<String>) -> Refusal {
+    match refusal {
+        _ if there.is_empty() => refusal,
+        Refusal::Renamed { name, mut panes } => {
+            panes.append(&mut there);
+            Refusal::Renamed { name, panes }
+        }
+        Refusal::NoSuchParticipant { name } => Refusal::Renamed { name, panes: there },
+        refusal => refusal,
     }
 }
 
@@ -1658,26 +1681,30 @@ fn finding<T>(
 /// machine it names, for `name@machine`. A machine where the name means several agents names
 /// each, by what reaches it alone there, so the request is refused naming every one; and one
 /// where it is shadowed refuses the request.
-pub(crate) fn whom(shared: &Shared, name: &str) -> Result<Vec<String>, Refusal> {
+pub(crate) fn whom(shared: &Shared, name: &str) -> Result<Whom, Refusal> {
     let (base, machines) = match muster_msg::split_machine(name) {
         Some((base, machine)) => (base, vec![machine.to_string()]),
         None => (name, shared.peers.machines()),
     };
     let call = muster_msg::Call::Whom { name: base.to_string() };
     if call.check().is_err() {
-        return Ok(Vec::new());
+        return Ok(Whom::default());
     }
-    let mut found = Vec::new();
+    let mut whom = Whom::default();
     for machine in machines {
-        let (settle, _) = peer::call_away(shared, &Away { machine, call: call.clone() });
+        let away = Away { machine: machine.clone(), call: call.clone() };
+        let (settle, _) = peer::call_away(shared, &away);
         match settle.result {
-            Ok(Settled::Named(Some(there))) => found.push(there),
-            Err(Refusal::WhichParticipant { candidates, .. }) => found.extend(candidates),
+            Ok(Settled::Named(Some(there))) => whom.found.push(there),
+            Err(Refusal::WhichParticipant { candidates, .. }) => whom.found.extend(candidates),
             Err(shadowed @ Refusal::Shadowed { .. }) => return Err(shadowed),
+            Err(Refusal::Renamed { panes, .. }) => {
+                whom.renamed.extend(muster_msg::renamed_on(panes, &machine));
+            }
             _ => {}
         }
     }
-    Ok(found)
+    Ok(whom)
 }
 
 pub(crate) fn resolve_wait_sender(

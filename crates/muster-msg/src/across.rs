@@ -16,7 +16,7 @@ use crate::names::{
 };
 use crate::operations::Repeat;
 use crate::service::{
-    Content, Draft, Group, Operation, check_answers, check_body, check_recommended,
+    Content, Draft, Group, Operation, check_answers, check_body, check_recommended, renamed,
 };
 use crate::{
     Action, AnsweredWait, Answering, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, MUSTER,
@@ -1529,7 +1529,9 @@ impl<S: Store> Messaging<S> {
     /// is not asked for: it is homed where the app runs, and every machine names it already.
     ///
     /// A name that means several agents here is refused naming each, as `--to` is here, rather
-    /// than answered with the pane: the asker cannot tell which was meant either.
+    /// than answered with the pane: the asker cannot tell which was meant either. One that means
+    /// nobody now, but that panes here went by before a rename, is refused naming them, which the
+    /// asker says only when no machine has anybody by the name.
     pub fn whom(&self, name: &str, presence: &dyn Presence) -> Result<Option<String>, Refusal> {
         if name == HUMAN {
             return Ok(None);
@@ -1543,7 +1545,10 @@ impl<S: Store> Messaging<S> {
         if let Some(reached) = self.pane_called(name, &[], None, presence)? {
             return Ok(Some(self.by_pane(&reached).unwrap_or(reached)));
         }
-        Ok(self.participants.contains_key(name).then(|| name.to_string()))
+        if self.participants.contains_key(name) {
+            return Ok(Some(name.to_string()));
+        }
+        renamed(name, presence).map_or(Ok(None), Err)
     }
 
     /// Starts the cursor of `name`, if it is one of this machine's participants, at its join to

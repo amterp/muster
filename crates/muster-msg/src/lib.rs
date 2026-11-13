@@ -33,7 +33,7 @@ pub use service::{
     Acked, Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Holding,
     HumanWhoState, Inbox, Joined, Left, Liveness, Member, Messaging, Notice, Operation, Page,
     Paged, Participant, Posted, Presence, Reach, Read, Removed, Ringable, Unread, Via, Waited,
-    Waiting, Wake,
+    Waiting, Wake, renamed_on,
 };
 pub use store::{GroupRecord, Log, Memory, Operated, Saved, Sent, Store};
 
