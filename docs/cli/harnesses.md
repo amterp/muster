@@ -169,9 +169,10 @@ a post: the post says its prompt cannot be read, and exits 6 when nobody else he
 `muster harness install <harness>` installs the adapter on the machine it runs on: from a pane on
 an SSH machine, on that machine. It never edits a harness's configuration files: it runs the
 harness's own commands against the adapters this Muster carries, and prints what no command of
-the harness's can do. `--dry-run` prints the commands without running them, and the hand steps
-as shell comments, so its answer pastes into a shell. Sessions already running take an adapter
-up when they restart.
+the harness's can do. `--dry-run` prints the commands without invoking the harness at all, and the
+hand steps as shell comments, so its answer pastes into a shell. It cannot check Codex's existing
+marketplace registration; its comments explain how to remove a conflicting registration if needed.
+Sessions already running take an adapter up when they restart.
 
 The adapters are in `Muster.app/Contents/Resources/extras/`. An SSH machine Muster installed a
 daemon on has them too, linked at `~/.muster/extras`, which keeps its path across an update. From

@@ -287,12 +287,22 @@ pub fn install(
     errors: &mut impl Write,
 ) -> Result<(), Trouble> {
     let extras = extras(environment, std::env::current_exe().ok())?;
-    let replace = harness.kind == Kind::Codex
+    let replace = !dry_run
+        && harness.kind == Kind::Codex
         && codex_registration(environment).is_some_and(|registered| {
             let home = muster_home(environment).map(PathBuf::from);
             stale_registration(&registered, &extras, home.as_deref())
         });
-    let plan = plan(harness, &extras, replace);
+    let mut plan = plan(harness, &extras, replace);
+    if dry_run && harness.kind == Kind::Codex {
+        plan.then.insert(
+            0,
+            "No Codex command was run to check its marketplace. An install removes an earlier \
+             Muster's marketplace first when needed; if running this plan reports a different \
+             source, run `codex plugin marketplace remove muster` before adding it again."
+                .to_string(),
+        );
+    }
     let printed = |out: &mut dyn Write, ran: bool| {
         let _ = if json {
             writeln!(

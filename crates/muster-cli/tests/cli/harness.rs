@@ -186,9 +186,9 @@ fn a_marketplace_added_from_a_checkout_is_left_alone() {
     let checkout = home.0.join("src/muster/extras");
     std::fs::create_dir_all(&checkout).unwrap();
     home.codex(&Home::listing(&checkout.canonicalize().unwrap()), "exit 0");
-    let ran = home.muster(&["harness", "install", "codex", "--dry-run"]);
+    let ran = home.muster(&["harness", "install", "codex"]);
     assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
-    assert!(!text(&ran.stdout).contains("remove"), "{}", text(&ran.stdout));
+    assert!(!home.asked("codex").iter().any(|command| command.contains("remove")));
 }
 
 /// A Codex that has no `daemon_auto_start` has no shared app-server, so refusing the flag is done.
