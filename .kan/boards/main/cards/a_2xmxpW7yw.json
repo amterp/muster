@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "in-progress",
   "created_at_millis": 1794382992290,
   "creator": "Alexander Terp",
   "description": "Follow-up to a_2hIfvs1Cc, designed and not built (2026-11-11). Today the person is told of a long block only when a message waits on the pane, or the pane is a helper; otherwise only the one-time [notifications] blocked banner says so. Design from the worker: a non-helper pane at a dialog for 2 hours with nothing unread is told to the person once, with no setting (2 hours is longer than anyone at the window leaves a dialog they can see), skipping a pane the stall rule already told them about. Uses notices::tell_the_person.",
   "id": "a_2xmxpW7yw",
-  "position": "Zy",
+  "position": "Zv",
   "title": "Tell the person of a pane blocked for hours with nothing unread",
   "type": "feature",
-  "updated_at_millis": 1794385016094,
+  "updated_at_millis": 1794577254392,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794382992290},
-    {"field":"column","value":"next","at":1794385016094}
+    {"field":"column","value":"next","at":1794385016094},
+    {"field":"column","value":"in-progress","at":1794577254392}
   ]
 }

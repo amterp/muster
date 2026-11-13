@@ -2,24 +2,31 @@
   "_v": 4,
   "alias": "muster-docs-agents",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "comments": [
     {
       "id": "c_2wmgfFjqj",
       "body": "Muster 0.24.0 (released 2026-11-09) fixes this: its release notes say `cmd+shift+a` and `muster focus --asking` also go to stuck agents and messages for you, in the order blocked, stuck, messages for you, program notifications, done, and `muster docs agents` as installed from 0.24.0 says the same. Checked on two machines after upgrading from 0.22.0. Nothing seen since that this card still covers, so it looks ready to close.",
       "author": "Alexander Terp",
       "created_at_millis": 1794234569011
+    },
+    {
+      "id": "c_2z6TT2RMY",
+      "body": "2026-11-13: closed on the 2026-11-09 comment's evidence: 0.24.0's docs list all five in the enum's order.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794577254049
     }
   ],
   "created_at_millis": 1793142513830,
   "creator": "Alexander Terp",
   "description": "`docs/cli/agents.md` (lines 542-543) says `--asking`, and `cmd+shift+a`, go to \"`blocked` first, then a program's notification, then `done`\". `Attention::asking` sorts by `Alert` (`crates/muster-core/src/attention.rs:45`): blocked, stuck, message (a group with a message waiting for the human), notified, done. So the doc leaves out stuck panes and groups with a message, and an agent reading it would conclude that the chord never reaches a post to `@human`. Checked at 21601587.\n\nFix: list all five in that paragraph, in the enum's order, and say that a group's ask opens its conversation.",
   "id": "a_2pOTJn426",
-  "position": "b1y",
+  "position": "Ytw",
   "title": "muster docs agents: the --asking order leaves out stuck panes and messages for the human",
   "type": "docs",
-  "updated_at_millis": 1794234569011,
+  "updated_at_millis": 1794577254049,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1793142513830}
+    {"field":"column","value":"backlog-lo","at":1793142513830},
+    {"field":"column","value":"done","at":1794577253935}
   ]
 }
