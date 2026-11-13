@@ -34,7 +34,7 @@ def main() -> None:
                 script = root / f"{name}.rad"
                 script.write_text(
                     constants + "\n" + functions + initialize
-                    + f'\nannounce("{name}")\nprint("marks: " + GATE_STEPS)\n'
+                    + f'\nannounce("{name}")\n'
                     + f'write_file("{name}.ready", "")\n'
                     + f'while not get_path("{name}.release").exists:\n    sleep(0.01)\n'
                     + f'mark("{name}: finished")\nreport_steps()\nexit({status})\n'
@@ -54,7 +54,12 @@ def main() -> None:
                 assert other not in stdout, stdout
                 assert stdout.count("▸ time") == 1, stdout
                 assert "finished" in stdout and "total" in stdout, stdout
-                path = root / next(line[7:] for line in stdout.splitlines() if line.startswith("marks: "))
+                reported = [
+                    line.strip()[7:] for line in stdout.splitlines()
+                    if line.strip().startswith("marks: ")
+                ]
+                assert len(reported) == 1, f"footer must identify its timing file: {stdout}"
+                path = root / reported[0]
                 contents = path.read_text()
                 assert f"\t{name}\n" in contents and f"\t{name}: finished\n" in contents, contents
                 assert other not in contents, contents
