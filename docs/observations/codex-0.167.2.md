@@ -115,10 +115,10 @@ and `Use existing model`, as does explicitly enabling `features.model_migrations
 configuration for `gpt-6.1-terra` goes straight to its composer instead.
 
 Both dialog selections use the composer's caret, so the previous detector read them as idle.
-The manifest now reads both option labels as a visible blocker. Down changes the selection but
-leaves the dialog blocked. Return on `Use existing model` closes it and leaves an idle composer.
-All three recorded screens are conformance cases. No new manifest key or engine version is
-needed.
+The manifest now matches both numbered option lines as a visible blocker. Down changes the
+selection but leaves the dialog blocked. Return on `Use existing model` closes it and leaves an
+idle composer. A normal completed reply that mentions both labels in prose also stays idle.
+All four recorded screens are conformance cases. No new manifest key or engine version is needed.
 
 ## 8. Nested exec has the same hook source, but its report is refused
 

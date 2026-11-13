@@ -117,7 +117,10 @@ state = "blocked"
 priority = 950
 region = "bottom_non_empty_lines(20)"
 visible_blocker = true
-contains = ["Try new model", "Use existing model"]
+regex = [
+  '(?m)^[ \t]*(?:[›>][ \t]+)?1\.[ \t]+Try new model[ \t]*$',
+  '(?m)^[ \t]*(?:[›>][ \t]+)?2\.[ \t]+Use existing model[ \t]*$',
+]
 
 # 0.160.0's folder trust dialog, which replaced trust_directory's question.
 [[rules]]
