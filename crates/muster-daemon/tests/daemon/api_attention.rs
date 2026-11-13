@@ -215,3 +215,41 @@ fn a_long_backlog_lists_the_newest_and_counts_them_all() {
     let newest = snapshot(&mut control).human[0].last;
     assert_eq!(numbers.last(), Some(&newest), "the newest are the ones listed");
 }
+
+/// A Return a dialog ignores is one asking spell to a program, as it is one banner in a window:
+/// the pane reads working while the key might have answered, and blocked again once it did not,
+/// and a program told asking ended and started again would notify twice for one dialog. `p2`
+/// blocking afterwards is the next thing a program hears.
+#[test]
+fn a_dialog_that_ignores_a_return_asks_a_program_once() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p2", in_new_tab("t2")));
+    daemon.run_agent("p2");
+    // Started last, so that it is the agent the daemon signals.
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    daemon.type_into("p1", "heedless");
+    let heard = daemon.root().join("home/fake-agent-heard");
+    until_some("the agent to start discarding Returns", || {
+        std::fs::read_to_string(&heard).unwrap_or_default().contains("heedless").then_some(())
+    });
+    let mut program = daemon.api();
+    program.subscribe(&[api::Topic::Attention]);
+    daemon.block_agent_unasked();
+    daemon.until_agent("p1", proto::AgentState::Blocked);
+    let asked = next_asking(&mut program);
+    assert_eq!((asked.pane.as_str(), asked.ask()), ("p1", api::Ask::Blocked));
+
+    daemon.type_into("p1", "");
+    daemon.until_agent("p1", proto::AgentState::Working);
+    daemon.until_agent("p1", proto::AgentState::Blocked);
+    daemon.set_agent_state("p2", proto::AgentState::Blocked);
+
+    let next = next_asking(&mut program);
+    assert_eq!(
+        (next.pane.as_str(), next.ask()),
+        ("p2", api::Ask::Blocked),
+        "p1's dialog never went, so nothing about it is news"
+    );
+}
