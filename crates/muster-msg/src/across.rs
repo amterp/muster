@@ -729,7 +729,7 @@ impl<S: Store> Messaging<S> {
 
     /// A pane owed a leave owes nothing once the home has taken it, or refused it because it no
     /// longer lists the pane in the group or keeps the group.
-    fn leave_answered(&mut self, call: &Call, key: &str, reply: &Reply) {
+    fn leave_answered(&mut self, call: &Call, key: &str, reply: &Reply, applied: &mut Applied) {
         let Call::Leave { name, .. } = call else { return };
         let settled = match reply {
             Reply::Left { .. } => true,
@@ -738,8 +738,11 @@ impl<S: Store> Messaging<S> {
             }
             _ => false,
         };
-        if settled {
-            self.leaves_owed.remove(&(key.to_string(), name.clone()));
+        if settled && self.leaves_owed.remove(&(key.to_string(), name.clone())) {
+            // Saved now, since a refusal saves nothing else and a restart would send it again.
+            if let Err(Refusal::Store { error }) = self.save() {
+                applied.unsaved = applied.unsaved.take().or(Some(error));
+            }
         }
     }
 
@@ -1048,7 +1051,7 @@ impl<S: Store> Messaging<S> {
         applied: &mut Applied,
     ) -> Result<Settled, Refusal> {
         let key = peer.inward(call.group());
-        self.leave_answered(call, &key, &reply);
+        self.leave_answered(call, &key, &reply, applied);
         // A gap here is left for the next refetch: these answers follow the asker's own head.
         let mut apply = |service: &mut Self, caught| {
             service.apply_into(peer, caught, presence, now_ms, applied).unwrap_or_default()
