@@ -914,14 +914,17 @@ pub(crate) struct Holding {
     deferred: Vec<Deferral>,
     /// What waits for the human now, for the windows attending this daemon.
     told: Told,
+    /// How members on other machines were reached, as their machine answered.
+    elsewhere: Vec<msg_answer::Reached>,
 }
 
 /// What delivering a [`Holding`] came to: who could not be woken, and who is left for the
-/// doorbell and until what.
+/// doorbell and until what; and for members on other machines, how their machine reached them.
 #[derive(Debug, Default)]
 struct Rang {
     failed: Vec<String>,
     deferred: Vec<Deferral>,
+    elsewhere: Vec<msg_answer::Reached>,
 }
 
 /// A wake left for the doorbell, for whom and until what.
@@ -931,6 +934,15 @@ struct Deferral {
     until: msg_answer::Until,
     /// What its agent's prompt showed when the doorbell looked to ring it just now, in words.
     held: Option<String>,
+}
+
+impl Rang {
+    /// Takes in what a further delivery came to.
+    fn add(&mut self, more: Rang) {
+        self.failed.extend(more.failed);
+        self.deferred.extend(more.deferred);
+        self.elsewhere.extend(more.elsewhere);
+    }
 }
 
 impl Deferral {
@@ -1097,7 +1109,7 @@ impl Messages {
 
 /// Delivers what [`Messages::hold`] sorted, with the service's lock let go.
 fn ring(shared: &Shared, holding: Holding) -> Rang {
-    let Holding { sending, ringing, mut deferred, told } = holding;
+    let Holding { sending, ringing, mut deferred, told, elsewhere } = holding;
     tell_human(shared, told);
     let names: Vec<(String, String)> =
         ringing.iter().map(|(wake, _)| (wake.name.clone(), wake.notice.group.clone())).collect();
@@ -1139,7 +1151,7 @@ fn ring(shared: &Shared, holding: Holding) -> Rang {
         .map(|wake| wake.name.clone())
         .chain(refused_rings.into_iter().map(|(name, _)| name))
         .collect();
-    Rang { failed, deferred }
+    Rang { failed, deferred, elsewhere }
 }
 
 fn joining(
@@ -1474,7 +1486,7 @@ fn posting(
         let rang = ring(shared, holding);
         match settle.result {
             Ok(Settled::Posted(posted)) => {
-                let activities = activities_of(shared, &posted, panes);
+                let activities = activities_of(shared, &posted.reached, panes);
                 Delivered { posted, rang, activities }
             }
             Ok(other) => return mismatched("post", &other),
@@ -1798,25 +1810,27 @@ fn delivering_caused(
         messages.cause = None;
         (posted, holding)
     };
-    let rang = ring(shared, holding);
+    let mut rang = ring(shared, holding);
     let elsewhere = peer::tell(shared, &posted.tell);
-    posted.reached.extend(elsewhere);
+    posted
+        .reached
+        .extend(elsewhere.iter().map(|reached| (reached.name.clone(), wire::reach_from(reached))));
+    rang.elsewhere.extend(elsewhere);
     if let Some(error) = &posted.unsaved {
         kept_nothing(&Refusal::Store { error: error.clone() });
     }
-    let activities = activities_of(shared, &posted, panes);
+    let activities = activities_of(shared, &posted.reached, panes);
     Ok(Delivered { posted, rang, activities })
 }
 
 /// What each agent a post reached on this machine is doing.
 fn activities_of(
     shared: &Shared,
-    posted: &muster_msg::Posted,
+    reached: &[(String, Reach)],
     panes: &Panes,
 ) -> HashMap<String, Activity> {
     let messages = shared.messages();
-    posted
-        .reached
+    reached
         .iter()
         .filter_map(|(name, _)| {
             let participant = messages.service.participant(name)?;
@@ -1825,38 +1839,51 @@ fn activities_of(
         .collect()
 }
 
+/// How a post reached each of `reached`: on this machine as delivering its wakes came to and with
+/// what each agent is doing, and elsewhere as that machine answered. Both a post's answer and a
+/// group's home answering another machine say it this way.
+fn reached_as_told(
+    reached: &[(String, Reach)],
+    rang: &Rang,
+    activities: &HashMap<String, Activity>,
+) -> Vec<msg_answer::Reached> {
+    reached
+        .iter()
+        .map(|(name, reach)| {
+            if let Some(answered) = rang.elsewhere.iter().find(|answered| answered.name == *name) {
+                return answered.clone();
+            }
+            let deferral = rang.deferred.iter().find(|deferral| deferral.name == *name);
+            let reach = if rang.failed.contains(name) {
+                Reach::Gone
+            } else if deferral.is_some() {
+                Reach::Deferred
+            } else {
+                *reach
+            };
+            msg_answer::Reached {
+                name: name.clone(),
+                reach: reach_of(reach).into(),
+                activity: activity_of(activities.get(name).copied()).into(),
+                until: deferral
+                    .map_or(msg_answer::Until::Unspecified, |deferral| deferral.until)
+                    .into(),
+                held: deferral.and_then(|deferral| deferral.held.clone()),
+            }
+        })
+        .collect()
+}
+
 /// What a post or a resume did, as its answer and the daemon's log say it. `bytes` is a post's
 /// size, never its body: the log records what happened, not what was said.
 fn told(event: &'static str, bytes: Option<usize>, delivered: &Delivered) -> msg_answer::Posted {
     let Delivered { posted, rang, activities } = delivered;
-    let deferral = |name: &String| rang.deferred.iter().find(|deferral| deferral.name == *name);
-    let until = |name: &String| deferral(name).map(|deferral| deferral.until);
-    let told = |name: &String, reach: Reach| {
-        if rang.failed.contains(name) {
-            Reach::Gone
-        } else if until(name).is_some() {
-            Reach::Deferred
-        } else {
-            reach
-        }
-    };
-    let reached: Vec<msg_answer::Reached> = posted
-        .reached
-        .iter()
-        .map(|(name, reach)| msg_answer::Reached {
-            name: name.clone(),
-            reach: reach_of(told(name, *reach)).into(),
-            activity: activity_of(activities.get(name).copied()).into(),
-            until: until(name).unwrap_or(msg_answer::Until::Unspecified).into(),
-            held: deferral(name).and_then(|deferral| deferral.held.clone()),
-        })
-        .collect();
+    let reached = reached_as_told(&posted.reached, rang, activities);
     let named = |wanted: Reach| {
-        let names: Vec<&str> = posted
-            .reached
+        let names: Vec<&str> = reached
             .iter()
-            .filter(|(name, reach)| told(name, *reach) == wanted)
-            .map(|(name, _)| name.as_str())
+            .filter(|reached| wire::reach_from(reached) == wanted)
+            .map(|reached| reached.name.as_str())
             .collect();
         names.join(",")
     };

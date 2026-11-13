@@ -49,7 +49,7 @@ pub(super) fn post_at_home(
         let rang = ring(&shared, holding);
         match settle.result {
             Ok(Settled::Posted(posted)) => {
-                let activities = activities_of(&shared, &posted, &Panes::of(&shared));
+                let activities = activities_of(&shared, &posted.reached, &Panes::of(&shared));
                 told(told_event, Some(bytes), &Delivered { posted, rang, activities });
             }
             Ok(other) => untold(&format!("{machine} answered {other:?}")),

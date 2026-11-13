@@ -164,20 +164,24 @@ pub(super) fn reached_from(reached: Vec<msg_answer::Reached>) -> Vec<(String, Re
     reached
         .into_iter()
         .map(|reached| {
-            let reach = match reached.reach() {
-                msg_answer::Reach::Woken => Reach::Woken,
-                msg_answer::Reach::AlreadyWoken => Reach::AlreadyWoken,
-                msg_answer::Reach::Waiting => Reach::Waiting,
-                msg_answer::Reach::Deferred => Reach::Deferred,
-                msg_answer::Reach::NoAgent => Reach::NoAgent,
-                msg_answer::Reach::NoDoorbell => Reach::NoDoorbell,
-                msg_answer::Reach::Gone | msg_answer::Reach::Unspecified => Reach::Gone,
-                msg_answer::Reach::Unreachable => Reach::Unreachable,
-                msg_answer::Reach::Paused => Reach::Paused,
-            };
+            let reach = reach_from(&reached);
             (reached.name, reach)
         })
         .collect()
+}
+
+pub(super) fn reach_from(reached: &msg_answer::Reached) -> Reach {
+    match reached.reach() {
+        msg_answer::Reach::Woken => Reach::Woken,
+        msg_answer::Reach::AlreadyWoken => Reach::AlreadyWoken,
+        msg_answer::Reach::Waiting => Reach::Waiting,
+        msg_answer::Reach::Deferred => Reach::Deferred,
+        msg_answer::Reach::NoAgent => Reach::NoAgent,
+        msg_answer::Reach::NoDoorbell => Reach::NoDoorbell,
+        msg_answer::Reach::Gone | msg_answer::Reach::Unspecified => Reach::Gone,
+        msg_answer::Reach::Unreachable => Reach::Unreachable,
+        msg_answer::Reach::Paused => Reach::Paused,
+    }
 }
 
 fn member_from(member: msg_answer::Member) -> Member {

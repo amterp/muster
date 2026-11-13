@@ -23,6 +23,7 @@ use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_daemon_proto::connection;
 use muster_msg::{Away, Call, Caller, Peer, Reach, Refusal, Settle, Settled, Tell, is_machine};
+use proto::msg_answer;
 use proto::peer_call::Call as Called;
 use proto::peer_frame::Frame;
 use proto::peer_reply::Reply as Replied;
@@ -584,14 +585,20 @@ fn refetch(shared: &Shared, link: &Link) {
 
 /// Takes what `group`'s home holds after `head` into the replica, and wakes whoever it is for,
 /// saying whom it reached.
-fn fetch(shared: &Shared, link: &Link, group: &str, mut head: u64) -> Vec<(String, Reach)> {
+fn fetch(
+    shared: &Shared,
+    link: &Link,
+    group: &str,
+    mut head: u64,
+) -> (Vec<(String, Reach)>, super::Rang) {
     let mut reached = Vec::new();
+    let mut rang = super::Rang::default();
     let mut gaps = 0;
     loop {
         let call = Call::Since { group: group.to_string(), after: head };
         let away = Away { machine: link.peer.name.clone(), call };
         let (settle, holding) = settle_with(shared, link, &away, None);
-        super::ring(shared, holding);
+        rang.add(super::ring(shared, holding));
         reached.extend(settle.applied.reached);
         match (settle.result, settle.applied.more) {
             (Ok(Settled::Gap(from)), _) if gaps < 3 => {
@@ -602,7 +609,7 @@ fn fetch(shared: &Shared, link: &Link, group: &str, mut head: u64) -> Vec<(Strin
             _ => break,
         }
     }
-    reached
+    (reached, rang)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -636,10 +643,23 @@ fn settle_with(
     let patience = if posts { POSTING } else { CALLING };
     let changes = posts || matches!(away.call, Call::Join { .. } | Call::Leave { .. });
     let called = callsigns(shared, away.call.names());
+    let mut elsewhere = Vec::new();
     let replied = match link.call(wire::call_to(&away.call), called, patience) {
-        Ok((replied, said)) => wire::reply_from(replied)
-            .and_then(|reply| named(reply, &away.machine))
-            .map(|reply| (reply, said)),
+        Ok((replied, said)) => {
+            if let Replied::Posted(posted) = &replied {
+                elsewhere = posted
+                    .reached
+                    .iter()
+                    .map(|reached| msg_answer::Reached {
+                        name: link.peer.inward(&reached.name),
+                        ..reached.clone()
+                    })
+                    .collect();
+            }
+            wire::reply_from(replied)
+                .and_then(|reply| named(reply, &away.machine))
+                .map(|reply| (reply, said))
+        }
         Err(Failed::Unanswered(error)) if changes => {
             log::warn(
                 "msg.peer.call_failed",
@@ -686,7 +706,8 @@ fn settle_with(
             None => messages.service.settle(&link.peer, &away.call, reply, &panes, now_ms()),
         };
         messages.let_go(&settle.applied.ended);
-        let holding = messages.hold(&settle.applied.wakes, &settle.applied.answered, &panes);
+        let mut holding = messages.hold(&settle.applied.wakes, &settle.applied.answered, &panes);
+        holding.elsewhere = elsewhere;
         (settle, holding)
     };
     // A reply catches the replica up a page at most; the rest is fetched as a refetch is.
@@ -773,10 +794,16 @@ fn unreachable(away: &Away) -> Settle {
 /// Sends a group's new entries on to each machine named, and returns whom each reached there,
 /// in this machine's names. A machine that cannot be told has its targets unreachable; it
 /// catches up when its link returns.
-pub(crate) fn tell(shared: &Shared, tells: &[Tell]) -> Vec<(String, Reach)> {
+/// Sends each machine the entries it is to be told, and returns how its members were reached, as
+/// that machine answered and in this machine's names. An older machine answers with the reach
+/// alone, and its members read as doing nothing known.
+pub(crate) fn tell(shared: &Shared, tells: &[Tell]) -> Vec<msg_answer::Reached> {
     let mut reached = Vec::new();
     for tell in tells {
-        let unreached = || tell.targets.iter().map(|name| (name.clone(), Reach::Unreachable));
+        let unreached = || {
+            let names = tell.targets.iter().map(|name| (name.clone(), Reach::Unreachable));
+            wire::reached_to(&names.collect::<Vec<_>>())
+        };
         let Some(link) = shared.peers.to(&tell.machine) else {
             reached.extend(unreached());
             continue;
@@ -788,11 +815,10 @@ pub(crate) fn tell(shared: &Shared, tells: &[Tell]) -> Vec<(String, Reach)> {
         match link.call(Called::Replicate(wire::caught_to(&caught)), called, CALLING) {
             Ok((Replied::Applied(applied), said)) => {
                 shared.messages().service.heard_callsigns(&link.peer, said);
-                reached.extend(
-                    wire::reached_from(applied.reached)
-                        .into_iter()
-                        .map(|(name, reach)| (link.peer.inward(&name), reach)),
-                );
+                reached.extend(applied.reached.into_iter().map(|reached| msg_answer::Reached {
+                    name: link.peer.inward(&reached.name),
+                    ..reached
+                }));
             }
             Ok((other, _)) => log::warn(
                 "msg.peer.call_failed",
@@ -875,14 +901,20 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, call: proto::PeerCall) -> (Rep
         let holding = messages.hold(&answered.wakes, &answered.answered, &panes);
         (answered, holding)
     };
-    super::ring(shared, holding);
+    let mut rang = super::ring(shared, holding);
     if let Some(error) = &answered.unsaved {
         super::kept_nothing(&Refusal::Store { error: error.clone() });
     }
     let mut reply = answered.reply;
     let elsewhere = tell(shared, &answered.tell);
+    let mut told = None;
     if let muster_msg::Reply::Posted { seq, reached, .. } = &mut reply {
-        reached.extend(elsewhere);
+        reached.extend(
+            elsewhere.iter().map(|reached| (reached.name.clone(), wire::reach_from(reached))),
+        );
+        rang.elsewhere = elsewhere;
+        let activities = super::activities_of(shared, reached, &panes);
+        told = Some(super::reached_as_told(reached, &rang, &activities));
         if let Call::Post { group, body, .. } = &call {
             log::info(
                 "msg.forwarded",
@@ -896,7 +928,11 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, call: proto::PeerCall) -> (Rep
         }
     }
     let called = shared.messages().service.callsigns_of(reply.names(), &panes);
-    (wire::reply_to(reply), called.into_iter().collect())
+    let mut replied = wire::reply_to(reply);
+    if let (Replied::Posted(posted), Some(told)) = (&mut replied, told) {
+        posted.reached = told;
+    }
+    (replied, called.into_iter().collect())
 }
 
 /// A request the person made on the other machine, done here as the human. It ends when the
@@ -995,7 +1031,7 @@ fn replicated(
     let panes = Panes::of(shared);
     // A gap is fetched, and the post that was sent on is answered with whom the fetch reached:
     // its author's machine counts those as heard.
-    let (reached, holding) = {
+    let (reached, rang) = {
         let mut messages = shared.messages();
         // First, so the wakes the entries make say who they are from by callsign.
         messages.service.heard_callsigns(&link.peer, said);
@@ -1003,18 +1039,19 @@ fn replicated(
             Ok(applied) => {
                 messages.let_go(&applied.ended);
                 let holding = messages.hold(&applied.wakes, &applied.answered, &panes);
-                (applied.reached, holding)
+                drop(messages);
+                (applied.reached, super::ring(shared, holding))
             }
             Err(head) => {
                 drop(messages);
-                (fetch(shared, link, &group, head), Holding::default())
+                fetch(shared, link, &group, head)
             }
         }
     };
-    super::ring(shared, holding);
     let names = reached.iter().map(|(name, _)| name.as_str());
     let called = shared.messages().service.callsigns_of(names, &panes).into_iter().collect();
-    let reached = wire::reached_to(&reached);
+    let activities = super::activities_of(shared, &reached, &panes);
+    let reached = super::reached_as_told(&reached, &rang, &activities);
     (Replied::Applied(proto::peer_reply::Reached { reached }), called)
 }
 
