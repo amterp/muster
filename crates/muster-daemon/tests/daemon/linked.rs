@@ -773,6 +773,72 @@ fn a_post_to_a_pane_on_the_linked_machine_rings_it_there() {
     assert_eq!(msg_answer(&refused).refusal, "no_such_participant", "{}", refused.answer.reason);
 }
 
+/// A post to a pane on the linked machine whose wake waits there says so, as it does for a pane
+/// here: what the wake waits for, and what the agent is doing.
+#[test]
+fn a_post_to_a_linked_machines_pane_says_what_its_wake_waits_for() {
+    let (near, far) = (daemon(), Daemon::start_detecting());
+    let mut far_control = far.connect();
+    make(&mut far_control, create("p1", in_new_tab("t1")));
+    far.run_agent("p1");
+    far.set_agent_state("p1", proto::AgentState::Blocked);
+    let mut near_control = near.connect();
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+
+    let posted = expect(
+        &mut near_control,
+        post(&named("builder"), None, &["p1"], "carry on"),
+        proto::Outcome::Done,
+    );
+    let Some(Answer::Posted(posted)) = &msg_answer(&posted).answer else {
+        panic!("a post answered with {:?}", msg_answer(&posted));
+    };
+    let reached = &posted.reached[0];
+    assert_eq!(
+        (reached.name.as_str(), reached.reach(), reached.until(), reached.activity()),
+        (
+            "p1@far",
+            msg_answer::Reach::Deferred,
+            msg_answer::Until::Idle,
+            msg_answer::Activity::Blocked
+        ),
+    );
+}
+
+/// A wake held at a linked machine's agent says what holds it, as it does for an agent here.
+#[test]
+fn a_post_to_a_linked_machines_pane_says_why_its_wake_is_held() {
+    let (near, far) = (daemon(), Daemon::start_detecting());
+    let mut far_control = far.connect();
+    make(&mut far_control, create("p1", in_new_tab("t1")));
+    far.run_agent("p1");
+    far.type_into("p1", "menu");
+    until_text(&mut far_control, "p1", "PROBE-MENU");
+    // As long as the doorbell waits for a screen to sit still.
+    std::thread::sleep(Duration::from_secs(3));
+    let mut near_control = near.connect();
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+
+    let posted = expect(
+        &mut near_control,
+        post(&named("builder"), None, &["p1"], "carry on"),
+        proto::Outcome::Done,
+    );
+    let Some(Answer::Posted(posted)) = &msg_answer(&posted).answer else {
+        panic!("a post answered with {:?}", msg_answer(&posted));
+    };
+    let reached = &posted.reached[0];
+    assert_eq!(
+        (reached.reach(), reached.until()),
+        (msg_answer::Reach::Deferred, msg_answer::Until::Prompt)
+    );
+    assert_eq!(reached.held.as_deref(), Some("a menu opened from its prompt covers its prompt"));
+}
+
 /// A post to the name a pane on the linked machine went by before it was renamed is refused
 /// saying what it is called now there, as it is for a pane here, rather than as nobody.
 #[test]
