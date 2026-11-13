@@ -59,11 +59,13 @@ const TOPICS: [api::Topic; 5] = [
 
 /// Every option of a request that came in a later minor than the request: what a client of that
 /// minor tests for before relying on it, since a daemon before it refuses or misreads it.
-const OPTIONS: [&str; 2] = [
+const OPTIONS: [&str; 3] = [
     // 0.3: `msg.post` answering a question with no answer picked, in its own words.
     "msg.post.answer_in_words",
     // 0.3: `msg.post` naming the offered answer its author recommends.
     "msg.post.recommended",
+    // 0.5: `msg.post` asking for no reply.
+    "msg.post.no_reply",
 ];
 
 /// The longest correlation id a request may carry, which the schema promises. Its answer and its

@@ -123,6 +123,36 @@ fn a_programs_post_is_logged_as_the_humans_with_the_program_beside_it() {
     );
 }
 
+/// A program's post can ask for no reply, as `muster msg post --no-reply` does, and its entry
+/// says so; the daemon lists the option in its Welcome.
+#[test]
+fn a_programs_post_can_ask_for_no_reply() {
+    let daemon = daemon();
+    let _control = crew(&daemon);
+    let mut program = foreman(&daemon);
+    assert!(
+        program
+            .welcome()
+            .machine
+            .as_ref()
+            .and_then(|machine| machine.features.as_ref())
+            .is_some_and(|features| {
+                features.options.iter().any(|option| option == "msg.post.no_reply")
+            })
+    );
+    program.subscribe(&[api::Topic::Messages]);
+
+    let asked =
+        program.ask(post(api::NewPost { no_reply: true, ..post_as_human("op-1", "stand by") }));
+    assert_eq!(asked.outcome(), api::Outcome::Done, "{:?}", asked.answer);
+    let logged = asked.events.iter().find_map(|event| match &event.event {
+        Some(api::event::Event::Logged(logged)) => logged.entry.as_ref()?.what.clone(),
+        _ => None,
+    });
+    let Some(api::entry::What::Post(post)) = logged else { panic!("no post logged: {logged:?}") };
+    assert!(post.no_reply, "{post:?}");
+}
+
 #[test]
 fn asking_again_under_an_id_never_posts_twice_and_another_request_cannot_reuse_it() {
     let daemon = daemon();

@@ -322,12 +322,22 @@ fn entry_of(entry: &Entry, answered_by: Option<u64>) -> api::Entry {
     use api::entry::What as Is;
     let what = match &entry.what {
         What::Message {
-            author, to, body, urgent, answers, recommended, answering, via, ..
+            author,
+            to,
+            body,
+            urgent,
+            no_reply,
+            answers,
+            recommended,
+            answering,
+            via,
+            ..
         } => Is::Post(api::Post {
             author: author.clone(),
             to: to.clone(),
             body: body.clone(),
             urgent: *urgent,
+            no_reply: *no_reply,
             answers: answers.clone(),
             answering: answering.as_ref().map(|answering| api::Answering {
                 question: answering.question,

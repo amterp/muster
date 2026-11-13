@@ -112,6 +112,12 @@ daemon that serves it lists the option `msg.post.recommended` in its Welcome. On
 the field and posts the question without it, so ask there first. A question kept on another machine
 whose daemon is too old to keep it is refused UNSUPPORTED.
 
+Since 0.5, `no_reply` marks a post that wants nothing back, as `muster msg post --no-reply` does:
+it wakes whom it is for as any post does, but a helper that reads it and ends its turn without
+posting is not reported to its maker as gone idle without posting. History gives it back on the
+post. A daemon that serves it lists the option `msg.post.no_reply` in its Welcome; one before 0.5
+ignores the field.
+
 It carries a required operation id, as `pane.new` does. The group's home keeps it in the post's
 own log entry, so a repeat is ALREADY_SO with the first post's group and number, across a
 reconnect, a handoff and a restart, and after the group is deleted. A post to a group kept on

@@ -36,7 +36,7 @@
                         "pane.send"
                       ],
                       "topics": ["TOPIC_PANES", "TOPIC_MACHINES", "TOPIC_MESSAGES", "TOPIC_ATTENTION", "TOPIC_PLACES"],
-                      "options": ["msg.post.answer_in_words", "msg.post.recommended"]
+                      "options": ["msg.post.answer_in_words", "msg.post.recommended", "msg.post.no_reply"]
                     }
                   }
                 }

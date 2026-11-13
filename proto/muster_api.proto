@@ -858,6 +858,11 @@ message NewPost {
   // the option "msg.post.recommended"; one before 0.3 ignores the field and posts the question
   // without it, so a client asks there first.
   string recommended = 9;
+  // Since 0.5. Its author wants no reply, as "stand by" or "nothing further" does: it wakes whom
+  // it is for as any post does, but a helper that reads it and ends its turn without posting is
+  // not reported to its maker as gone idle without posting. A daemon serves it when its Welcome
+  // lists the option "msg.post.no_reply"; one before 0.5 ignores the field.
+  bool no_reply = 10;
 }
 
 // What a post came to: its group, and its number there.
@@ -989,6 +994,8 @@ message Post {
   // Since 0.3. The offered answer its author recommends, as written in `answers`; empty for
   // none.
   string recommended = 9;
+  // Since 0.5. Its author wanted no reply (NewPost's `no_reply`).
+  bool no_reply = 10;
 }
 
 message Answering {
