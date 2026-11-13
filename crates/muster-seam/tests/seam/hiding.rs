@@ -18,9 +18,9 @@ use muster_harness::{Daemon, Input, until};
 use prost::Message;
 
 /// Hiding takes a pane out of the window and into the hidden list, held by its daemon; showing
-/// brings it back into a tab of its own with the keyboard on it.
+/// brings it back where it was, beside the pane it left, with the keyboard on it.
 #[test]
-fn a_hidden_pane_leaves_the_window_and_comes_back_in_a_tab_of_its_own() {
+fn a_hidden_pane_leaves_the_window_and_comes_back_where_it_was() {
     let _turn = muster::testing::fresh_session();
     let daemon = two_panes_side_by_side();
     open_window(&daemon);
@@ -53,11 +53,11 @@ fn a_hidden_pane_leaves_the_window_and_comes_back_in_a_tab_of_its_own() {
         ..ShowPane::default()
     })));
     until(
-        "p2 to come back in a tab of its own, with the keyboard",
+        "p2 to come back beside p1, with the keyboard",
         || {
             hidden().is_empty()
-                && tabs() == 2
-                && rows_in_tab_of("p2") == ["p2"]
+                && tabs() == 1
+                && rows_in_tab_of("p2") == ["p1", "p2"]
                 && keyboard().as_deref() == Some("p2")
         },
         || {

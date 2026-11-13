@@ -216,6 +216,10 @@ pub(crate) struct Pane {
     /// maker is reopened.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) kept_after_maker_closed: bool,
+    /// Where it was when somebody hid it, so that showing it puts it back there; absent while it
+    /// is not hidden, or was hidden as it was made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) hidden_from: Option<ClosedTab>,
 }
 
 /// The command that starts a pane's agent session again after a restart: the agent's manifest's
@@ -800,6 +804,7 @@ mod tests {
             quiet_before_orphaned: None,
             compaction: None,
             kept_after_maker_closed: false,
+            hidden_from: None,
         }
     }
 
@@ -1039,6 +1044,7 @@ mod tests {
             quiet_before_orphaned: None,
             compaction: None,
             kept_after_maker_closed: false,
+            hidden_from: None,
         };
         let split = |axis, ratio, first: &str, second: &str| Node::Split {
             axis,

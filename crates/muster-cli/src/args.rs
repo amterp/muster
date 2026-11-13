@@ -794,7 +794,7 @@ enum Doing {
         helpers_of: Option<String>,
     },
 
-    /// Bring a hidden pane back with the hidden tab holding it, or a pane's helpers together
+    /// Bring a hidden pane back where it was hidden from, or a pane's helpers together
     #[command(group = ArgGroup::new("shown").required(true))]
     Show {
         /// The pane to bring back. `muster window` lists the hidden ones

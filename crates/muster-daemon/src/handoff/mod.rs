@@ -11,7 +11,7 @@
 
 mod fds;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -515,21 +515,12 @@ pub(crate) fn take_over(
     send(&mut link, handoff::Message::Accept(accept))?;
     faults.pause("after-accept", socket);
 
-    let Built {
-        shared,
-        stopping,
-        stop,
-        persister,
-        tabs,
-        resumes,
-        orphaned_quiet,
-        kept_helpers,
-        app_manifests,
-    } = build(&mut link, socket, data, log)?;
+    let Built { shared, stopping, stop, persister, tabs, saved, app_manifests } =
+        build(&mut link, socket, data, log)?;
     if !app_manifests.is_empty() {
         shared.adopt_manifests(app_manifests);
     }
-    adopt_panes(&mut link, &shared, offer.panes, &resumes, (&orphaned_quiet, &kept_helpers))?;
+    adopt_panes(&mut link, &shared, offer.panes, &saved)?;
     let tabs = shared.lock().adopt_tabs(tabs);
     if let Err(problem) = tabs {
         return refuse(&mut link, problem);
@@ -596,13 +587,9 @@ struct Built {
     stop: Receiver<Stop>,
     persister: Arc<Persister>,
     tabs: Vec<persist::Tab>,
-    /// What starts each pane's agent session again, by pane, from the state handed over.
-    resumes: HashMap<String, persist::Resume>,
-    /// Whether each helper whose maker has closed was quiet before, by pane, from the same.
-    orphaned_quiet: HashMap<String, bool>,
-    /// The helpers the person took over after their makers closed
-    /// (`persist::Pane::kept_after_maker_closed`).
-    kept_helpers: HashSet<String>,
+    /// Each pane as the state handed over keeps it, by name: what starts its agent's session
+    /// again, and what the protocol's pane does not carry.
+    saved: HashMap<String, persist::Pane>,
     app_manifests: Vec<proto::Manifest>,
 }
 
@@ -670,22 +657,7 @@ fn build(
         stop,
         persister,
         tabs: state.tabs,
-        orphaned_quiet: state
-            .panes
-            .iter()
-            .filter_map(|pane| Some((pane.name.clone(), pane.quiet_before_orphaned?)))
-            .collect(),
-        kept_helpers: state
-            .panes
-            .iter()
-            .filter(|pane| pane.kept_after_maker_closed)
-            .map(|pane| pane.name.clone())
-            .collect(),
-        resumes: state
-            .panes
-            .into_iter()
-            .filter_map(|pane| Some((pane.name, pane.resume?)))
-            .collect(),
+        saved: state.panes.into_iter().map(|pane| (pane.name.clone(), pane)).collect(),
         app_manifests: session.app_manifests,
     })
 }
@@ -695,8 +667,7 @@ fn adopt_panes(
     link: &mut UnixStream,
     shared: &Shared,
     panes: u32,
-    resumes: &HashMap<String, persist::Resume>,
-    (orphaned_quiet, kept_helpers): (&HashMap<String, bool>, &HashSet<String>),
+    saved: &HashMap<String, persist::Pane>,
 ) -> Result<(), String> {
     for _ in 0..panes {
         let master = fds::receive(link, 1)
@@ -747,9 +718,11 @@ fn adopt_panes(
                 .and_then(|facts| facts.waiting.as_ref())
                 .map(|_| crate::messages::now_ms())
         });
-        let resume = resumes.get(&record.pane);
-        let quiet_before_orphaned = orphaned_quiet.get(&record.pane).copied();
-        let kept_after_maker_closed = kept_helpers.contains(&record.pane);
+        let saved = saved.get(&record.pane);
+        let resume = saved.and_then(|saved| saved.resume.as_ref());
+        let quiet_before_orphaned = saved.and_then(|saved| saved.quiet_before_orphaned);
+        let kept_after_maker_closed = saved.is_some_and(|saved| saved.kept_after_maker_closed);
+        let hidden_from = saved.and_then(|saved| saved.hidden_from.as_ref());
         let adopted = shared.lock().adopt(
             record,
             grid,
@@ -777,6 +750,7 @@ fn adopt_panes(
                 quiet_before_orphaned,
                 nudged: pane.nudged,
                 kept_after_maker_closed,
+                hidden_from,
             },
         );
         if let Err(problem) = adopted {

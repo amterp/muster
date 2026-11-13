@@ -989,6 +989,8 @@ pub(crate) struct Pane {
     /// The person took it over after its maker closed
     /// (`persist::Pane::kept_after_maker_closed`).
     pub(crate) kept_after_maker_closed: bool,
+    /// Where it was when it was hidden (`persist::Pane::hidden_from`).
+    pub(crate) hidden_from: Option<crate::persist::ClosedTab>,
 }
 
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
@@ -1231,6 +1233,7 @@ impl Pane {
             block: None,
             quiet_before_orphaned: None,
             kept_after_maker_closed: false,
+            hidden_from: None,
         })
     }
 

@@ -652,6 +652,7 @@ pub(crate) struct Resuming<'a> {
     /// Whether the agent has had its nudge for the crossing its context is past.
     pub(crate) nudged: bool,
     pub(crate) kept_after_maker_closed: bool,
+    pub(crate) hidden_from: Option<&'a persist::ClosedTab>,
 }
 
 pub(crate) struct HandedPane {
@@ -952,6 +953,17 @@ fn start_launched((argv, environment): &Launched, cwd: &Path, grid: Grid) -> Res
     }
 }
 
+/// Where `pane` is in `tab`, as a close or a hide remembers it, to put it back there.
+fn place_in(tab: &Tab, pane: &str) -> persist::ClosedTab {
+    persist::ClosedTab {
+        name: tab.name.clone(),
+        label: tab.label.clone(),
+        hidden: tab.hidden,
+        helpers_of: tab.helpers_of.clone(),
+        neighbours: tab.root.neighbours(pane),
+    }
+}
+
 /// A pane as the state file keeps it.
 fn saved_pane(pane: &Pane) -> persist::Pane {
     persist::Pane {
@@ -968,6 +980,7 @@ fn saved_pane(pane: &Pane) -> persist::Pane {
         quiet_before_orphaned: pane.quiet_before_orphaned,
         compaction: pane.record.own_compaction,
         kept_after_maker_closed: pane.kept_after_maker_closed,
+        hidden_from: pane.hidden_from.clone(),
     }
 }
 
@@ -2264,15 +2277,8 @@ impl Session {
         let among_helpers =
             || closed.helpers_of.as_deref().and_then(|maker| self.helpers_tab(maker));
         if let Some(index) = in_old_tab.or_else(among_helpers) {
-            let tab = &mut self.tabs[index];
-            let back = in_old_tab.is_some()
-                && closed.neighbours.as_ref().is_some_and(|beside| tab.root.put_back(pane, beside));
-            if !back {
-                tab.root.append_column(pane);
-            }
-            let (name, record) = (tab.name.clone(), tab.record());
-            self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
-            return (name, false);
+            let beside = closed.neighbours.as_ref().filter(|_| in_old_tab.is_some());
+            return (self.put_back_into(index, pane, beside), false);
         }
         let tab = Tab {
             name: fresh.clone(),
@@ -2287,6 +2293,23 @@ impl Session {
         self.tabs.push(tab);
         self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
         (fresh, true)
+    }
+
+    /// Puts `pane` into tab `index`: between `beside` as it was when that part of the tab is
+    /// unchanged, else beside one of them, else at the tab's end. Says the tab's name.
+    fn put_back_into(
+        &mut self,
+        index: usize,
+        pane: &str,
+        beside: Option<&tree::Neighbours>,
+    ) -> String {
+        let tab = &mut self.tabs[index];
+        if !beside.is_some_and(|beside| tab.root.put_back(pane, beside)) {
+            tab.root.append_column(pane);
+        }
+        let (name, record) = (tab.name.clone(), tab.record());
+        self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
+        name
     }
 
     /// Joins `maker`, open here again, with its helpers here that its close left marked: each
@@ -3370,13 +3393,7 @@ impl Session {
             agent: held.record.agent.clone(),
             closed_at_ms,
             until_ms: closed_at_ms.saturating_add(u64::from(minutes) * 60_000),
-            tab: persist::ClosedTab {
-                name: tab.name.clone(),
-                label: tab.label.clone(),
-                hidden: tab.hidden,
-                helpers_of: tab.helpers_of.clone(),
-                neighbours: tab.root.neighbours(pane),
-            },
+            tab: place_in(tab, pane),
             groups: held.groups(),
             reopening: false,
             with_maker,
@@ -3862,11 +3879,18 @@ impl Session {
         }
         let staying = matches!(&target, Target::Beside { pane, .. }
             if self.tab_of(pane) == Some(source));
+        let hiding = matches!(&target, Target::NewTab { hidden: true, .. });
+        let hidden_from = (hiding && !self.tabs[source].hidden)
+            .then(|| place_in(&self.tabs[source], &moved.pane));
         let source_event = self.lift(&moved.pane);
         if !staying {
             self.emit(source_event);
         }
         self.place(&moved.pane, target);
+        if let Some(index) = self.pane_index(&moved.pane) {
+            self.panes[index].hidden_from = hidden_from;
+            self.persister.changed();
+        }
         log::info("daemon.pane.moved", fields! { "pane" => moved.pane, "from" => source_name });
         Reply::done()
     }
@@ -3932,6 +3956,12 @@ impl Session {
         let Some(index) = self.tab_index(&set.tab) else {
             return Reply::not_there(format!("no tab {} on this daemon", set.tab));
         };
+        if self.tabs[index].hidden && !set.hidden {
+            if let Some(reply) = self.show_where_hidden_from(index) {
+                return reply;
+            }
+            self.forget_hidden_from(index);
+        }
         let tab = &mut self.tabs[index];
         let label = set
             .label
@@ -3950,6 +3980,44 @@ impl Session {
         }
         self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
         Reply::done()
+    }
+
+    /// Shows the pane alone in hidden tab `index` back where somebody hid it from: the tab it
+    /// left, as Reopen Pane puts a closed pane back. None, to show the tab as it is, when the
+    /// tab holds more than that pane, the pane was hidden as it was made, or the tab it left has
+    /// gone, is hidden itself, or spans machines, which is the window's to arrange.
+    fn show_where_hidden_from(&mut self, index: usize) -> Option<Reply> {
+        let pane = match self.tabs[index].root.panes().as_slice() {
+            [pane] => (*pane).to_string(),
+            _ => return None,
+        };
+        let held = self.pane_index(&pane)?;
+        let from = self.panes[held].hidden_from.clone()?;
+        let back = self.tab_index(&from.name).filter(|&old| {
+            let old = &self.tabs[old];
+            !old.hidden && !old.root.has_foreign()
+        })?;
+        let lifted = self.lift(&pane);
+        self.emit(lifted);
+        // The lift closed the hidden tab, which may have come before the one going back.
+        let back = self.tab_index(&from.name).unwrap_or(back);
+        let tab = self.put_back_into(back, &pane, from.neighbours.as_ref());
+        self.panes[held].hidden_from = None;
+        self.persister.changed();
+        log::info("daemon.pane.shown_back", fields! { "pane" => pane, "tab" => tab });
+        Some(Reply::done())
+    }
+
+    /// Forgets where the panes of tab `index` were hidden from, as it is shown whole.
+    fn forget_hidden_from(&mut self, index: usize) {
+        let held: Vec<String> =
+            self.tabs[index].root.panes().into_iter().map(str::to_string).collect();
+        for pane in &mut self.panes {
+            if pane.hidden_from.is_some() && held.contains(&pane.record.pane) {
+                pane.hidden_from = None;
+                self.persister.changed();
+            }
+        }
     }
 
     fn rename_tab(&mut self, rename: tab_request::Rename) -> Reply {
@@ -4751,6 +4819,7 @@ impl Session {
                 let index = self.pane_index(&name).expect("the pane just opened");
                 self.panes[index].quiet_before_orphaned = pane.saved.quiet_before_orphaned;
                 self.panes[index].kept_after_maker_closed = pane.saved.kept_after_maker_closed;
+                self.panes[index].hidden_from.clone_from(&pane.saved.hidden_from);
                 if let Some(resume) = resume {
                     Self::resumed(&name, &resume);
                     let index = self.pane_index(&name).expect("the pane just opened");
@@ -5016,6 +5085,7 @@ impl Session {
         pane.quiet_before_orphaned = resuming.quiet_before_orphaned;
         pane.compaction.carry_nudged(resuming.nudged);
         pane.kept_after_maker_closed = resuming.kept_after_maker_closed;
+        pane.hidden_from = resuming.hidden_from.cloned();
         let (by, at) = resuming.turn;
         pane.io.resume_turn(by, at);
         pane.stalls_told = resuming.stalls_told.to_vec();
@@ -6089,6 +6159,7 @@ mod tests {
                     quiet_before_orphaned: None,
                     nudged: false,
                     kept_after_maker_closed: false,
+                    hidden_from: None,
                 },
             )
             .unwrap();

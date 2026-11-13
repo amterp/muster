@@ -465,11 +465,13 @@ A pane already open is hidden and brought back by name:
     muster pane show --pane p1w3r0ab2n --focus
 
 `pane hide` with no `--pane` hides the pane it runs in. If that was the last pane of its tab the
-tab closes, and its name with it; the pane keeps its own. `pane show` brings back the hidden tab
-holding the pane, whole, into this window, so no pane moves between tabs. A pane you hid sits alone
-in its hidden tab, so it comes back in a tab of its own, after the others, rather than where it
-was, which may have been rearranged or closed since; `pane move` takes it anywhere from there. The
-keyboard goes to it only with `--focus`. Going to a hidden pane any other way - its row, a notification, the chord to
+tab closes, and its name with it; the pane keeps its own. `pane show` puts a pane you hid back where
+it was, as `pane reopen` puts back a closed one: exactly there if its tab is arranged as it was,
+else beside a pane it was beside, else at the end of that tab. With that tab closed, hidden, or
+spanning machines, or with more panes in its hidden tab than the one you hid, it brings back the
+hidden tab holding the pane, whole, into this window, as it does a helper's. `pane move` takes it
+anywhere from there. Where it was is its daemon's to remember, so it survives the daemon
+restarting. The keyboard goes to it only with `--focus`. Going to a hidden pane any other way - its row, a notification, the chord to
 whatever is asking, `muster focus` - brings it back first. Hiding a hidden pane changes nothing
 and exits 0, and so does showing one that is not hidden, which with `--focus` goes to it.
 

@@ -4037,9 +4037,9 @@ pub(crate) fn hide_pane(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> R
 ///
 /// The whole tab as it was arranged, and never the pane alone: a helper sits in the tab its
 /// maker's helpers share, and going to one is not asking to rearrange them. A pane somebody hid
-/// by hand is alone in its hidden tab, so it comes back in a tab of its own - a new place rather
-/// than the one it left, which may have been rearranged, closed, or taken by another window
-/// since. `pane move` takes it anywhere from there.
+/// by hand is alone in its hidden tab, and its daemon puts it back in the tab it left instead,
+/// where that tab is still its to arrange: the hidden tab closes, and the pane shows wherever
+/// that tab is shown.
 pub(crate) fn show_pane(
     window: WindowId,
     daemon: &DaemonId,

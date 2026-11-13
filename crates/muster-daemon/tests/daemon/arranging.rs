@@ -142,6 +142,59 @@ fn a_pane_moves_into_a_hidden_tab_and_out_again() {
     assert_eq!(hidden(&mut control, "t2"), None, "its last pane leaving closes a hidden tab");
 }
 
+fn show(tab_name: &str) -> proto::request::Service {
+    tab(tab_request::Request::SetHidden(tab_request::SetHidden {
+        tab: tab_name.to_string(),
+        hidden: false,
+        label: None,
+    }))
+}
+
+/// A pane somebody hid comes back where it was hidden from when its hidden tab is shown, as
+/// Reopen Pane puts a closed pane back: exactly there while the tab is unchanged, else beside a
+/// pane it was beside, else at the tab's end. Its hidden tab closes rather than coming forward.
+#[test]
+fn a_hidden_pane_is_shown_back_where_it_was() {
+    let (_daemon, mut control) = two_panes();
+    make(&mut control, create("c", beside("b", Side::Down)));
+    assert_eq!(tab_shape(&mut control, "t1"), "[a|[b/c 0.50] 0.50]");
+
+    expect(&mut control, moved("b", in_new_hidden_tab("t2")), proto::Outcome::Done);
+    assert_eq!(tab_shape(&mut control, "t1"), "[a|c 0.50]");
+    let asked = expect(&mut control, show("t2"), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_closed:t2", "tab_changed:t1"]);
+    assert_eq!(tab_shape(&mut control, "t1"), "[a|[b/c 0.50] 0.50]", "exactly where it was");
+
+    // The tab rearranged meanwhile: beside a pane it was beside, or at the end.
+    expect(&mut control, moved("b", in_new_hidden_tab("t3")), proto::Outcome::Done);
+    expect(&mut control, swap("a", "c"), proto::Outcome::Done);
+    make(&mut control, create("d", beside("a", Side::Down)));
+    expect(&mut control, show("t3"), proto::Outcome::Done);
+    let shape = tab_shape(&mut control, "t1");
+    assert!(shape.contains('b'), "b is back in t1: {shape}");
+    assert!(snapshot(&mut control).tabs.iter().all(|held| held.tab != "t3"));
+}
+
+/// With the tab it left gone, or more than it in its hidden tab, a hidden pane is shown in that
+/// tab, whole, as before.
+#[test]
+fn a_hidden_pane_whose_place_has_gone_is_shown_in_its_own_tab() {
+    let (_daemon, mut control) = two_panes();
+    expect(&mut control, moved("b", in_new_hidden_tab("t2")), proto::Outcome::Done);
+    expect(&mut control, moved("a", in_new_tab("t3")), proto::Outcome::Done);
+    assert!(snapshot(&mut control).tabs.iter().all(|held| held.tab != "t1"), "t1 closed");
+    let asked = expect(&mut control, show("t2"), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_changed:t2"]);
+    assert_eq!(tab_shape(&mut control, "t2"), "b");
+
+    make(&mut control, create("c", in_new_tab("t4")));
+    make(&mut control, create("d", beside("c", Side::Right)));
+    expect(&mut control, moved("d", in_new_hidden_tab("t5")), proto::Outcome::Done);
+    make(&mut control, create("e", beside("d", Side::Down)));
+    let asked = expect(&mut control, show("t5"), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_changed:t5"], "a tab of two is shown whole");
+}
+
 #[test]
 fn a_pane_can_start_in_a_hidden_tab_and_quiet() {
     let daemon = daemon();
