@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-messaging-test",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794591746320,
+  "creator": "Alexander Terp",
+  "description": "messaging::a_pane_named_what_a_live_agent_joined_by_is_reached_by_its_callsign failed once in a full gate on 2026-11-13 and passed alone 3 of 3: the test's agent joins as heron, and that run's pane p1 had drawn the callsign heron, so the daemon refused the join ('pane p1 is called heron, and a post to heron reaches the agent in it'). The test should join by a name outside the callsign list, or fix its pane's callsign. Check the other tests in messaging.rs that join by a word from that list.",
+  "id": "a_2zCYTZjT2",
+  "position": "b38",
+  "title": "🎲 A messaging test joins by a name its own pane can draw as a callsign",
+  "type": "bug",
+  "updated_at_millis": 1794591746320,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794591746320}
+  ]
+}
