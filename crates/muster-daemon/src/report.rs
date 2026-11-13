@@ -12,7 +12,8 @@ use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use muster_daemon_proto::{self as proto, ConnectionKind, connection, pane_request};
@@ -41,6 +42,20 @@ const FROM_FLAGS: [&str; 12] = [
 /// How long a report waits for its daemon, from dialing to the answer. A hook that runs on every
 /// sub-agent and a statusline that runs on every message must not hold their harness up.
 const PATIENCE: Duration = Duration::from_secs(2);
+
+/// How long a report saying what the agent waits on waits for its daemon. An agent runs it once,
+/// as it ends its turn, so nothing is held up by a longer wait, and a wait it believed declared
+/// and was not leaves it asleep with nothing to wake it.
+const WAITING_PATIENCE: Duration = Duration::from_secs(10);
+
+/// Why a report was not confirmed, by what its sender should do next.
+#[derive(Debug)]
+enum Unreported {
+    /// Nothing reached the daemon, or it refused the report: reporting again is safe.
+    NotReported(String),
+    /// The daemon took the report and the answer never came, so it may have landed.
+    AnswerLost(String),
+}
 
 const USAGE: &str = "usage: muster-daemon report [--pane PANE] [--context-used PERCENT] \
     [--context-session ID] [--model NAME] [--effort LEVEL] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
@@ -87,7 +102,10 @@ const USAGE: &str = "usage: muster-daemon report [--pane PANE] [--context-used P
     a flag given later replaces one given before, so --session-name '' before a --from \
     session-name says no name when the JSON has none, and --from session-id=/session_id reads \
     the id a hook is handed. Stdin is read only for --from, and never from a terminal. A report \
-    whose every --from found nothing, and that says nothing else, is not sent.";
+    whose every --from found nothing, and that says nothing else, is not sent. The daemon has \
+    2 seconds to answer, or 10 with --waiting. Exit 1 says nothing was reported and reporting \
+    again is safe; exit 4 says the daemon took the report and did not answer, so it may have \
+    landed: read `muster window` before reporting again.";
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     let Filled { arguments, came_up_empty } = match filled_from(arguments.collect(), read_stdin) {
@@ -129,11 +147,21 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
         );
         return ExitCode::FAILURE;
     };
-    match send_within(socket, report, PATIENCE) {
+    let patience = if report.waiting.is_some() { WAITING_PATIENCE } else { PATIENCE };
+    match send_within(socket, report, patience) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(problem) => {
+        Err(Unreported::NotReported(problem)) => {
             eprintln!("muster-daemon report: {problem}");
             ExitCode::FAILURE
+        }
+        // Exit 4 as `muster` uses it: the request may have happened, so do not repeat it blind.
+        Err(Unreported::AnswerLost(problem)) => {
+            eprintln!(
+                "muster-daemon report: {problem}, so the report may have landed. Read `muster \
+                 window` before reporting again: a repeated --subagent-started or \
+                 --subagent-stopped counts twice."
+            );
+            ExitCode::from(4)
         }
     }
 }
@@ -384,16 +412,22 @@ fn send_within(
     socket: PathBuf,
     report: pane_request::Report,
     patience: Duration,
-) -> Result<(), String> {
+) -> Result<(), Unreported> {
     let (done, finished) = mpsc::channel();
+    // Whether the report has been written to the daemon, so a deadline passing can say whether
+    // it may have landed.
+    let written = Arc::new(AtomicBool::new(false));
+    let writing = Arc::clone(&written);
+    let dialed = socket.clone();
     std::thread::Builder::new()
         .name("report".to_string())
         .spawn(move || {
             // A handoff refuses what would change the pane until the new daemon serves the same
             // socket, which is moments later; a hook's report of a state must not be lost to it.
             let sent = loop {
-                match send(&socket, report.clone()) {
-                    Err(problem) if problem.ends_with(HANDING_OVER) => {
+                match send(&socket, report.clone(), &writing) {
+                    Err(Unreported::NotReported(problem)) if problem.ends_with(HANDING_OVER) => {
+                        writing.store(false, Ordering::Release);
                         std::thread::sleep(Duration::from_millis(50));
                     }
                     sent => break sent,
@@ -401,17 +435,36 @@ fn send_within(
             };
             let _ = done.send(sent);
         })
-        .map_err(|error| format!("could not start a thread to report from: {error}"))?;
-    finished
-        .recv_timeout(patience)
-        .unwrap_or_else(|_| Err(format!("the daemon did not answer within {patience:?}")))
+        .map_err(|error| {
+            Unreported::NotReported(format!("could not start a thread to report from: {error}"))
+        })?;
+    finished.recv_timeout(patience).unwrap_or_else(|_| {
+        Err(if written.load(Ordering::Acquire) {
+            Unreported::AnswerLost(format!(
+                "the daemon took the report and did not answer within {patience:?}"
+            ))
+        } else {
+            Unreported::NotReported(format!(
+                "the daemon at {} did not take the report within {patience:?}, so nothing was \
+                 reported; reporting again is safe",
+                dialed.display()
+            ))
+        })
+    })
 }
 
-fn send(socket: &std::path::Path, report: pane_request::Report) -> Result<(), String> {
-    let mut stream = UnixStream::connect(socket)
-        .map_err(|error| format!("no daemon at {}: {error}", socket.display()))?;
+/// Sends the report and reads its answer, setting `written` once the report is on its way.
+fn send(
+    socket: &std::path::Path,
+    report: pane_request::Report,
+    written: &AtomicBool,
+) -> Result<(), Unreported> {
+    let unsent = Unreported::NotReported;
+    let mut stream = UnixStream::connect(socket).map_err(|error| {
+        unsent(format!("no daemon at {}, so nothing was reported: {error}", socket.display()))
+    })?;
     let welcome = connection::open(&mut stream, ConnectionKind::Control, "muster-daemon report")
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| unsent(error.to_string()))?;
     if report.waiting_until_message_from.is_some()
         && let Some(why) = proto::version::too_old(
             "the daemon",
@@ -421,7 +474,7 @@ fn send(socket: &std::path::Path, report: pane_request::Report) -> Result<(), St
             "declared",
         )
     {
-        return Err(why);
+        return Err(unsent(why));
     }
     let pane = report.pane.clone();
     let request = proto::Request {
@@ -430,22 +483,33 @@ fn send(socket: &std::path::Path, report: pane_request::Report) -> Result<(), St
             request: Some(pane_request::Request::Report(report)),
         })),
     };
-    connection::send(&mut stream, &request).map_err(|error| error.to_string())?;
+    // A write that failed part of the way may still have delivered the report.
+    written.store(true, Ordering::Release);
+    connection::send(&mut stream, &request)
+        .map_err(|error| Unreported::AnswerLost(format!("the report was not all sent: {error}")))?;
     // Not subscribed, so the one message coming is the answer.
     let answer = match connection::receive::<proto::ControlMessage>(&mut stream) {
         Ok(Some(proto::ControlMessage {
             message: Some(proto::control_message::Message::Answer(answer)),
         })) => answer,
-        Ok(_) => return Err("the daemon hung up without answering".to_string()),
-        Err(error) => return Err(format!("the daemon did not answer: {error}")),
+        Ok(_) => {
+            return Err(Unreported::AnswerLost(
+                "the daemon took the report and hung up without answering".to_string(),
+            ));
+        }
+        Err(error) => {
+            return Err(Unreported::AnswerLost(format!(
+                "the daemon took the report and did not answer: {error}"
+            )));
+        }
     };
     match answer.outcome() {
         proto::Outcome::Done | proto::Outcome::AlreadySo => Ok(()),
-        proto::Outcome::NotThere => Err(format!(
+        proto::Outcome::NotThere => Err(unsent(format!(
             "the daemon has no pane {pane}; name one by the id, callsign or name `muster window` \
              lists it under"
-        )),
-        _ => Err(format!("the daemon refused the report: {}", answer.reason)),
+        ))),
+        _ => Err(unsent(format!("the daemon refused the report: {}", answer.reason))),
     }
 }
 
