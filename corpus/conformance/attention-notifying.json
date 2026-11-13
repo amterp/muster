@@ -5,6 +5,33 @@
   "why": "Glanceable states are the floor rather than the ceiling. A border says an agent needs you only to somebody looking at it, and the pane most likely to be waiting is the one no region is showing - so something has to interrupt, and what it chooses to interrupt for is the whole difference between a feature people keep and one they turn off. Everything notifying is the same as nothing notifying.\n\nSeparate from attention.json, which is seen-ness. That decides what a pane *is*, and is not a person's to configure; this decides what Muster does about it, and is. Keeping them in one file would make every seen-ness case state an assertion about banners it was never written to make, and would let a preference about interruptions quietly change the state vocabulary the whole product is built on - a muted window still paints `done` and still lists it.\n\nThe expectations are a sequence rather than a final state, because a notification is an event. What has to be right is which moments produce one, and a final state cannot tell being interrupted once from being interrupted three times on the way there. `asking` beside it is every pane still asking for somebody, in the order going to the pane that asked walks them. It is not the banners left standing: a state switched off, or a pane already asking when the window met it, asks with no banner, and the banners are the `notified` sequence.\n\nWithdrawal is here for the same reason raising is. A banner for an agent that has moved on, been looked at, or closed lands a person on a pane that does not want them - which is the exact failure the notification exists to prevent, arriving one step later.",
   "cases": [
     {
+      "name": "a dialog blocked again after a key it ignored asks again without a second banner",
+      "why": "A Return or Esc typed at a dialog reads working until the screen shows what came of it, and blocked again once the same dialog is still there. The daemon keeps the time the pane has been blocked since, so the second blocked is the same spell: it asks again, listed and bordered, but a banner for a dialog somebody just tried to answer is noise. A dialog that drew afresh, with a later time, is news.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          { "pane": "local/w1:p2", "state": "blocked", "since_ms": 1000 },
+          { "pane": "local/w1:p2", "state": "working", "since_ms": 2000 },
+          { "pane": "local/w1:p2", "state": "blocked", "since_ms": 1000 },
+          { "pane": "local/w1:p2", "state": "working", "since_ms": 9000 },
+          { "pane": "local/w1:p2", "state": "blocked", "since_ms": 10000 }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked",
+          "local/w1:p2 withdrawn",
+          "local/w1:p2 blocked"
+        ],
+        "asking": [
+          "local/w1:p2 blocked"
+        ]
+      }
+    },
+    {
       "name": "an agent that blocks while nobody is looking asks for somebody",
       "why": "The case the feature is for. `blocked` is the one state that means a person is being waited on, and the window is not showing this pane - so nothing on screen would ever say so.",
       "given": {
