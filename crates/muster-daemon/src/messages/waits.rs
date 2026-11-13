@@ -378,6 +378,17 @@ mod tests {
         ended.iter().map(|ended| (ended.pane.as_str(), ended.over)).collect()
     }
 
+    /// A child that has exited and that nobody has reaped yet is a zombie: still in the process
+    /// table, so asking whether its pid exists says yes, though it will never run again.
+    #[test]
+    fn a_process_that_exited_unreaped_is_not_there() {
+        let mut child = std::process::Command::new("/usr/bin/true").spawn().expect("true runs");
+        std::thread::sleep(Duration::from_millis(300));
+        let there = exists(child.id());
+        child.wait().expect("the child is reaped");
+        assert!(!there, "a zombie read as a running process");
+    }
+
     /// A wait on a process ends once the process has exited, and is looked at every second
     /// until then; one nothing limits is left alone.
     #[test]
