@@ -122,8 +122,8 @@ fn a_dry_run_prints_what_would_run_and_runs_nothing() {
     assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
     assert_eq!(
         home.asked("codex"),
-        ["plugin marketplace list --json"],
-        "a dry run ran more than the question of what is registered"
+        Vec::<String>::new(),
+        "a dry run must not invoke the harness, even to query its registration"
     );
     let said = text(&ran.stdout);
     let commands: Vec<&str> = said.lines().filter(|line| !line.starts_with('#')).collect();
@@ -246,6 +246,18 @@ fn the_json_answer_lists_the_commands_and_whether_they_ran() {
     assert_eq!(answer["ran"], false);
     assert_eq!(answer["commands"][1], "claude plugin install muster@muster");
     assert_eq!(answer["extras"], Path::new(&home.extras()).display().to_string());
+}
+
+#[test]
+fn a_codex_json_dry_run_never_queries_the_harness() {
+    let home = Home::new("codex-json-dry");
+    home.harness("codex", 0);
+    let ran = home.muster(&["--json", "harness", "install", "codex", "--dry-run"]);
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    let answer: serde_json::Value = serde_json::from_slice(&ran.stdout).expect("JSON");
+    assert_eq!(answer["ran"], false);
+    assert!(home.asked("codex").is_empty(), "a JSON dry run must not run Codex");
+    assert_eq!(answer["commands"][1], "codex plugin add muster-codex@muster");
 }
 
 /// The help names every harness there is an adapter for, though clap's text is written by hand.
