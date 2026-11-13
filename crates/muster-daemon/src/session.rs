@@ -2803,6 +2803,11 @@ impl Session {
             pane.ran_out = None;
         }
         heard_of_waiting(pane, says_waiting, speaks_of_waiting, kept == Kept::ThroughPrompt);
+        if says_waiting {
+            let pid = pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits);
+            pane.turns.wait_process_started =
+                pid.and_then(|pid| i32::try_from(pid).ok()).and_then(pty::process_started);
+        }
         // Detection decides what the state comes to, and publishes it as any other change.
         if let Some(state) = own_state {
             self.agent_reported_state(index, agent, state);
@@ -3062,6 +3067,7 @@ impl Session {
                 waiting,
                 serial: pane.turns.wait_serial,
                 until_exits: pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits),
+                process_started: pane.turns.wait_process_started,
                 until_message_from: pane
                     .record
                     .facts
@@ -5850,7 +5856,7 @@ fn own_state(report: &mut pane_request::Report) -> Result<Option<muster_detect::
 /// wait would never end.
 fn gone_process(report: &pane_request::Report) -> Option<Reply> {
     let pid = report.waiting_until_exits?;
-    (!crate::messages::process_exists(pid)).then(|| {
+    (!crate::messages::process_exists(pid, None)).then(|| {
         Reply::refused(format!(
             "no process {pid}: it has already exited, or never ran, so a wait on it would never \
              end; no wait is declared"

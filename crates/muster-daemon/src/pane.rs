@@ -1023,6 +1023,10 @@ pub(crate) struct Turns {
     pub(crate) wait_serial: u64,
     pub(crate) wait_started_ms: Option<u64>,
     pub(crate) wait_noticed: bool,
+    /// When the process a wait until it exits names started, read as the wait was declared
+    /// (`messages::Declared::process_started`). Not handed over: a daemon that takes the wait
+    /// over tells only that the process has gone or become a zombie.
+    pub(crate) wait_process_started: Option<u64>,
 }
 
 impl Default for Turns {
@@ -1037,6 +1041,7 @@ impl Default for Turns {
             wait_serial: 0,
             wait_started_ms: None,
             wait_noticed: false,
+            wait_process_started: None,
         }
     }
 }

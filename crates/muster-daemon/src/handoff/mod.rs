@@ -739,6 +739,7 @@ fn adopt_panes(
                     wait_serial: 0,
                     wait_started_ms,
                     wait_noticed: pane.wait_noticed,
+                    wait_process_started: None,
                 },
                 session_id: pane.session_id.as_deref(),
                 resume,

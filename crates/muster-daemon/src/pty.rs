@@ -264,6 +264,49 @@ pub(crate) fn process_exists(pid: i32) -> bool {
     answered == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
+/// When the process with this pid started, in the platform's own units; none when there is no
+/// such process, or it has exited and only awaits reaping. A pid that names a process started
+/// at another time names a different one, which took the pid after the first exited.
+pub(crate) fn process_started(pid: i32) -> Option<u64> {
+    started::of(pid)
+}
+
+#[cfg(target_os = "macos")]
+mod started {
+    /// `SZOMB` in `<sys/proc.h>`: exited, and not yet reaped.
+    const ZOMBIE: u32 = 5;
+
+    pub(super) fn of(pid: i32) -> Option<u64> {
+        let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+        let size = i32::try_from(size_of::<libc::proc_bsdinfo>()).ok()?;
+        // SAFETY: `info` is valid for `size` bytes of writes, and proc_pidinfo writes at most that.
+        let wrote = unsafe {
+            libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, info.as_mut_ptr().cast(), size)
+        };
+        if wrote != size {
+            return None;
+        }
+        // SAFETY: proc_pidinfo filled the whole struct, as `wrote` says.
+        let info = unsafe { info.assume_init() };
+        (info.pbi_status != ZOMBIE)
+            .then(|| info.pbi_start_tvsec.saturating_mul(1_000_000) + info.pbi_start_tvusec)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod started {
+    /// From `/proc/<pid>/stat`: past the command, in parentheses that can hold anything, the
+    /// state is the first field and the start time, in clock ticks since boot, the twentieth.
+    pub(super) fn of(pid: i32) -> Option<u64> {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let fields: Vec<&str> = stat.rsplit_once(')')?.1.split_whitespace().collect();
+        if fields.first().is_none_or(|state| *state == "Z" || *state == "X") {
+            return None;
+        }
+        fields.get(19)?.parse().ok()
+    }
+}
+
 /// Sends SIGHUP to a process group, which is what a terminal closing means to what runs in it.
 pub(crate) fn hang_up(group: i32) {
     // SAFETY: killpg with a positive group id signals that group and nothing else. A group that

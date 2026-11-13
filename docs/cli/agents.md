@@ -62,7 +62,8 @@ wake it or once carried through such a turn, it lasts 10 minutes at most, and th
 reads idle, its turn finished. One declared with `report --waiting "<what>" --until-exits <pid>`
 ends when that process exits instead, whatever turns come meanwhile, and the agent is then told so
 in a message from `@muster`, which wakes it: what a harness nothing else wakes when its work ends,
-Codex, declares. When waiting on a reviewer or helper, declare the sender instead:
+Codex, declares. A process that has exited counts even while nobody has reaped it, and so does
+one whose pid another process has taken since, told apart by when each started. When waiting on a reviewer or helper, declare the sender instead:
 
     "$MUSTER_DAEMON" report --waiting "review from otter" --until-message-from otter
 

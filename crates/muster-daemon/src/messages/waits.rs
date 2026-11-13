@@ -53,6 +53,9 @@ pub(crate) struct Declared {
     pub(crate) serial: u64,
     /// The process whose exit ends it.
     pub(crate) until_exits: Option<u32>,
+    /// When that process started, as it was when the wait was declared: a process at its pid
+    /// that started at another time took the pid after it exited.
+    pub(crate) process_started: Option<u64>,
     pub(crate) until_message_from: Option<String>,
     /// Whether it runs out after [`LIMIT`].
     pub(crate) limited: bool,
@@ -85,9 +88,14 @@ impl Over {
     }
 }
 
-/// Whether process `pid`, as `report --until-exits` names it, is still there.
-pub(crate) fn exists(pid: u32) -> bool {
-    i32::try_from(pid).is_ok_and(pty::process_exists)
+/// Whether process `pid`, as `report --until-exits` names it, is still there and running: not a
+/// zombie awaiting its reaping, and, given when it `started`, not another process that has
+/// taken its pid since.
+pub(crate) fn exists(pid: u32, started: Option<u64>) -> bool {
+    i32::try_from(pid)
+        .ok()
+        .and_then(pty::process_started)
+        .is_some_and(|now| started.is_none_or(|then| then == now))
 }
 
 /// Messages about to reach an agent, and the wait on a message from one of their authors that
@@ -205,7 +213,7 @@ impl Waits {
         &mut self,
         held: &[Declared],
         now: Instant,
-        exited: impl Fn(u32) -> bool,
+        exited: impl Fn(u32, Option<u64>) -> bool,
     ) -> (Vec<Ended>, Duration) {
         self.since.retain(|pane, _| held.iter().any(|wait| wait.pane == *pane && wait.limited));
         let mut ended = Vec::new();
@@ -216,7 +224,7 @@ impl Waits {
                 continue;
             }
             if let Some(pid) = wait.until_exits {
-                if exited(pid) {
+                if exited(pid, wait.process_started) {
                     ended.push(over(Over::Exited));
                 } else {
                     next = next.min(EXIT_LOOK);
@@ -263,7 +271,7 @@ pub(crate) fn look(shared: &Arc<Shared>, waits: &mut Waits) -> Duration {
         held.iter().any(|wait| wait.pane == *pane && wait.serial == *serial)
     });
     let now = Instant::now();
-    let (ended, mut next) = waits.judge(&held, now, |pid| !exists(pid));
+    let (ended, mut next) = waits.judge(&held, now, |pid, started| !exists(pid, started));
     for Ended { pane, serial, over } in ended {
         let Some(wait) = held.iter().find(|wait| wait.pane == pane) else { continue };
         // The agent is told before its wait ends: a wait cleared and its wake refused would
@@ -366,6 +374,7 @@ mod tests {
             waiting: "the gate".to_string(),
             serial,
             until_exits,
+            process_started: None,
             until_message_from: None,
             limited,
             started_ms: None,
@@ -384,9 +393,20 @@ mod tests {
     fn a_process_that_exited_unreaped_is_not_there() {
         let mut child = std::process::Command::new("/usr/bin/true").spawn().expect("true runs");
         std::thread::sleep(Duration::from_millis(300));
-        let there = exists(child.id());
+        let there = exists(child.id(), None);
         child.wait().expect("the child is reaped");
         assert!(!there, "a zombie read as a running process");
+    }
+
+    /// A pid held by a process that started at another time than the one waited on names a
+    /// different process, which took the pid after the first exited.
+    #[test]
+    fn a_pid_taken_by_another_process_is_not_the_one_waited_on() {
+        let pid = std::process::id();
+        let started = pty::process_started(i32::try_from(pid).expect("a pid fits"));
+        assert!(started.is_some(), "this test's own process reads as started");
+        assert!(exists(pid, started), "the same process is still there");
+        assert!(!exists(pid, started.map(|started| started + 1)), "another process took the pid");
     }
 
     /// A wait on a process ends once the process has exited, and is looked at every second
@@ -396,13 +416,13 @@ mod tests {
         let mut waits = Waits::after(Duration::from_millis(LIMIT_MS));
         let start = Instant::now();
         let held = [wait("p1", 1, Some(4242), false), wait("p2", 1, None, false)];
-        let (ended, next) = waits.judge(&held, start, |_| false);
+        let (ended, next) = waits.judge(&held, start, |_, _| false);
         assert!(ended.is_empty());
         assert_eq!(next, EXIT_LOOK);
-        let (ended, _) = waits.judge(&held, start + EXIT_LOOK, |pid| pid == 4242);
+        let (ended, _) = waits.judge(&held, start + EXIT_LOOK, |pid, _| pid == 4242);
         assert_eq!(overs(&ended), [("p1", Over::Exited)]);
 
-        let (ended, next) = waits.judge(&held[1..], start + LIMIT * 2, |_| true);
+        let (ended, next) = waits.judge(&held[1..], start + LIMIT * 2, |_, _| true);
         assert!(ended.is_empty(), "a wait nothing limits does not run out");
         assert_eq!(next, NOTHING_DUE);
     }
@@ -414,15 +434,15 @@ mod tests {
         let mut waits = Waits::after(Duration::from_secs(30));
         let start = Instant::now();
         let seconds = |seconds| start + Duration::from_secs(seconds);
-        let (_, next) = waits.judge(&[wait("p1", 1, None, true)], start, |_| false);
+        let (_, next) = waits.judge(&[wait("p1", 1, None, true)], start, |_, _| false);
         assert_eq!(next, Duration::from_secs(30));
 
-        let (ended, next) = waits.judge(&[wait("p1", 2, None, true)], seconds(20), |_| false);
+        let (ended, next) = waits.judge(&[wait("p1", 2, None, true)], seconds(20), |_, _| false);
         assert!(ended.is_empty(), "declared again");
         assert_eq!(next, Duration::from_secs(30));
-        let (ended, _) = waits.judge(&[wait("p1", 2, None, true)], seconds(45), |_| false);
+        let (ended, _) = waits.judge(&[wait("p1", 2, None, true)], seconds(45), |_, _| false);
         assert!(ended.is_empty());
-        let (ended, _) = waits.judge(&[wait("p1", 2, None, true)], seconds(50), |_| false);
+        let (ended, _) = waits.judge(&[wait("p1", 2, None, true)], seconds(50), |_, _| false);
         assert_eq!(overs(&ended), [("p1", Over::RanOut)]);
     }
 
@@ -432,8 +452,8 @@ mod tests {
         let mut waits = Waits::after(Duration::from_millis(LIMIT_MS));
         let start = Instant::now();
         let held = [wait("p1", 1, Some(4242), true)];
-        waits.judge(&held, start, |_| false);
-        let (ended, _) = waits.judge(&held, start + Duration::from_hours(1), |_| false);
+        waits.judge(&held, start, |_, _| false);
+        let (ended, _) = waits.judge(&held, start + Duration::from_hours(1), |_, _| false);
         assert!(ended.is_empty());
     }
 }
