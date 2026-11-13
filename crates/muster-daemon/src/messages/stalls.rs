@@ -451,11 +451,13 @@ impl Stalls {
         self.long_blocks.carry(blocks);
     }
 
-    /// The stalls whoever waits, or the person, has been told of, by the member's pane.
+    /// The stalls whoever waits, or the person, has been told of, by the member's pane. One whose
+    /// notice is still held for somebody busy is owed, not told, and is left for the newer daemon
+    /// to tell.
     fn told(&self) -> BTreeMap<String, Vec<StallTold>> {
         let mut told: BTreeMap<String, Vec<StallTold>> = BTreeMap::new();
         for ((name, group), episode) in &self.episodes {
-            if episode.told || episode.escalated {
+            if (episode.told || episode.escalated) && episode.pending.is_none() {
                 told.entry(episode.pane.clone()).or_default().push(StallTold {
                     name: name.clone(),
                     group: group.clone(),
