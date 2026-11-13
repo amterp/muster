@@ -333,6 +333,11 @@ impl Makers {
                         watch.worked_since_ms = watch.worked_before_ms;
                     }
                 }
+                // A turn nothing new started is no work: a wake for what it already read, a
+                // handover, Muster's notice, a redraw the screen took for a turn. Its first work
+                // counts whatever started it, as a prompt on its command line does.
+                Some(Activity::Working | Activity::Waiting)
+                    if !watch.at_work && !helper.asked && watch.worked_since_ms.is_some() => {}
                 Some(Activity::Working | Activity::Waiting) => {
                     if !watch.at_work {
                         watch.worked_before_ms = watch.worked_since_ms;

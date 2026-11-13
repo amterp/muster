@@ -410,7 +410,10 @@ It goes in the group of exactly the two when there is one, else the one group bo
 else a group made for them as a post between them would make it, so the maker's reply addressed to
 the helper lands beside it. A helper that posted to its maker, addressed to it or unaddressed in a
 group the maker is in, and then went idle is not reported, and neither is one waiting on its own
-work. A maker on another machine is told there, as a post `--to` its pane reaches it: the helper's
+work. Going to work means a turn something new started: somebody typed into the pane, or a
+message for the helper from anybody but Muster came after its last post. A wake for messages it
+had already read, a daemon handing its pane over, or a notice from `@muster` is not going to work,
+so a helper that reported is not reported again after one. A maker on another machine is told there, as a post `--to` its pane reaches it: the helper's
 daemon asks the maker's which agent is in that pane, and the notice goes in the group the two
 already share by the same rule, which the machine keeping it posts, so a post `--to` either still
 finds their one group. Only a pair with no group yet gets one kept on the helper's machine. A
