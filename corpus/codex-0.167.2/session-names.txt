@@ -1,0 +1,158 @@
+Codex 0.167.2, macOS arm64, 2026-11-13, 100x30 bare PTY.
+Fresh isolated home and Git project. An explicit custom Responses provider on loopback
+answers one turn with probe ready. No real model or user account is contacted.
+Before manual rename: threads.title is the first user message; threads.name is NULL.
+No session_index.jsonl entry was present in this probe.
+After /rename Manual Native Name: threads.title is unchanged; threads.name contains the name;
+session_index.jsonl gains an entry with thread_name=Manual Native Name.
+This records the fallback initial title. It does not establish every automatic naming path.
+After ending and resuming that saved session without a prompt, the OSC title is
+Manual Native Name | project. Config trust is an invocation override for the scratch project.
+Scalar database snapshots are in session-name-metadata.json.
+
+codex 0.167.2: 01-automatic-name
+title: project
+
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Explain the native naming probe.
+
+
+• probe ready
+
+  Worked for <1s • 09:35
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+codex 0.167.2: 02-manual-name
+title: Manual Native Name | project
+
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Explain the native naming probe.
+
+
+• probe ready
+
+  Worked for <1s • 09:35
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+codex 0.167.2: resumed explicitly named session
+title: Manual Native Name | project
+
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Explain the native naming probe.
+
+
+• probe ready
+
+  Worked for <1s • 09:35
+
+• You ran codex exec --dangerously-bypass-hook-trust 'Nested exec probe' > '$PROBE_ROOT
+  │ $PROBE_ROOT/exec-output' 2>&1
+  └ (no output)
+
+  Worked for 1s • 09:35
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+Generated native schema, codex app-server generate-json-schema --experimental:
+ThreadNameUpdatedNotification:
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "threadId": {
+      "type": "string"
+    },
+    "threadName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "threadId"
+  ],
+  "title": "ThreadNameUpdatedNotification",
+  "type": "object"
+}
+HookEventName values:
+{
+  "enum": [
+    "preModelRequest",
+    "postModelRequest",
+    "preToolUse",
+    "permissionRequest",
+    "postToolUse",
+    "preCompact",
+    "postCompact",
+    "sessionStart",
+    "sessionEnd",
+    "userPromptSubmit",
+    "subagentStart",
+    "subagentStop",
+    "stop",
+    "interrupt"
+  ],
+  "type": "string"
+}

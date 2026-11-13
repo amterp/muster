@@ -1,0 +1,24 @@
+{
+  "01-automatic-name": {
+    "state_5.sqlite/threads": {
+      "id": "$SESSION",
+      "source": "cli",
+      "title": "Explain the native naming probe.",
+      "first_user_message": "Explain the native naming probe.",
+      "name": null,
+      "originator": "codex-tui"
+    },
+    "session_index.jsonl": ""
+  },
+  "02-manual-name": {
+    "state_5.sqlite/threads": {
+      "id": "$SESSION",
+      "source": "cli",
+      "title": "Explain the native naming probe.",
+      "first_user_message": "Explain the native naming probe.",
+      "name": "Manual Native Name",
+      "originator": "codex-tui"
+    },
+    "session_index.jsonl": "{\"id\":\"$SESSION\",\"thread_name\":\"Manual Native Name\",\"updated_at\":\"2026-11-13T15:35:14.016171Z\"}\n"
+  }
+}

@@ -136,3 +136,23 @@ command. The nested ID never becomes the pane's resume target. No hook-input fil
 production guard is needed: process attribution already handles this case once Muster has
 identified the pane's agent and group. This measurement does not cover a report that arrives
 before that identification.
+
+## 9. Explicit names have separate metadata, but no rename hook
+
+`corpus/codex-0.167.2/session-names.txt` and `session-name-metadata.json` compare a fresh session,
+an explicit `/rename Manual Native Name`, and resume. A custom local provider finishes the
+first turn. In this run, `state_5.sqlite`'s `threads.title` holds the first user message and
+`threads.name` is null. Rename leaves the title unchanged and fills the name. It also appends
+`thread_name` to `session_index.jsonl`. Resume keeps the explicit name in the terminal title.
+This establishes the fallback initial-title path, not every automatic naming path.
+
+The generated app-server schema exposes `Thread.name` and a `thread/name/updated` notification
+with thread ID and name. It supplies no name-origin field. SessionStart and Stop in this probe
+supply no name, and the hook event schema has no rename event. Reading a name at a later Stop
+would therefore miss an idle rename until another turn, while terminal titles alone cannot
+classify where the name came from.
+
+Session-to-pane naming remains unimplemented. A safe implementation needs a portable metadata
+reader and a refresh mechanism, rather than assuming every index entry is a deliberate rename.
+The old 0.154.0 recording shows automatic names in that same index format. Neither an unbounded
+file scan on each hook nor a new watcher for every session follows from this measurement.
