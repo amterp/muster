@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1794579871536,
   "creator": "Alexander Terp",
   "description": "From the fix of a_2q9vTXJH7 (2026-11-13). The windowless CLI now sends through the daemon's answered control request (PaneRequest.Send, protocol 1.16) and exits 1 when nothing could be typed. A window's own send still types over the input connection: muster-seam's send_to_pane (crates/muster-seam/src/handler.rs) exits 0 with nothing typed while the agent restarts or its program has stopped reading. Fix: the window uses the answered Send request, so both doors share one path.",
   "id": "a_2z7ZYfpi4",
-  "position": "a0",
+  "position": "Yti",
   "title": "A window's own pane send drops input the daemon could not queue",
   "type": "bug",
-  "updated_at_millis": 1794580252055,
+  "updated_at_millis": 1794582532758,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794579871536},
-    {"field":"column","value":"in-progress","at":1794580252055}
+    {"field":"column","value":"in-progress","at":1794580252055},
+    {"field":"column","value":"done","at":1794582532758}
   ]
 }

@@ -5,19 +5,20 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1794266602320,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-09 on 0.24 on the laptop, with the devenv attached to the window. An agent ran `muster pane new --helper --name review-codex`, which printed the callsign `fiddle`. `muster msg post --to fiddle` then refused: \"fiddle could be p2jgfgnd1j or fiddle@devenv; say which\". The callsign `pane new` had just returned could not be used as given; posting to the pane id worked.\n\ne2822dd4 has the window tell each daemon which callsigns the other machines hold, and the daemon passes over them. A pane made by `muster pane new` from the CLI carries no such list: `callsigns_elsewhere` is always empty there (crates/muster-daemon-proto/src/making.rs, \"Nothing that asks without a window sees another machine's panes\"). Agents make most helpers this way, often while a window that knows the other machine's callsigns is attached.\n\nPossibly: have the daemon keep the last list a window sent it and pass those callsigns over for CLI-made panes too. Or have `pane new` print a ref that reaches the new pane alone, such as its pane id, when the bare callsign is shared.",
   "id": "a_2x07zjV2k",
-  "position": "b2b",
+  "position": "Ytg",
   "related": [
     "a_2khR8bO4C"
   ],
   "title": "`pane new` from the CLI hands out a callsign another machine's pane holds",
   "type": "bug",
-  "updated_at_millis": 1794266607705,
+  "updated_at_millis": 1794582533117,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794266602320}
+    {"field":"column","value":"backlog-lo","at":1794266602320},
+    {"field":"column","value":"done","at":1794582533117}
   ]
 }
