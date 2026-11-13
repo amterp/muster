@@ -1,0 +1,137 @@
+Codex 0.167.2, macOS arm64, 2026-11-13, 100x30 PTY.
+Isolated CODEX_HOME; local Responses stub returns probe ready.
+The project Stop hook records its input, waits for a release file, then returns.
+Each /clear is bracketed paste followed by a separate Return.
+
+codex 0.167.2: Stop hook before its working line draws
+title: ⠹ disabled
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Reply ready.
+
+
+• probe ready
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view
+
+codex 0.167.2: clear refused during a Stop hook
+title: ⠏ disabled
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Reply ready.
+
+
+• probe ready
+
+■ '/clear' is disabled while a task is in progress.
+
+
+
+
+
+
+
+
+
+
+
+
+◦ Working (0s • esc to interrupt) · Running hook
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view
+
+codex 0.167.2: Stop hook returned with an old refusal on screen
+title: disabled
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Reply ready.
+
+
+• probe ready
+
+■ '/clear' is disabled while a task is in progress.
+
+  Worked for <1s • 08:30
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view
+
+codex 0.167.2: clear accepted after a Stop hook
+title: disabled
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+

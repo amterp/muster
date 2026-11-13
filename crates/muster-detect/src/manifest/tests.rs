@@ -22,6 +22,14 @@ fn image_paste_needs_engine_eighteen_and_defaults_off() {
     assert!(!Manifest::parse(&source.replace("image_paste = true", "")).unwrap().image_paste());
 }
 
+#[test]
+fn deferring_idle_reports_requires_engine_nineteen() {
+    let source = "id = 'codex'\nmin_engine_version = 19\ndefer_idle_while_working = true\n[[rules]]\nid = 'idle'\nstate = 'idle'\ncontains = ['ready']\n";
+    assert!(Manifest::parse(source).is_ok());
+    let error = Manifest::parse(&source.replace("19", "18")).unwrap_err();
+    assert!(error.contains("min_engine_version 19"), "{error}");
+}
+
 fn region(content: &str, spec: &str) -> String {
     Region::parse(spec).expect("a valid region").slice(screen(content)).to_string()
 }

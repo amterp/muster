@@ -983,6 +983,62 @@
       },
       "name": "claude 2.1.319: a long foreground command at work, its prompt answered",
       "why": "A person or agent told this pane was at a dialog while it only ran a command. The screen holds the command, `(ctrl+b to run in background)` under it and a spinner with a timer, and nothing in it asks for an answer: work, waiting on nothing."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.2)\n     $PROBE_ROOT/project\n\n\n› Reply ready.\n\n\n• probe ready\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  probe default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view",
+        "title": "⠹ disabled",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n  Reply ready.\n\n\n  probe ready\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n›\n\n  probe default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view"
+      },
+      "name": "codex 0.167.2: Stop hook before its working line draws",
+      "why": "The local provider completed its response and the Stop hook is held. Codex still refuses commands; its title spinner is already visible before its Running hook line draws."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.2)\n     $PROBE_ROOT/project\n\n\n› Reply ready.\n\n\n• probe ready\n\n■ '/clear' is disabled while a task is in progress.\n\n\n\n\n\n\n\n\n\n\n\n\n◦ Working (0s • esc to interrupt) · Running hook\n\n\n› Ask Codex to do anything\n\n  probe default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view",
+        "title": "⠏ disabled",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n  Reply ready.\n\n\n  probe ready\n\n■ '/clear' is disabled while a task is in progress.\n\n\n\n\n\n\n\n\n\n\n\n\n                esc\n\n\n›\n\n  probe default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view"
+      },
+      "name": "codex 0.167.2: clear refused during a Stop hook",
+      "why": "The Stop hook is still held. A separately pasted and submitted /clear is explicitly refused while Codex keeps its working title and Running hook line."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.2)\n     $PROBE_ROOT/project\n\n\n› Reply ready.\n\n\n• probe ready\n\n■ '/clear' is disabled while a task is in progress.\n\n  Worked for <1s • 08:30\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  probe default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view",
+        "title": "disabled",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n  Reply ready.\n\n\n  probe ready\n\n■ '/clear' is disabled while a task is in progress.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n›\n\n  probe default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view"
+      },
+      "name": "codex 0.167.2: Stop hook returned with an old refusal on screen",
+      "why": "The held Stop hook returned. Codex removed its working title and now accepts commands; the prior /clear refusal remains in history."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.2)\n     $PROBE_ROOT/project\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  probe default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view",
+        "title": "disabled",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n›\n\n  probe default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view"
+      },
+      "name": "codex 0.167.2: clear accepted after a Stop hook",
+      "why": "After the held Stop hook returned, another separately pasted and submitted /clear cleared the conversation."
     }
   ]
 }

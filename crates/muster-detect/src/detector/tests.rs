@@ -1401,6 +1401,56 @@ fn an_idle_report_yields_to_a_screen_that_keeps_moving() {
     assert_eq!((last.state, last.reported), (State::Working, false), "{running:?}");
 }
 
+#[test]
+fn codex_keeps_an_idle_report_until_its_working_spinner_ends() {
+    for resume in [false, true] {
+        let mut run = Run::new();
+        run.manifests = Manifests::built_in();
+        run.processes.agent = "codex";
+        run.tick();
+        run.pane.group = Some(AGENT_GROUP);
+        run.tick();
+        run.settle();
+        run.pane.set_title("⠹ worker");
+        run.paint("◦ Working (0s • esc to interrupt) · Running hook\n›");
+        run.run_for(Duration::from_secs(2), None);
+        run.detector.report(Agent::new("codex"), State::Idle, run.now);
+        let next = run.tick();
+        assert!(
+            next.as_ref().is_none_or(|publication| publication.state == State::Working),
+            "idle was published while Codex was still finishing its hook: {next:?}"
+        );
+        run.run_for(
+            Duration::from_secs(6),
+            Some("◦ Working (1s • esc to interrupt) · Running hook\n›"),
+        );
+        assert_eq!(run.detector.carried(run.now).report.unwrap().state, State::Idle);
+        if resume {
+            let carried = run.detector.carried(run.now);
+            run.detector = Detector::resumed(SHELL, carried, run.now, run.pane.title_writes);
+            run.pane.set_title("⠸ worker");
+            assert!(run.tick().is_none_or(|publication| publication.state == State::Working));
+        }
+        run.pane.set_title("worker");
+        run.paint("›");
+        let idle = run.until_published(Duration::from_secs(2)).unwrap().1;
+        assert_eq!(idle.state, State::Idle);
+        assert!(idle.reported, "the stored report was lost while its spinner ran");
+    }
+}
+
+#[test]
+fn an_idle_report_still_outranks_a_spinner_without_the_manifest_opt_in() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.pane.set_title("⠹ worker");
+    run.paint("busy");
+    run.run_for(Duration::from_secs(2), None);
+    run.report(State::Idle);
+    assert_eq!(run.tick(), Some(reported(State::Idle)));
+}
+
 /// A detector resumed from one that recorded no conclusion of the rules, as a daemon from before
 /// they were recorded hands over, still lays a report over what was last published rather than
 /// holding every report back until the rules see a change.
