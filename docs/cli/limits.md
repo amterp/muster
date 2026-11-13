@@ -20,7 +20,8 @@ A socket can accept a connection with nothing behind it to answer. A devenv hold
 window forwarded from a laptop that has gone to sleep, since ssh on the devenv takes the
 connection and waits for the laptop. So `muster` asks a window what it is showing before sending
 it anything, and a window that has not answered within two seconds is passed over with nothing
-sent to it: the daemon answers in its place and `muster` says so on stderr. While the laptop
+sent to it: the daemon answers in its place and `muster` says so on stderr, or in the answer's
+`note` with `--json`. While the laptop
 sleeps, every command run on the devenv pays those two seconds. A verb only a window can carry
 out - anything about tabs, a zoom, a pane put on another machine - has no daemon to fall back on,
 so it gives a window ten seconds, which a window slowed by a loaded machine needs more than a

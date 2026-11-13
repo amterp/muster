@@ -369,8 +369,8 @@ fn ask_a_window(
 }
 
 /// This machine's daemon's answer to what no window answered, or why there is none. A window that
-/// was there and silent is named on stderr once the daemon has answered, so a caller knows whose
-/// answer it is reading.
+/// was there and silent is named once the daemon has answered, so a caller knows whose answer it
+/// is reading: on stderr, or in `--json` as the answer's `note`.
 fn instead_of_a_window(
     request: &muster_proto::Request,
     reason: &str,
@@ -384,10 +384,26 @@ fn instead_of_a_window(
     }
     let answered =
         from_the_daemon(request, environment, json).map_err(|trouble| neither(reason, trouble))?;
-    for path in silent {
-        say_note(&dial::passed_over(path), json, errors);
+    if silent.is_empty() {
+        return Ok(answered);
+    }
+    let notes: Vec<String> = silent.iter().map(|path| dial::passed_over(path)).collect();
+    if json && let Some(noted) = with_note(&answered, &notes.join(" ")) {
+        return Ok(noted);
+    }
+    for note in &notes {
+        say_note(note, json, errors);
     }
     Ok(answered)
+}
+
+/// A JSON answer with `note` added, or nothing when the answer is not one JSON object. In the
+/// answer rather than beside it on stderr, because an agent reads the two streams merged and a
+/// second document breaks a parser expecting one.
+fn with_note(answer: &str, note: &str) -> Option<String> {
+    let mut document: serde_json::Value = serde_json::from_str(answer).ok()?;
+    document.as_object_mut()?.insert("note".to_string(), note.into());
+    Some(document.to_string())
 }
 
 /// Whether a window's refusal is one this machine's daemon may answer in place of: no window

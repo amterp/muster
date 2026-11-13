@@ -585,7 +585,7 @@ records and dials the same sockets, so it lists the same daemons, and says so fi
 answered, so this is every daemon recorded on this machine`. What it cannot say is which of them a
 window is using: `answered_without_window` is true in `--json` and `attached_here` is null on every
 row. `--no-window` asks for this answer even when a window is up. When a window did not answer,
-stderr names it, as `muster window` does.
+stderr names it, or the answer's `note` with `--json`, as `muster window` does.
 
 **Nothing here ends a daemon, and nothing ever will.** A process holding somebody's live agent
 is the wrong thing to reap on a schedule, in a tool whose promise is that agents outlive the
