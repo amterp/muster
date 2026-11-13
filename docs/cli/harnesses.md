@@ -59,7 +59,10 @@ kimi, kiro, maki, pi, qodercli.
   draft might still reference. Image paste needs daemon protocol 1.11 or newer.
 - **Its own report of its state**: the harness's hooks tell Muster, which outranks the screen, so
   a harness update that changes its screen does not change what Muster shows. Needs the
-  adapter's hooks installed.
+  adapter's hooks installed. Codex reports idle before its Stop hooks finish, while it still
+  refuses commands. Its manifest sets `defer_idle_while_working = true` (detection engine 19),
+  which keeps the idle report until the spinner or another explicit working indicator ends.
+  Other harnesses keep their existing report precedence unless their manifest opts in.
 - **Context used, model and cost**: shown on the pane's record. Claude Code reports all three
   through the statusline in its adapter, with the effort its model runs at. Codex has no
   statusline command, so its hooks report its context, read off its transcript, and its model,

@@ -307,6 +307,10 @@ impl Manifests {
         self.entry(agent).is_some_and(|entry| entry.manifest.has_idle_rule())
     }
 
+    pub(crate) fn defers_idle_while_working(&self, agent: &Agent) -> bool {
+        self.entry(agent).is_some_and(|entry| entry.manifest.defers_idle_while_working())
+    }
+
     /// Whether the agent's manifest can read its prompt while it works.
     pub fn reads_prompt_at_work(&self, agent: &Agent) -> bool {
         self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt_at_work())

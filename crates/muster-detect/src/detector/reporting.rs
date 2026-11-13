@@ -204,15 +204,26 @@ impl Reporting {
     /// counts again after, while the rules have read a prompt on screen for [`DISAGREE`], or
     /// from the moment it comes if the prompt was on screen already. A blocked report the rules
     /// have not read does not count until the screen has sat still for [`STILL`] since it came.
+    /// An idle report deferred by the harness's manifest is kept without aging out while its
+    /// positive working signal remains, so it can count once the remaining hooks finish.
     pub(crate) fn in_force(
         &mut self,
         agent: Option<&Agent>,
         exited: bool,
+        defer_idle: bool,
         now: Instant,
     ) -> Option<State> {
         self.settle_pending(now);
         let report = self.report.as_ref()?;
         let confirmed = agent == Some(&report.agent);
+        let unconfirmed = !confirmed && now.duration_since(report.at) >= UNCONFIRMED;
+        if exited || unconfirmed {
+            self.report = None;
+            return None;
+        }
+        if defer_idle && report.state == State::Idle {
+            return None;
+        }
         let quiet_since = self.last_output_at.map_or(report.at, |at| at.max(report.at));
         let stale = if report.state == State::Working {
             now.duration_since(quiet_since) >= QUIET
@@ -223,8 +234,7 @@ impl Reporting {
         } else {
             self.restless_since(report.at, now)
         };
-        let unconfirmed = !confirmed && now.duration_since(report.at) >= UNCONFIRMED;
-        if exited || stale || unconfirmed {
+        if stale {
             self.report = None;
             return None;
         }

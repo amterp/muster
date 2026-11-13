@@ -1,7 +1,10 @@
 id = "codex"
-version = "2026.11.11.1"
-min_engine_version = 18
-updated_at = "2026-11-11T00:00:00Z"
+version = "2026.11.13.1"
+min_engine_version = 19
+updated_at = "2026-11-13T00:00:00Z"
+
+# Stop runs before Codex accepts commands again; its working spinner covers the remaining hooks.
+defer_idle_while_working = true
 
 # Codex runs its own binary under these names for work that is not a session, which its 0.154.0
 # binary carries as strings. On Linux each command the model runs goes through

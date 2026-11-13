@@ -379,7 +379,7 @@ impl Detector {
     /// What the rules last concluded, with the agent's own report laid over it while that counts.
     /// A detector resumed from one that recorded no conclusion goes on from what was last
     /// published, so a report still counts before the rules next conclude.
-    fn effective(&mut self, now: Instant) -> Option<Publication> {
+    fn effective(&mut self, now: Instant, manifests: &Manifests) -> Option<Publication> {
         let concluded = self.last_concluded.clone().or_else(|| {
             let emitted = self.last_emitted.as_ref()?;
             Some(Publication::concluded(
@@ -391,7 +391,10 @@ impl Detector {
         })?;
         let agent = self.presence.current.as_ref();
         let exited = self.pending_foreground_shell_clear;
-        let reported = self.reporting.in_force(agent, exited, now);
+        let defer_idle = self.published.state == State::Working
+            && self.published.visible
+            && agent.is_some_and(|agent| manifests.defers_idle_while_working(agent));
+        let reported = self.reporting.in_force(agent, exited, defer_idle, now);
         let unreadable = self.reporting.unreadable(agent, reported, now);
         let state = if self.answered.is_some() {
             State::Working
@@ -431,7 +434,7 @@ impl Detector {
             self.reporting.output(pane.content_seq(), pane.input_at(), now);
         }
         let publication = self
-            .effective(now)
+            .effective(now, manifests)
             .and_then(|effective| self.settled(effective, now))
             .and_then(|effective| self.emit(effective));
         if let Some(publication) = &publication {

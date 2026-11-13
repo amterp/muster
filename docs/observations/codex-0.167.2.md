@@ -22,3 +22,21 @@ its hooked pane runs this checkout's project hooks. It keeps the user's HOME for
 The baseline live tier passed eight checks and failed the hookless comparison because the
 installed plugin reported that pane's working and idle states. The idle-message round trip that
 failed on 0.166.0 passed on 0.167.2 before any code change here.
+
+## 2. Stop hooks finish before Codex accepts `/clear`
+
+`corpus/codex-0.167.2/stop-hooks.txt` records a project Stop hook held after the local provider
+finishes its reply. Codex immediately retains its working title spinner; its `Running hook`
+line appears afterward. A bracketed paste of `/clear`, followed by a separate Return, prints
+`'/clear' is disabled while a task is in progress.` Once the Stop hook returns, the title loses
+its spinner and another `/clear` clears the conversation. The refusal remains in history until
+that clear, even though Codex is already ready for commands.
+
+Muster's adapter reports idle at the beginning of Stop. That report previously outranked the
+working screen, so a pane could read done while a later Stop hook still prevented commands.
+The Codex manifest now opts into `defer_idle_while_working`: the detector keeps the report but
+sets it aside while an explicit working signal remains. Once the signal ends, the same report
+counts. The recorded screens are also cases in `agent-detection-recorded.json`.
+
+This is an opt-in because another harness can retain a working title for background agents
+while its main session is idle. The change does not alter report precedence for those harnesses.

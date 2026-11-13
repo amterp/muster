@@ -1321,7 +1321,7 @@ fn a_blocked_report_that_comes_before_its_prompt_is_drawn_holds() {
     run.paint("allow?");
     let waiting = run.run_for(Duration::from_secs(30), None);
     assert!(waiting.iter().all(|publication| publication.reported), "{waiting:?}");
-    assert_eq!(run.detector.effective(run.now), Some(reported(State::Blocked)));
+    assert_eq!(run.detector.effective(run.now, &run.manifests), Some(reported(State::Blocked)));
 }
 
 /// Two sub-agents at once: one asks permission, and the other goes on calling tools, each of
@@ -1336,14 +1336,14 @@ fn a_prompt_on_screen_outranks_a_working_report_from_beside_it() {
     run.run_for(Duration::from_secs(2), Some("busy"));
     run.report(State::Blocked);
     run.run_for(Duration::from_secs(3), Some("allow? busy"));
-    assert_eq!(run.detector.effective(run.now), Some(reported(State::Blocked)));
+    assert_eq!(run.detector.effective(run.now, &run.manifests), Some(reported(State::Blocked)));
 
     let mut seen = Vec::new();
     for _ in 0..60 {
         run.report(State::Working);
         seen.extend(run.run_for(Duration::from_secs(1), Some("allow? busy")));
         assert_eq!(
-            run.detector.effective(run.now).map(|publication| publication.state),
+            run.detector.effective(run.now, &run.manifests).map(|publication| publication.state),
             Some(State::Blocked),
             "{seen:?}"
         );
@@ -1451,6 +1451,21 @@ fn an_idle_report_still_outranks_a_spinner_without_the_manifest_opt_in() {
     assert_eq!(run.tick(), Some(reported(State::Idle)));
 }
 
+#[test]
+fn opting_in_does_not_defer_idle_behind_an_inferred_working_screen() {
+    let manifest = MANIFEST.replace(
+        "min_engine_version = 1",
+        "min_engine_version = 19\ndefer_idle_while_working = true",
+    );
+    let mut run = Run::with_manifest(&manifest);
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.run_for(Duration::from_secs(2), None);
+    run.report(State::Idle);
+    assert_eq!(run.tick(), Some(reported(State::Idle)));
+}
+
 /// A detector resumed from one that recorded no conclusion of the rules, as a daemon from before
 /// they were recorded hands over, still lays a report over what was last published rather than
 /// holding every report back until the rules see a change.
@@ -1469,7 +1484,8 @@ fn a_resumed_report_counts_without_a_recorded_conclusion() {
     });
     run.detector = Detector::resumed(SHELL, carried, run.now, 0);
     // What the next tick lays the report over, before the rules conclude anything.
-    let effective = run.detector.effective(run.now).expect("a report with nothing concluded");
+    let effective =
+        run.detector.effective(run.now, &run.manifests).expect("a report with nothing concluded");
     assert_eq!(effective, reported(State::Blocked));
     assert_eq!(run.tick_past_settling(), Some(reported(State::Blocked)));
 }

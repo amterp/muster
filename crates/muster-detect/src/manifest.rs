@@ -36,8 +36,11 @@ use region::Region;
 /// and a rule's `shows`, what a screen hiding the prompt shows, 16 an idle rule's `waiting`,
 /// the work of its own an agent at its prompt is waiting on, and 17 a `[session]`
 /// `wakes_when_jobs_end`, saying that a job the agent started starts its next turn when it ends,
-/// and 18 `[session] image_paste`, allowing image paths in a readable composer.
-pub const ENGINE_VERSION: u32 = 18;
+/// and 18 `[session] image_paste`, allowing image paths in a readable composer. Engine 19 adds
+/// `defer_idle_while_working`, holding idle reports behind a positive working signal.
+pub const ENGINE_VERSION: u32 = 19;
+
+const DEFER_IDLE_ENGINE_VERSION: u32 = 19;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -164,6 +167,7 @@ pub struct Manifest {
     /// The argv[0] names the harness runs its own binary under for work that is not a session,
     /// such as Codex's sandbox helper: the agent's process, but not the agent.
     helpers: Vec<String>,
+    defer_idle_while_working: bool,
     server: Option<Server>,
     rules: Vec<Rule>,
     /// What typed at the agent's empty prompt renames its session, with `{name}` for the name.
@@ -266,6 +270,10 @@ impl Manifest {
     /// The argv[0] names the harness runs its own binary under for work that is not a session.
     pub fn helpers(&self) -> &[String] {
         &self.helpers
+    }
+
+    pub(crate) fn defers_idle_while_working(&self) -> bool {
+        self.defer_idle_while_working
     }
 
     /// How the harness's binary looks when it serves sessions other than its own, if it does.
@@ -577,6 +585,8 @@ struct RawManifest {
     script_paths: Vec<String>,
     #[serde(default)]
     helpers: Vec<String>,
+    #[serde(default)]
+    defer_idle_while_working: bool,
     server: Option<RawServer>,
     #[serde(default)]
     rules: Vec<RawRule>,
@@ -705,6 +715,13 @@ fn default_region() -> String {
 }
 
 fn validate(manifest: &RawManifest) -> Result<(), String> {
+    if manifest.defer_idle_while_working
+        && manifest.min_engine_version.unwrap_or(0) < DEFER_IDLE_ENGINE_VERSION
+    {
+        return Err(format!(
+            "defer_idle_while_working needs min_engine_version {DEFER_IDLE_ENGINE_VERSION} or newer"
+        ));
+    }
     if manifest.rules.is_empty() {
         return Err("manifest must contain at least one rule".to_string());
     }
@@ -1240,6 +1257,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         aliases: raw.aliases,
         script_paths: raw.script_paths,
         helpers: raw.helpers,
+        defer_idle_while_working: raw.defer_idle_while_working,
         server: raw
             .server
             .map(|server| Server { subcommand: server.subcommand, remedy: server.remedy }),
