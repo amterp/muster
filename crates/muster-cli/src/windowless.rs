@@ -505,12 +505,12 @@ fn type_send_unanswered(
     send: &muster_proto::SendToPane,
 ) -> Result<(), Trouble> {
     let (mut stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Input)?;
-    if !send.keys.is_empty()
+    if let Some((what, since)) = daemon_proto::version::send_needs(!send.keys.is_empty())
         && let Some(refused) = daemon_proto::version::too_old(
             daemon::OURS,
             welcome.protocol.as_ref(),
-            daemon_proto::version::KEYS_IN_A_SEND,
-            "press keys",
+            since,
+            what,
             "sent",
         )
     {

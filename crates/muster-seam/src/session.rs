@@ -7601,9 +7601,8 @@ pub(crate) fn send_to_pane(
         // An older daemon would ignore the keys and press the Return alone, which can take a
         // dialog's other answer. A window hands an older daemon over to this build's when it can,
         // so this is a daemon that refused the handover.
-        if !keys.is_empty()
-            && let Some(refused) =
-                older_than(muster_daemon_proto::version::KEYS_IN_A_SEND, "press keys")
+        if let Some((what, since)) = muster_daemon_proto::version::send_needs(!keys.is_empty())
+            && let Some(refused) = older_than(since, what)
         {
             return Err(Refusal::Declined(refused));
         }

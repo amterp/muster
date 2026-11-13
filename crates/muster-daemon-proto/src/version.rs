@@ -5,6 +5,7 @@
 //! client deciding whether to adopt a daemon cannot disagree about it.
 
 use crate::Version;
+use crate::msg_request::Request as Asked;
 
 /// The protocol this build speaks.
 ///
@@ -118,6 +119,67 @@ pub fn too_old(
              Update Muster; a new daemon takes over from an old one when the app starts."
         )
     })
+}
+
+/// What sending keys to press, beside or instead of text, asks of a daemon, for [`too_old`]: an
+/// older daemon ignores the keys and presses the Return alone, which can take a dialog's other
+/// answer.
+pub fn send_needs(presses_keys: bool) -> Option<(&'static str, u32)> {
+    presses_keys.then_some(("press keys", KEYS_IN_A_SEND))
+}
+
+/// What a request asks that a daemon of an older minor does not know, and the first minor that
+/// does. An older one ignores a field it does not know and answers as if it were not set: a
+/// follow answered at once asks again as fast as it can, and a `Stop` hook's `wait --due`
+/// answered as a plain wait rewakes the session at the end of every turn. And it refuses a
+/// request it does not know as though messaging were missing altogether.
+pub fn msg_needs(request: &crate::MsgRequest) -> Option<(&'static str, u32)> {
+    match &request.request {
+        Some(Asked::Log(log)) if log.newest.is_some() || log.before.is_some() => {
+            Some(("send a log a page at a time", PAGED_LOG))
+        }
+        Some(Asked::Log(log)) if log.follow => Some(("follow a log", 1)),
+        Some(Asked::Wait(wait)) if wait.due => Some(("answer a wait only when a wake is due", 1)),
+        Some(Asked::Join(join)) if join.pull => Some(("take a participant's hooks fetching", 1)),
+        Some(
+            Asked::Groups(_)
+            | Asked::GroupNew(_)
+            | Asked::GroupSet(_)
+            | Asked::GroupMembers(_)
+            | Asked::Pause(_)
+            | Asked::Resume(_),
+        ) if !says_who_may_urge(request) => Some(("keep groups with a policy", 1)),
+        Some(Asked::Post(post))
+            if post.answering.as_ref().is_some_and(|answering| answering.answer.is_empty()) =>
+        {
+            Some((
+                "keep an answer in words, with none of a question's answers picked",
+                ANSWERS_IN_WORDS,
+            ))
+        }
+        Some(Asked::Post(post)) if post.recommended.is_some() => {
+            Some(("keep the answer a question recommends", RECOMMENDS_ANSWERS))
+        }
+        Some(Asked::Post(post)) if !post.answers.is_empty() || post.answering.is_some() => {
+            Some(("keep the answers a question offers or a reply picks", ANSWERS))
+        }
+        Some(Asked::Post(post)) if post.urgent => Some(("post urgently", 3)),
+        Some(Asked::GroupNew(_) | Asked::GroupSet(_)) => {
+            Some(("keep a policy saying who may post urgently", 3))
+        }
+        Some(Asked::GroupDelete(_)) => Some(("delete a group", 3)),
+        _ => None,
+    }
+}
+
+/// Whether the request sets a policy that says who may post urgently.
+fn says_who_may_urge(request: &crate::MsgRequest) -> bool {
+    let policy = match &request.request {
+        Some(Asked::GroupNew(new)) => new.policy.as_ref(),
+        Some(Asked::GroupSet(set)) => set.policy.as_ref(),
+        _ => None,
+    };
+    policy.is_some_and(|policy| policy.urgent.is_some())
 }
 
 /// Whether two ends speaking these versions can talk.

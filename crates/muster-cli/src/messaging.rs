@@ -845,50 +845,6 @@ fn blocks(request: &proto::MsgRequest) -> bool {
     }
 }
 
-/// What a request asks that a daemon of an older minor does not know, and the first minor that
-/// does. An older one ignores a field it does not know and answers as if it were not set: a
-/// follow answered at once asks again as fast as it can, and a `Stop` hook's `wait --due`
-/// answered as a plain wait rewakes the session at the end of every turn. And it refuses a
-/// request it does not know as though messaging were missing altogether.
-fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
-    match &request.request {
-        Some(Asked::Log(log)) if log.newest.is_some() || log.before.is_some() => {
-            Some(("send a log a page at a time", proto::version::PAGED_LOG))
-        }
-        Some(Asked::Log(log)) if log.follow => Some(("follow a log", 1)),
-        Some(Asked::Wait(wait)) if wait.due => Some(("answer a wait only when a wake is due", 1)),
-        Some(Asked::Join(join)) if join.pull => Some(("take a participant's hooks fetching", 1)),
-        Some(
-            Asked::Groups(_)
-            | Asked::GroupNew(_)
-            | Asked::GroupSet(_)
-            | Asked::GroupMembers(_)
-            | Asked::Pause(_)
-            | Asked::Resume(_),
-        ) if !says_who_may_urge(request) => Some(("keep groups with a policy", 1)),
-        Some(Asked::Post(post))
-            if post.answering.as_ref().is_some_and(|answering| answering.answer.is_empty()) =>
-        {
-            Some((
-                "keep an answer in words, with none of a question's answers picked",
-                proto::version::ANSWERS_IN_WORDS,
-            ))
-        }
-        Some(Asked::Post(post)) if post.recommended.is_some() => {
-            Some(("keep the answer a question recommends", proto::version::RECOMMENDS_ANSWERS))
-        }
-        Some(Asked::Post(post)) if !post.answers.is_empty() || post.answering.is_some() => {
-            Some(("keep the answers a question offers or a reply picks", proto::version::ANSWERS))
-        }
-        Some(Asked::Post(post)) if post.urgent => Some(("post urgently", 3)),
-        Some(Asked::GroupNew(_) | Asked::GroupSet(_)) => {
-            Some(("keep a policy saying who may post urgently", 3))
-        }
-        Some(Asked::GroupDelete(_)) => Some(("delete a group", 3)),
-        _ => None,
-    }
-}
-
 /// The request as sent to a daemon speaking `speaks`. A policy file is the whole policy, so one
 /// that leaves out `urgent` means the default, said outright to a daemon that knows the key:
 /// left unsaid, a daemon keeps the list the group has, for a client that cannot see it.
@@ -904,16 +860,6 @@ fn whole(request: &proto::MsgRequest, speaks: proto::Version) -> proto::MsgReque
     request
 }
 
-/// Whether the request sets a policy that says who may post urgently.
-fn says_who_may_urge(request: &proto::MsgRequest) -> bool {
-    let policy = match &request.request {
-        Some(Asked::GroupNew(new)) => new.policy.as_ref(),
-        Some(Asked::GroupSet(set)) => set.policy.as_ref(),
-        _ => None,
-    };
-    policy.is_some_and(|policy| policy.urgent.is_some())
-}
-
 fn ask_once(
     socket: &Path,
     request: &proto::MsgRequest,
@@ -924,7 +870,7 @@ fn ask_once(
         None => daemon::connect_welcomed(socket, ConnectionKind::Control)?,
     };
     let speaks = welcome.protocol.unwrap_or_default();
-    if let Some((cannot, minor)) = needs_minor(request)
+    if let Some((cannot, minor)) = proto::version::msg_needs(request)
         && let Some(refused) =
             proto::version::too_old(daemon::OURS, Some(&speaks), minor, cannot, "done")
     {
@@ -1799,11 +1745,11 @@ mod tests {
         let wait = |due| asked(Asked::Wait(msg_request::Wait { due, ..Default::default() }));
         let join = |pull| asked(Asked::Join(msg_request::Join { pull, ..Default::default() }));
         let pause = asked(Asked::Pause(msg_request::Pause { group: "g".to_string() }));
-        assert_eq!(needs_minor(&wait(false)), None);
-        assert_eq!(needs_minor(&join(false)), None);
-        assert_eq!(needs_minor(&wait(true)).map(|(_, minor)| minor), Some(1));
-        assert_eq!(needs_minor(&join(true)).map(|(_, minor)| minor), Some(1));
-        assert_eq!(needs_minor(&pause).map(|(_, minor)| minor), Some(1));
+        assert_eq!(proto::version::msg_needs(&wait(false)), None);
+        assert_eq!(proto::version::msg_needs(&join(false)), None);
+        assert_eq!(proto::version::msg_needs(&wait(true)).map(|(_, minor)| minor), Some(1));
+        assert_eq!(proto::version::msg_needs(&join(true)).map(|(_, minor)| minor), Some(1));
+        assert_eq!(proto::version::msg_needs(&pause).map(|(_, minor)| minor), Some(1));
     }
 
     /// A policy file is the whole policy: one leaving out `urgent` lets anyone post urgently
@@ -1854,10 +1800,10 @@ mod tests {
                 policy: Some(policy),
             }))
         };
-        assert_eq!(needs_minor(&post(false)), None);
-        assert_eq!(needs_minor(&post(true)).map(|(_, minor)| minor), Some(3));
-        assert_eq!(needs_minor(&new(None)).map(|(_, minor)| minor), Some(1));
-        assert_eq!(needs_minor(&new(Some(vec![]))).map(|(_, minor)| minor), Some(3));
+        assert_eq!(proto::version::msg_needs(&post(false)), None);
+        assert_eq!(proto::version::msg_needs(&post(true)).map(|(_, minor)| minor), Some(3));
+        assert_eq!(proto::version::msg_needs(&new(None)).map(|(_, minor)| minor), Some(1));
+        assert_eq!(proto::version::msg_needs(&new(Some(vec![]))).map(|(_, minor)| minor), Some(3));
     }
 
     /// A daemon before 1.8 would keep a question without its answers and answer a page with the
@@ -1880,9 +1826,13 @@ mod tests {
             asked(Asked::Log(msg_request::Log { newest, follow, ..Default::default() }))
         };
         for request in [&question, &reply("Yes"), &log(Some(5), true)] {
-            assert_eq!(needs_minor(request).map(|(_, minor)| minor), Some(8), "{request:?}");
+            assert_eq!(
+                proto::version::msg_needs(request).map(|(_, minor)| minor),
+                Some(8),
+                "{request:?}"
+            );
         }
-        assert_eq!(needs_minor(&log(None, false)), None);
+        assert_eq!(proto::version::msg_needs(&log(None, false)), None);
     }
 
     /// A daemon before 1.10 would refuse an answer in words as not offering the empty answer.
@@ -1895,7 +1845,7 @@ mod tests {
                 ..Default::default()
             })),
         };
-        let needs = needs_minor(&in_words).map(|(_, minor)| minor);
+        let needs = proto::version::msg_needs(&in_words).map(|(_, minor)| minor);
         assert_eq!(needs, Some(proto::version::ANSWERS_IN_WORDS));
     }
 
@@ -1912,9 +1862,9 @@ mod tests {
                 ..Default::default()
             })),
         };
-        let needs = needs_minor(&question(Some("No"))).map(|(_, minor)| minor);
+        let needs = proto::version::msg_needs(&question(Some("No"))).map(|(_, minor)| minor);
         assert_eq!(needs, Some(proto::version::RECOMMENDS_ANSWERS));
-        let needs = needs_minor(&question(None)).map(|(_, minor)| minor);
+        let needs = proto::version::msg_needs(&question(None)).map(|(_, minor)| minor);
         assert_eq!(needs, Some(proto::version::ANSWERS));
     }
 
