@@ -940,12 +940,9 @@ fn the_daemons_are_listed_while_the_window_never_answers() {
     );
 }
 
-/// A window that takes the connection and never answers - a devenv's forward of a laptop that has
-/// gone to sleep - is passed over for the daemon as a missing one is, and the answer says so
-/// (kan a_2ZNnSyiXR). A verb only a window carries out is refused just as soon, with nothing sent.
-#[test]
-fn a_window_that_never_answers_is_answered_for_by_the_daemon() {
-    let here = Here::new(Daemon::start_built());
+/// Listens on `here`'s window socket and never answers, as a devenv's forward of a laptop that has
+/// gone to sleep does.
+fn never_answering(here: &Here) {
     let listener = std::os::unix::net::UnixListener::bind(&here.window).unwrap();
     std::thread::spawn(move || {
         // Held, not read: each connection stays open and nothing ever comes back.
@@ -954,6 +951,42 @@ fn a_window_that_never_answers_is_answered_for_by_the_daemon() {
             held.push(stream);
         }
     });
+}
+
+/// In `--json`, the daemon's answer in place of a silent window says so inside the one document
+/// it prints, and nothing on stderr: an agent reads the two streams merged, and a second document
+/// there breaks a parser expecting one (kan a_2wrqmkhfA).
+#[test]
+fn a_json_answer_for_a_silent_window_is_one_document_holding_the_note() {
+    let here = Here::new(Daemon::start_built());
+    never_answering(&here);
+    let mut control = here.daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+
+    for asked in [&["window", "--json"][..], &["pane", "read", "--pane", "p1", "--json"]] {
+        let answered = here.muster(asked);
+        assert_eq!(answered.status.code(), Some(0), "{asked:?}: {}", complained(&answered));
+        let merged = format!("{}{}", said(&answered), complained(&answered));
+        let document: Value = serde_json::from_str(&merged).unwrap_or_else(|error| {
+            panic!("{asked:?} printed more than one document ({error}):\n{merged}")
+        });
+        let note = document["note"].as_str().unwrap_or_default();
+        assert!(
+            note.contains(&here.window) && note.contains("muster-daemon answered instead"),
+            "{asked:?}: {document}"
+        );
+        assert_eq!(complained(&answered), "", "{asked:?} wrote to stderr");
+    }
+}
+
+/// A window that takes the connection and never answers - a devenv's forward of a laptop that has
+/// gone to sleep - is passed over for the daemon as a missing one is, and the answer says so
+/// (kan a_2ZNnSyiXR). A verb only a window carries out is refused just as soon, with nothing sent.
+#[test]
+fn a_window_that_never_answers_is_answered_for_by_the_daemon() {
+    let here = Here::new(Daemon::start_built());
+    never_answering(&here);
     let mut control = here.daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
     until_text(&mut control, "p1", "$");
