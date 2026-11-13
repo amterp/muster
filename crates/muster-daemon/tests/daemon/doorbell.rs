@@ -2077,6 +2077,25 @@ fn a_helpers_dialog_its_maker_leaves_is_told_to_the_person() {
     assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new(), "told twice");
 }
 
+/// A member still holding its group up as a newer daemon takes its pane over was told of to its
+/// poster already, and the new daemon does not tell it again: Muster says a stall once.
+#[test]
+fn a_stall_told_before_a_handoff_is_not_told_again() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_STALL_MS", "8000")]);
+    agent.post("p1", "a brief");
+    agent.until_rung(1);
+    let mut logging = following(&agent.daemon);
+    logging.logged_until(r#""event":"msg.group.told""#, Duration::from_secs(40));
+    assert_eq!(agent.read_as("integrator").len(), 1, "told before the handoff");
+
+    let answer = agent.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    agent.control = agent.daemon.connect();
+    // Two stall lengths on the new daemon: a wake again and then a notice, were it told afresh.
+    std::thread::sleep(Duration::from_secs(20));
+    assert_eq!(agent.read_as("integrator"), Vec::<String>::new(), "told again");
+}
+
 /// A helper still blocked as a newer daemon takes its pane over has told its maker already, and
 /// the new daemon does not tell it again.
 #[test]
