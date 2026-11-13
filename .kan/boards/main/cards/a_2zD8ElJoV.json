@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "the-doorbell-s-press",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794593120977,
+  "creator": "Alexander Terp",
+  "description": "Carried over from a_2cbxHzMtk on 2026-11-13, unverified: while a send paces its keys, the doorbell's press_again and its someone_typed_at check may wait behind the pacing, since other input is held until the send's keys are out. Measure before changing anything.",
+  "id": "a_2zD8ElJoV",
+  "position": "b3A",
+  "title": "The doorbell's press_again may queue behind a send's key gaps",
+  "type": "chore",
+  "updated_at_millis": 1794593120977,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794593120977}
+  ]
+}

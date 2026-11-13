@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "encode-a-send-s-keys",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794593120726,
+  "creator": "Alexander Terp",
+  "description": "Minor. At a shell a dead program left in kitty report-all-keys, pane send's Return is now a plain carriage return (2026-11-13), but the keys before it are still encoded with the kitty flags. zsh ignored the encoded End in the test; another key could type junk.",
+  "id": "a_2zD8ELrH8",
+  "position": "b39",
+  "title": "Encode a send's keys without stale kitty flags at a shell in front",
+  "type": "bug",
+  "updated_at_millis": 1794593120726,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794593120726}
+  ]
+}
