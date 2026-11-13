@@ -2816,6 +2816,37 @@ fn a_rename_while_a_groups_home_is_unreachable_reaches_it_when_the_link_returns(
     }
 }
 
+/// An agent that names itself while a group's home cannot be reached, and then leaves every group
+/// before the link returns, leaves the home not listing its pane there either: the fold it owed
+/// becomes a leave for the pane, sent when the link returns, and after a restart meanwhile.
+#[test]
+fn leaving_every_group_while_a_fold_is_owed_takes_the_pane_out_at_the_home() {
+    for restarting in [false, true] {
+        let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+        wire.cut();
+        let now = wire.tick();
+        let (devenv, sessions) = wire.split(Side::Devenv);
+        devenv.join(&agent, Some("tracer"), None, sessions, now).unwrap();
+        wire.fold(Side::Devenv);
+        let now = wire.tick();
+        let (devenv, sessions) = wire.split(Side::Devenv);
+        devenv.leave(&agent, None, sessions, now).expect("it leaves every group here");
+        assert!(wire.devenv.participant("tracer").is_none());
+        if restarting {
+            let saved = wire.devenv.store().saved.clone().unwrap();
+            wire.devenv = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+        }
+
+        wire.mend();
+        assert_eq!(
+            members_on(&wire, Side::Laptop, "review"),
+            ["director"],
+            "restarting: {restarting}"
+        );
+        assert!(wire.devenv.folds_owed_to("lap").is_empty(), "asked once");
+    }
+}
+
 /// A restart refetches a replica from nothing, and its log still says the pane joined before the
 /// name took its place. The pane means whoever holds it now, so the replay makes no second
 /// participant in the pane, and a caller known only by its pane, as Codex is, is the name.
