@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2zAUAOTY7",
+      "body": "2026-11-13: measured on Codex 0.167.2 (corpus/codex-0.167.2/session-names.txt, session-name-metadata.json, observation section 9). Hooks carry no name and no rename event; the only source that tells an explicit rename from an automatic title is Codex's private state_5.sqlite (threads.name). Needs the owner's decision on whether Muster reads that.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794586814042
+    }
+  ],
   "created_at_millis": 1791049415042,
   "creator": "Alexander Terp",
   "description": "Pane-to-session naming works for Codex (/rename typed at an idle prompt). The other direction is not built: Codex names every session itself after its first turn, writing session_index.jsonl the same way a person's /rename does, so its own names cannot be told apart from a person's (corpus/codex-0.154.0/rename.txt). Maybe Codex's app-server or thread_name metadata distinguishes them; unmeasured.",
@@ -13,7 +21,7 @@
   "position": "b0N",
   "title": "Codex: a pane named after its session",
   "type": "feature",
-  "updated_at_millis": 1791049415042,
+  "updated_at_millis": 1794586814043,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791049415042}
   ]

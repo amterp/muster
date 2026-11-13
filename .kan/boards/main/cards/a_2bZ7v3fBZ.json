@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791099220248,
   "creator": "Alexander Terp",
   "description": "2026-10-04: codex queue at an approval prompt stores the message and never submits it, even after Esc. A non-urgent post queued while Codex works and then meets an approval prompt may be lost the same way. Measure (corpus/codex-0.154.0/queue.txt).",
   "id": "a_2bZ7v3fBZ",
-  "position": "b0S",
+  "position": "YtM",
   "title": "codex queue at work: does a queued message survive an approval prompt met later in the turn?",
   "type": "chore",
-  "updated_at_millis": 1791099220248,
+  "updated_at_millis": 1794586813317,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791099220248}
+    {"field":"column","value":"backlog-lo","at":1791099220248},
+    {"field":"column","value":"done","at":1794586813317}
   ]
 }
