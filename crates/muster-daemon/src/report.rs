@@ -12,7 +12,7 @@ use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
@@ -414,10 +414,8 @@ fn send_within(
     patience: Duration,
 ) -> Result<(), Unreported> {
     let (done, finished) = mpsc::channel();
-    // Whether the report has been written to the daemon, so a deadline passing can say whether
-    // it may have landed.
-    let written = Arc::new(AtomicBool::new(false));
-    let writing = Arc::clone(&written);
+    let race = Arc::new(Race::default());
+    let racing = Arc::clone(&race);
     let dialed = socket.clone();
     std::thread::Builder::new()
         .name("report".to_string())
@@ -425,9 +423,9 @@ fn send_within(
             // A handoff refuses what would change the pane until the new daemon serves the same
             // socket, which is moments later; a hook's report of a state must not be lost to it.
             let sent = loop {
-                match send(&socket, report.clone(), &writing) {
+                match send(&socket, report.clone(), &racing) {
                     Err(Unreported::NotReported(problem)) if problem.ends_with(HANDING_OVER) => {
-                        writing.store(false, Ordering::Release);
+                        racing.refused();
                         std::thread::sleep(Duration::from_millis(50));
                     }
                     sent => break sent,
@@ -439,25 +437,56 @@ fn send_within(
             Unreported::NotReported(format!("could not start a thread to report from: {error}"))
         })?;
     finished.recv_timeout(patience).unwrap_or_else(|_| {
-        Err(if written.load(Ordering::Acquire) {
-            Unreported::AnswerLost(format!(
-                "the daemon took the report and did not answer within {patience:?}"
-            ))
-        } else {
+        Err(if race.give_up() {
             Unreported::NotReported(format!(
                 "the daemon at {} did not take the report within {patience:?}, so nothing was \
                  reported; reporting again is safe",
                 dialed.display()
             ))
+        } else {
+            Unreported::AnswerLost(format!(
+                "the daemon took the report and did not answer within {patience:?}"
+            ))
         })
     })
 }
 
-/// Sends the report and reads its answer, setting `written` once the report is on its way.
+/// Between a report's deadline and its write, whichever claims the report first: a deadline that
+/// gives up before the write starts stops it from starting, so "nothing was reported" stays
+/// true, and one that comes after it says the report may have landed.
+#[derive(Debug, Default)]
+struct Race(AtomicU8);
+
+impl Race {
+    const UNCLAIMED: u8 = 0;
+    const WRITING: u8 = 1;
+    const GIVEN_UP: u8 = 2;
+
+    /// Claims the report for writing; false once the deadline has given it up.
+    fn write(&self) -> bool {
+        self.claim(Self::UNCLAIMED, Self::WRITING)
+    }
+
+    /// The daemon refused what was written, so the report is unclaimed again for a retry.
+    fn refused(&self) {
+        self.claim(Self::WRITING, Self::UNCLAIMED);
+    }
+
+    /// Claims the report for the deadline; false when its write had already started.
+    fn give_up(&self) -> bool {
+        self.claim(Self::UNCLAIMED, Self::GIVEN_UP)
+    }
+
+    fn claim(&self, from: u8, to: u8) -> bool {
+        self.0.compare_exchange(from, to, Ordering::AcqRel, Ordering::Acquire).is_ok()
+    }
+}
+
+/// Sends the report and reads its answer, writing it only if `race` lets it.
 fn send(
     socket: &std::path::Path,
     report: pane_request::Report,
-    written: &AtomicBool,
+    race: &Race,
 ) -> Result<(), Unreported> {
     let unsent = Unreported::NotReported;
     let mut stream = UnixStream::connect(socket).map_err(|error| {
@@ -483,8 +512,10 @@ fn send(
             request: Some(pane_request::Request::Report(report)),
         })),
     };
+    if !race.write() {
+        return Err(unsent("given up before it was written".to_string()));
+    }
     // A write that failed part of the way may still have delivered the report.
-    written.store(true, Ordering::Release);
     connection::send(&mut stream, &request)
         .map_err(|error| Unreported::AnswerLost(format!("the report was not all sent: {error}")))?;
     // Not subscribed, so the one message coming is the answer.
@@ -761,6 +792,24 @@ mod tests {
             both.unwrap_err().contains("not both"),
             "a sub-agent cannot start and stop at once"
         );
+    }
+
+    /// A deadline that gives a report up before its write starts stops the write, so "nothing was
+    /// reported" stays true; one that comes after the write started cannot give it up.
+    #[test]
+    fn a_report_is_either_given_up_or_written_never_both() {
+        let given_up = Race::default();
+        assert!(given_up.give_up());
+        assert!(!given_up.write(), "written after the deadline said nothing was reported");
+
+        let written = Race::default();
+        assert!(written.write());
+        assert!(!written.give_up(), "given up after the write started");
+
+        let retried = Race::default();
+        assert!(retried.write());
+        retried.refused();
+        assert!(retried.give_up(), "a refused write leaves the report for the deadline");
     }
 
     /// A daemon that answers each step just inside a per-step timeout would hold a hook up for
