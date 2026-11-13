@@ -3901,7 +3901,7 @@ pub(crate) fn arrange_pane(
             if let Some(why) = cannot_place {
                 return Err(refused_by(why));
             }
-            return arrive(window, daemon, &to, spot, Arriving::Moved { pane: pane.clone() })
+            return arrive(window, daemon, &to, spot, &Arriving::Moved { pane: pane.clone() })
                 .map(drop);
         }
         // Inside one tab nothing has to be made or moved between tabs, so no machine has to act:
@@ -4373,7 +4373,7 @@ pub(crate) fn move_pane_to_tab(
     };
     if through_tree {
         let moved = Arriving::Moved { pane: pane.clone() };
-        return arrive(window, daemon, tab, spanning::Spot::Column, moved).map(drop);
+        return arrive(window, daemon, tab, spanning::Spot::Column, &moved).map(drop);
     }
     let intent = BackendIntent::MovePane {
         pane: pane.clone(),
@@ -7201,9 +7201,9 @@ pub(crate) fn arrive(
     daemon: &DaemonId,
     tab: &TabId,
     spot: spanning::Spot,
-    arriving: Arriving<'_>,
+    arriving: &Arriving<'_>,
 ) -> Result<Outcome, Refusal> {
-    let pane = match &arriving {
+    let pane = match arriving {
         Arriving::Made { .. } => {
             poison::lock(&poison::lock(&SESSION, "session").minter, "minter").pane()
         }
@@ -7214,7 +7214,7 @@ pub(crate) fn arrive(
     // copy was read: another window's, or this one's own catch-up. Nothing was placed, so the
     // pane it was to be is placed once more, on the tree as the copies hold it now, as a
     // rearrangement is ([`rearrange`]). A pane id minted for it was never used, so it is kept.
-    let (outcome, writes) = match place(window, daemon, &pane, at, &arriving) {
+    let (outcome, writes) = match place(window, daemon, &pane, at, arriving) {
         Ok(outcome) => (outcome, writes),
         Err(refusal) if matches!(refusal, Refusal::Unanswered { .. }) => return Err(refusal),
         Err(refusal) => {
@@ -7232,7 +7232,7 @@ pub(crate) fn arrive(
                     "refused" => refusal.to_string(),
                 },
             );
-            (place(window, daemon, &pane, at, &arriving)?, writes)
+            (place(window, daemon, &pane, at, arriving)?, writes)
         }
     };
     // The pane is placed whatever the other parts answer, so their answer is not this request's:

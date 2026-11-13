@@ -2584,7 +2584,7 @@ fn split_onto(
             keyboard,
             split: from.as_ref(),
         };
-        return relayed(session::arrive(window, onto, &tab, spot, arriving).map(made_or_ok));
+        return relayed(session::arrive(window, onto, &tab, spot, &arriving).map(made_or_ok));
     }
     let intent = if let Some(pane) = session::pane_in_part(window, onto, &tab) {
         BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet, maker }
