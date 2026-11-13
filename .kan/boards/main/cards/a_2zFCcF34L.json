@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "closing-an-agent-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794598055854,
+  "creator": "Alexander Terp",
+  "description": "On 2026-11-13 closed Codex reviewer and worker panes left about 27 rg, head and zsh processes behind in two worktrees, each more than an hour old (Codex's bundled rg hangs; its shell commands outlive it). They were reparented to pid 1 and kept their working directory, which hard-blocked qm storage clear on those worktrees while disk fell to 2.6 GB. Should pane close end the pane's whole process group or session, or at least say in its answer that processes were left?",
+  "id": "a_2zFCcF34L",
+  "position": "b3B",
+  "title": "Closing an agent's pane leaves its hung child processes running in the checkout",
+  "type": "bug",
+  "updated_at_millis": 1794598055854,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794598055854}
+  ]
+}
