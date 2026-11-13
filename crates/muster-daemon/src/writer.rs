@@ -466,6 +466,15 @@ pub(crate) struct Writer {
     last_write: Option<Instant>,
 }
 
+/// Whether a process the kernel calls `name` is an interactive shell, which reads only a
+/// carriage return as Return. A login shell's `-zsh` is one too.
+fn is_shell(name: &str) -> bool {
+    matches!(
+        name.trim_start_matches('-'),
+        "sh" | "bash" | "dash" | "zsh" | "fish" | "ksh" | "mksh" | "tcsh" | "csh"
+    )
+}
+
 /// The bytes of text a program or agent sent. Not a clipboard, so never held; fenced when the
 /// program asked, so a newline in it is text rather than a Return. No text is no paste: an
 /// empty one is still a paste to the program, which may take a Return straight after it as part
@@ -594,10 +603,21 @@ impl Writer {
     /// Whether the pane's shell is the foreground process group, with nothing running over it.
     /// Kitty keyboard flags in force then were left by a program that has gone, as one killed
     /// mid-turn leaves them, and a shell reads only a plain carriage return as Return.
+    ///
+    /// The pane's first process alone is not enough: a command that `exec`s a program, as a
+    /// shell running one command does on its own, keeps the shell's pid for that program, which
+    /// may have asked for those flags itself. So the process in front has to be a shell by name.
     fn shell_in_front(&self) -> bool {
-        self.io
-            .upgrade()
-            .is_some_and(|io| io.shell().is_some_and(|shell| io.foreground_group() == Some(shell)))
+        use muster_detect::Processes as _;
+        let Some(io) = self.io.upgrade() else { return false };
+        let Some(group) = io.foreground_group().filter(|&group| io.shell() == Some(group)) else {
+            return false;
+        };
+        let Ok(group) = u32::try_from(group) else { return false };
+        muster_detect::System
+            .leader(group)
+            .and_then(|job| job.processes.into_iter().find(|process| process.pid == group))
+            .is_some_and(|leader| is_shell(&leader.name))
     }
 
     fn encode(&mut self, input: Input) -> Vec<u8> {
