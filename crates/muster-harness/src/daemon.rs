@@ -42,9 +42,11 @@ const SHELL: &str = "/bin/sh";
 /// The daemon's variable naming the process it stops with (`muster-daemon`'s `ends_with.rs`).
 const ENDS_WITH: &str = "MUSTER_DAEMON_ENDS_WITH";
 
-/// How long a dropped daemon is given to stop by itself before it is killed: the grace it gives
-/// a pane that ignores its hang-up, and time to exit after.
-const STOP_GRACE: Duration = Duration::from_secs(5);
+/// How long a dropped daemon is given to stop by itself before it is killed. Past the most its
+/// own stop waits - a second telling API connections, five for its last state write, and four
+/// for the panes that ignore their hang-up to be killed - so that on a stalled machine it is
+/// not killed before it has killed them. A daemon that stops sooner is waited for no longer.
+const STOP_GRACE: Duration = Duration::from_secs(12);
 
 /// What every pane's login shell reads last: a prompt that is the same on every machine. The
 /// system's names the host - macOS's is `host:dir user$` - and a long hostname pushes typed text
