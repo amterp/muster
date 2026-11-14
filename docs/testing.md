@@ -25,10 +25,21 @@ Muster's principles, adapted to that evidence:
   the detector's three-second startup grace once per pane, and only those tests pay it.
 
   So the backend seam is not faked at all. Tests that need a daemon spawn a real one through
-  `crates/muster-harness` - one daemon per test, killed on drop including on a panic, isolated by a scratch root
+  `crates/muster-harness` - one daemon per test, stopped on drop including on a panic, isolated by a scratch root
   holding its socket, its HOME and its log. What this buys is the removal of a whole category: there is no
   hand-written daemon in this repo, so there is nothing to drift, and "a drifted fake daemon is Muster's top
   false-green risk" stops being a risk we manage and becomes one we do not have.
+
+  A test daemon also stops when its test process exits, however it exits, because a killed test never reaches its
+  drop. The harness starts each daemon with `MUSTER_DAEMON_ENDS_WITH` set to the test's pid, and the daemon watches
+  that process and stops when it exits, as it does on SIGTERM. The harness also puts each daemon in a process group
+  of its own, so a group kill of the test, which is how `tools/run-tests.py` ends a job, leaves the daemon alive
+  long enough to close its panes. Each pane leads a session of its own, so a pane whose program ignores SIGHUP
+  outlives a daemon that is killed outright, and drop therefore stops the daemon with SIGTERM rather than SIGKILL.
+  A handoff's successor inherits the variable, and the daemon launch allowlist carries it, so a daemon the seam or
+  the CLI starts in a test ends with the test too. `crates/muster-harness/tests/ending.rs` kills a process holding
+  such daemons, alone and with its group, and checks nothing it started is left. `./dev --doctor` lists any pane
+  shell left without its daemon.
 
   It also catches what a stand-in cannot. When Muster ran herdr, building the subscription against it turned up
   two facts no invented one would have contradicted: a subscription is requested by a dotted name and answered

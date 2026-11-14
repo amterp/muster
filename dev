@@ -302,6 +302,7 @@ fn peak_load(samples, start):
 fn run_doctor():
     doctor_processes()
     doctor_muster_daemons()
+    doctor_orphaned_panes()
     doctor_herdr()
     doctor_devenv()
 
@@ -344,6 +345,51 @@ fn doctor_muster_daemon(pid):
     scratch = socket.starts_with("/tmp/") or socket.starts_with("/private/tmp/")
     where = scratch ? "scratch" : "kept"
     return "{pid:<7}{age:<13}{socket}  {where}"
+
+// Test panes' programs still running after their daemon has gone, which neither the list above
+// nor `muster daemons` can show, since nothing serves them.
+//
+// A pane started to run a command is a shell whose arguments hold `$MUSTER_PANE_COMMAND`. An
+// ordinary pane shell exits when its terminal hangs up; one running a command that ignores the
+// hang-up does not. Its parent being launchd says nothing on its own, since every pane a handoff
+// adopted has launchd for a parent too, and neither does its terminal, which ps names the same
+// once its daemon is gone. A working directory under the harness's scratch root does: a test
+// pane starts there and the owner's never do. Before test daemons ended with their tests, a
+// killed test run left these running for weeks.
+fn doctor_orphaned_panes():
+    print(bold("\ntest pane programs without a daemon"))
+    stdout, stderr, code = quiet $`ps -axo pid=,ppid=,etime=,command=` catch:
+        print(dim("  ps would not answer, so nothing here says what is running"))
+        return
+    words = [line.split(" ").filter(fn(field) field != "") for line in stdout.split_lines()]
+    commands = words.filter(fn(fields) len(fields) >= 4 and fields[1] == "1" and "$MUSTER_PANE_COMMAND" in join(fields[3:], " "))
+    rows = [[fields[0], fields[2], doctor_cwd(fields[0])] for fields in commands]
+    rows = rows.filter(fn(row) row[2].starts_with("/tmp/muster-test/") or row[2].starts_with("/private/tmp/muster-test/"))
+    // A pane of a daemon still serving its scratch root is that daemon's, adopted in a handoff.
+    daemons = stdout.split_lines().filter(fn(line) "muster-daemon" in line)
+    rows = rows.filter(fn(row) not doctor_served(row[2], daemons))
+    if len(rows) == 0:
+        print(dim("  none running"))
+        return
+    print(dim("  pid    age          cwd"))
+    for row in rows:
+        print("  {row[0]:<7}{row[1]:<13}{row[2]}")
+    print(dim("  Each ignores its hang-up, so it needs: kill -9 <pid>"))
+
+// Whether a muster-daemon is running on the scratch root a test pane's directory is in: the
+// harness gives each daemon a root, `/tmp/muster-test/<root>/`, holding its socket and the home
+// its panes start in.
+fn doctor_served(cwd, daemons):
+    root = cwd.split("muster-test/")[1].split("/")[0]
+    return len(daemons.filter(fn(line) "muster-test/{root}/" in line)) > 0
+
+fn doctor_cwd(pid):
+    stdout, stderr, code = quiet $`lsof -a -p {pid} -d cwd -Fn` catch:
+        return ""
+    for line in stdout.split_lines():
+        if line.starts_with("n"):
+            return line[1:]
+    return ""
 
 // Load says the machine is busy; this says what is eating it.
 //
