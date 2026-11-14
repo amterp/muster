@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "closing-a-pane-does",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794688736468,
+  "creator": "Alexander Terp",
+  "description": "Filed by Quartermaster's orchestrator (an agent), from the worker that fixed the test leak (a_2jV1pAiFU). This needs the owner's decision: it changes what closing a pane does for a person.\n\nClosing a pane sends SIGHUP to two process groups: the pane shell's own, and the one in the terminal's foreground. It sends SIGKILL to either group if it is still there after the grace (`pane.rs`, `hang_up` and `kill_after_grace`). The kernel's hangup, when a pane's terminal closes, reaches the same two. A process that an agent put in a process group of its own, or in a session of its own, receives neither and outlives the pane.\n\nEvidence: on 2026-11-13 a recording made by hand (commit `62c15530`, `corpus/codex-0.167.2/nested-exec.txt`) ran `codex exec` from Codex's shell mode in a pane. The pane's daemon later went away. `/bin/zsh -c codex exec ...` and the `codex exec` under it were still alive 27 hours later, reparented to launchd, and exited on SIGTERM. Codex runs a `!` command outside the pane's foreground group, so nothing that closing the pane sends reached it. Read from the code and the leftover; not measured again.\n\nOptions:\n\n1. Leave it. A program that leaves the pane's groups has chosen to outlive the pane, as `nohup` or `setsid` does in any terminal.\n2. Also signal every process group in the pane's session. This needs a census of processes by session id (`KERN_PROC_SESSION`-style on macOS, `/proc` on Linux). It catches a child that only changed its process group, like Codex's, but not one that called `setsid`.\n3. Option 2, plus processes still holding the pane's terminal. Broader, and the most likely to end something a person meant to keep.\n\nQuartermaster will end such a leftover when it came from a `qm run` job, an hour or two after the job ends, but not one an agent started outside a job.",
+  "id": "a_2zrFdHg1A",
+  "labels": [
+    "blocked"
+  ],
+  "position": "b3C",
+  "title": "Closing a pane does not end programs its agent started in another process group",
+  "type": "bug",
+  "updated_at_millis": 1794688740501,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794688736468}
+  ]
+}

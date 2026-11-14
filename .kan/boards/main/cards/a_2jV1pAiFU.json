@@ -24,6 +24,12 @@
       "body": "In progress since 2026-11-14: a helper pane of Quartermaster's orchestrator, worktree ~/src/muster-5 on branch main5.",
       "author": "Alexander Terp",
       "created_at_millis": 1794683075250
+    },
+    {
+      "id": "c_2zrxMBsRf",
+      "body": "Landed on local main as six commits, 9aab0684 to f225c0cf (not pushed). New tests kill the owning process by pid and by process group and see all five processes it started gone; each fails without the fix. Two full gate runs on this tree each had failures, all in tests with their own flaky cards, and each passed alone: a_2wTPddV7n and a_2m1K0HjTA in the first (load 17.6), a_2nSLy8B6Y in the second (load 15.8). The muster-daemon binary alone passed 645 of 645. The card stays in progress until the owner decides on the push. Follow-ups: a_2zrFdHg1A (closing a pane and other process groups, the owner's decision), a_2zrFdjAFX (`./dev --ssh` daemons in the devenv).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794690417159
     }
   ],
   "created_at_millis": 1792271559724,
@@ -36,7 +42,7 @@
   ],
   "title": "🧟 Harness test daemons from 3 Oct still running, each pane shell looping sleep 1",
   "type": "bug",
-  "updated_at_millis": 1794683075250,
+  "updated_at_millis": 1794690417160,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792271559724},
     {"field":"column","value":"in-progress","at":1794683075132}
