@@ -204,6 +204,9 @@ const CARRIED: &[&str] = &[
     // human rather than to whichever program happened to launch Muster. A daemon on another
     // machine does not carry it (`for_far_daemon`).
     "SSH_AUTH_SOCK",
+    // The pid a test daemon stops with (`muster-daemon`'s `ends_with.rs`), so a daemon the seam
+    // or the CLI starts in a test ends with the test. Nothing outside a test sets it.
+    "MUSTER_DAEMON_ENDS_WITH",
 ];
 
 #[cfg(test)]

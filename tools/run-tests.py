@@ -38,6 +38,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 TIMES = Path("target/gate/test-times.json")
+OWNED = str(Path(__file__).resolve().parent / "run-tests-owned")
 
 
 class Binary:
@@ -169,9 +170,12 @@ def run(job):
     # that leaves a child behind leaves it holding whatever its output was, and a pipe would
     # keep this job open until that child ended. cargo waits for the binary alone, too.
     with tempfile.TemporaryFile() as output:
-        # A process group of its own, so ending the job ends the daemons its tests started too:
-        # a test killed part way never stops them itself.
-        process = subprocess.Popen(job.argv, cwd=job.cwd, env=job.env, stdout=output,
+        # A process group of its own, so a ^C at the terminal reaches only this runner, and
+        # stopping it ends the job's whole group. A test killed part way never stops its daemons
+        # itself; they stop because OWNED names the job's pid to every daemon its tests start,
+        # and the harness keeps them out of this group so they live long enough to end their
+        # panes.
+        process = subprocess.Popen([OWNED, *job.argv], cwd=job.cwd, env=job.env, stdout=output,
                                    stderr=subprocess.STDOUT, process_group=0)
         with RUNNING_LOCK:
             RUNNING.add(process)

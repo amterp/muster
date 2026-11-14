@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs a test job with MUSTER_DAEMON_ENDS_WITH naming the job's own pid, so every muster-daemon
+# its tests start, by whatever route, stops when the job ends, however it ends. `exec` keeps the
+# pid: `$$` is this shell's, and the shell becomes the test binary.
+#
+# Usage: tools/run-tests-owned <command> [arguments...]
+MUSTER_DAEMON_ENDS_WITH=$$ exec "$@"

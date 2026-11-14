@@ -415,6 +415,24 @@
           "SSH_TTY"
         ]
       }
+    },
+    {
+      "name": "the process a test daemon ends with is carried",
+      "why": "A test names its own pid in MUSTER_DAEMON_ENDS_WITH so that every daemon it starts stops when the test process exits, however it exits; a killed test never runs its teardown. A daemon the seam or the CLI starts in a test is started through this allowlist, so the name has to be on it or that daemon outlives the test. Nothing outside a test sets it, so a person's daemon is handed nothing new.",
+      "given": {
+        "env": {
+          "HOME": "/Users/a",
+          "MUSTER_DAEMON_ENDS_WITH": "4242"
+        }
+      },
+      "expect": {
+        "carried": [
+          "HOME=/Users/a",
+          "MUSTER_DAEMON_ENDS_WITH=4242"
+        ],
+        "supplied": [],
+        "dropped": []
+      }
     }
   ]
 }
