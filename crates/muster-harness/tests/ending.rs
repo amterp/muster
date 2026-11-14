@@ -6,7 +6,7 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use muster_harness::requests::{IGNORING_THE_HANG_UP, pane_with_pid};
+use muster_harness::requests::pane_with_pid;
 use muster_harness::{Daemon, built_daemon};
 
 /// How long what a killed test started may take to go: the daemon's grace for a pane that
@@ -90,7 +90,7 @@ fn what_a_test_killed_with_its_process_group_started_ends_with_it() {
 #[test]
 fn a_dropped_daemon_takes_a_pane_that_ignores_the_hang_up_with_it() {
     let daemon = Daemon::start_built();
-    let pane = pane_with_pid(&mut daemon.connect(), "p1", IGNORING_THE_HANG_UP);
+    let pane = pane_with_pid(&mut daemon.connect(), "p1", true);
     drop(daemon);
     // Not at once: the daemon has exited, but its pane may wait a moment for launchd to reap it.
     let left = left_after(&[pane], Duration::from_secs(1));

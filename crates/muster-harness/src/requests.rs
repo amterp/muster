@@ -354,15 +354,14 @@ pub fn events_until_from(
     events
 }
 
-/// What a pane runs to ignore its hang-up and keep running: a program that outlives its pane
-/// unless something kills it.
-pub const IGNORING_THE_HANG_UP: &str = "trap '' HUP; while :; do sleep 1; done";
-
-/// Makes pane `name` in a tab of its own running `command`, and returns its shell's pid once the
-/// shell has said it.
-pub fn pane_with_pid(control: &mut Control, name: &str, command: &str) -> i32 {
+/// Makes pane `name` in a tab of its own running a loop that never ends, and returns its shell's
+/// pid once the shell has said it. With `ignoring_the_hang_up`, the loop outlives its pane unless
+/// something kills it; the pid is said only once the hang-up is ignored, so a test that ends the
+/// pane straight after cannot end it before then.
+pub fn pane_with_pid(control: &mut Control, name: &str, ignoring_the_hang_up: bool) -> i32 {
+    let trap = if ignoring_the_hang_up { "trap '' HUP; " } else { "" };
     let create = pane_request::Create {
-        command: Some(format!("echo pid=$$.; {command}")),
+        command: Some(format!("{trap}echo pid=$$.; while :; do sleep 1; done")),
         ..create(name, in_new_tab(&format!("t-{name}")))
     };
     make(control, create);

@@ -8,7 +8,7 @@
 use std::io::Write;
 
 use muster_harness::Daemon;
-use muster_harness::requests::{IGNORING_THE_HANG_UP, pane_with_pid};
+use muster_harness::requests::pane_with_pid;
 
 fn main() {
     let binary = std::env::args().nth(1).expect("usage: muster-harness-owner <muster-daemon>");
@@ -16,14 +16,14 @@ fn main() {
 
     let first = Daemon::start(&binary);
     let mut control = first.connect();
-    pids.push(pane_with_pid(&mut control, "p1", "while :; do sleep 1; done"));
-    pids.push(pane_with_pid(&mut control, "p2", IGNORING_THE_HANG_UP));
+    pids.push(pane_with_pid(&mut control, "p1", false));
+    pids.push(pane_with_pid(&mut control, "p2", true));
     pids.push(first.pid().cast_signed());
 
     // A handoff's successor is started by the daemon, in a session of its own, so it is
     // neither this process's child nor in its process group.
     let mut handed_over = Daemon::start(&binary);
-    pids.push(pane_with_pid(&mut handed_over.connect(), "p3", IGNORING_THE_HANG_UP));
+    pids.push(pane_with_pid(&mut handed_over.connect(), "p3", true));
     let answer = handed_over.replace(None);
     assert_eq!(
         answer.outcome(),
