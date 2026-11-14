@@ -24,6 +24,12 @@
       "body": "2026-11-13: not reproduced. The sighting's third case (wake held, agent reads, then free) already drops the wake, because a read clears woken; 195995aa keeps that as a regression test. Untested guesses: a read by a second participant in the same pane, or a ring left in the prompt and pressed later.",
       "author": "Alexander Terp",
       "created_at_millis": 1794583351825
+    },
+    {
+      "id": "c_2zrWanLpU",
+      "body": "2026-11-14, another instance (filed by an agent from Quartermaster's parallel-work round): slot 1 worker berry read hazel's #15 together with another group's message via `muster msg read --group berry+hazel`; a wake for berry+hazel #15 arrived on a later turn, and the read said \"nothing unread\". The worker had ended its turn with `report --waiting` (no --until-message-from) after reading.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794689388333
     }
   ],
   "created_at_millis": 1794072281434,
@@ -37,7 +43,7 @@
   ],
   "title": "A queued wake is delivered for a message read since it was queued",
   "type": "bug",
-  "updated_at_millis": 1794583351825,
+  "updated_at_millis": 1794689388333,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794072281434}
   ]
