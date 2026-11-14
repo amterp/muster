@@ -181,3 +181,21 @@ fn a_daemon_that_stops_kills_what_ignores_the_hang_up_before_it_exits() {
         "pid {pid} outlived the daemon"
     );
 }
+
+/// A daemon named a process to end with stops once that process exits, closing its panes as a
+/// stop does: what a test harness relies on when the test that started it is killed.
+#[test]
+fn a_daemon_told_to_end_with_a_process_stops_when_it_exits() {
+    let mut owner = std::process::Command::new("sleep").arg("60").spawn().unwrap();
+    let pid = owner.id().to_string();
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_ENDS_WITH", &pid)]);
+    let mut control = daemon.connect();
+    let pane = deaf_pane(&mut control);
+
+    owner.kill().unwrap();
+    owner.wait().unwrap();
+
+    daemon.wait_for_exit();
+    assert!(!daemon.socket_path().exists(), "the stopped daemon left its socket behind");
+    assert!(gone_within(&pane, std::time::Duration::from_millis(500)), "pid {pane} outlived it");
+}

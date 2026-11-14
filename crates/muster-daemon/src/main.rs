@@ -15,6 +15,7 @@ mod data;
 mod descriptors;
 mod detect;
 mod effects;
+mod ends_with;
 mod facts;
 mod handoff;
 mod hold;
@@ -89,7 +90,8 @@ const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR] [--launch
     daemon listens: $MUSTER_HOME/daemon/<install>.sock. Its log and its saved tabs are beside \
     the socket, as <name>.log and <name>.state.json; MUSTER_LOG=0 turns the log off. Without \
     --data, gives its shells the muster-daemon-data directory beside its executable, or in \
-    the bundle's Contents/Resources for one in a bundle. --launch \
+    the bundle's Contents/Resources for one in a bundle. MUSTER_DAEMON_ENDS_WITH=<pid> \
+    stops it once that process exits, as a test harness asks. --launch \
     is repeated to every client in its welcome, so whoever started it can tell it from a \
     daemon somebody else started on the same socket. `report` \
     tells the daemon of the pane it runs in what the agent there says about itself; \
@@ -284,6 +286,7 @@ pub(crate) fn serve(
     signals: libc::sigset_t,
     stopping: Sender<Stop>,
 ) -> Result<(), String> {
+    ends_with::watch(stopping.clone())?;
     std::thread::Builder::new()
         .name("signals".to_string())
         .spawn(move || wait_for_signals(&signals, &stopping))
