@@ -353,3 +353,24 @@ pub fn events_until_from(
     }
     events
 }
+
+/// What a pane runs to ignore its hang-up and keep running: a program that outlives its pane
+/// unless something kills it.
+pub const IGNORING_THE_HANG_UP: &str = "trap '' HUP; while :; do sleep 1; done";
+
+/// Makes pane `name` in a tab of its own running `command`, and returns its shell's pid once the
+/// shell has said it.
+pub fn pane_with_pid(control: &mut Control, name: &str, command: &str) -> i32 {
+    let create = pane_request::Create {
+        command: Some(format!("echo pid=$$.; {command}")),
+        ..create(name, in_new_tab(&format!("t-{name}")))
+    };
+    make(control, create);
+    let text = until_text(control, name, "pid=");
+    let at = text.rfind("pid=").expect("the text holds pid=") + 4;
+    text[at..]
+        .split('.')
+        .next()
+        .and_then(|pid| pid.parse().ok())
+        .unwrap_or_else(|| panic!("pane {name} did not say a pid: {text}"))
+}

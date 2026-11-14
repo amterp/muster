@@ -36,6 +36,8 @@ impl Scratch {
             ("HOME".to_string(), root.join("home").display().to_string()),
             ("PATH".to_string(), std::env::var("PATH").unwrap_or_default()),
             ("SHELL".to_string(), "/bin/sh".to_string()),
+            // So a daemon this test starts stops when the test process ends, however it ends.
+            ("MUSTER_DAEMON_ENDS_WITH".to_string(), std::process::id().to_string()),
         ]);
         Scratch { binary: built_daemon(), socket: root.join("d.sock"), root, environment }
     }

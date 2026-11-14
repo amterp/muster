@@ -39,6 +39,13 @@ pub const DAEMON_DATA: &str =
 /// What a pane runs unless a test sets a shell: a `/bin/sh`, so nobody's dotfiles play a part.
 const SHELL: &str = "/bin/sh";
 
+/// The daemon's variable naming the process it stops with (`muster-daemon`'s `ends_with.rs`).
+const ENDS_WITH: &str = "MUSTER_DAEMON_ENDS_WITH";
+
+/// How long a dropped daemon is given to stop by itself before it is killed: the grace it gives
+/// a pane that ignores its hang-up, and time to exit after.
+const STOP_GRACE: Duration = Duration::from_secs(5);
+
 /// What every pane's login shell reads last: a prompt that is the same on every machine. The
 /// system's names the host - macOS's is `host:dir user$` - and a long hostname pushes typed text
 /// past a pane's 80 columns, where it wraps and reads back as two rows. A test that writes its
@@ -106,7 +113,8 @@ pub fn built_linux_daemons() -> PathBuf {
     carried
 }
 
-/// One daemon, one test. Killed on drop, including when the test panics, and its root removed.
+/// One daemon, one test. Stopped on drop, including when the test panics, and its root removed;
+/// stopped too once the test process exits, however it exits.
 #[derive(Debug)]
 pub struct Daemon {
     binary: PathBuf,
@@ -255,10 +263,18 @@ impl Daemon {
             .env("PATH", std::env::var("PATH").unwrap_or_default())
             .env("HOME", self.root.join("home"))
             .env("SHELL", SHELL)
+            // So the daemon stops, ending its panes, however this test process ends: a killed
+            // test never reaches `Drop`. A test's own environment comes after, and may name
+            // another process.
+            .env(ENDS_WITH, std::process::id().to_string())
             .envs(self.environment.iter().map(|(name, value)| (name, value)))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::from(log))
+            // Out of the test's process group, so a group kill of the test leaves the daemon to
+            // end its panes rather than killing it first: each pane leads a session of its
+            // own, and one that ignores SIGHUP outlives a daemon killed under it.
+            .process_group(0)
             .spawn()
             .unwrap_or_else(|error| {
                 panic!(
@@ -527,6 +543,37 @@ impl Daemon {
         }
     }
 
+    /// Ends the daemon the way SIGTERM asks it to, closing every pane and killing what ignores
+    /// the hang-up, and kills it only if it has not exited within [`STOP_GRACE`]. A daemon killed
+    /// outright leaves such a pane running for good.
+    fn end(&mut self) {
+        if let Some(pid) = self.successor.take() {
+            // SAFETY: kill signals the one process this handle's handoff started.
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+            let deadline = Instant::now() + STOP_GRACE;
+            while exists(pid) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            // Only while it is still there: once it has exited, launchd reaps it and the pid is
+            // free for anybody's process.
+            if exists(pid) {
+                // SAFETY: as above.
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+            }
+        }
+        if let Some(mut process) = self.process.take() {
+            // SAFETY: kill signals this handle's own child, which is not reaped yet, so the pid
+            // is still its.
+            unsafe { libc::kill(process.id().cast_signed(), libc::SIGTERM) };
+            let deadline = Instant::now() + STOP_GRACE;
+            while matches!(process.try_wait(), Ok(None)) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let _ = process.kill();
+            let _ = process.wait();
+        }
+    }
+
     /// Ends the daemon abruptly, the way a crash does.
     pub fn kill(&mut self) {
         if let Some(pid) = self.successor.take() {
@@ -538,6 +585,11 @@ impl Daemon {
             let _ = process.wait();
         }
     }
+}
+
+fn exists(pid: i32) -> bool {
+    // SAFETY: kill with signal 0 only asks whether the process exists.
+    unsafe { libc::kill(pid, 0) == 0 }
 }
 
 /// A replace request in flight.
@@ -579,7 +631,7 @@ fn write_config(path: &Path, contents: &str) -> PathBuf {
 
 impl Drop for Daemon {
     fn drop(&mut self) {
-        self.kill();
+        self.end();
         if let Some(pid) = self.paused.take() {
             // SAFETY: kill signals the one process this handle's handoff paused in, which this
             // test started; if it has exited, nothing is signaled.
