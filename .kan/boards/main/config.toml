@@ -100,6 +100,35 @@ default_column = "backlog-lo"
       value = "kill-criterion"
       color = "#dc2626"
       description = "A stage-gate check from docs/origin.md: failing it questions the whole approach"
+  [custom_fields.provenance]
+    type = "enum"
+    wanted = false
+    description = "Who raised this card and how far it has been vetted. An agent may write production code ONLY for 'approved' and 'agent-approved'. Agent-created cards start as 'ai-proposed'. The test for the bottom two values is narrow: did the owner state this want in their own words, or did an agent derive, decompose, or invent it?\n\nAGENTS.md, 'Repo conventions', says when an agent may promote a card: to 'agent-approved' under four tests, to 'approved' for work the owner asked to have built, and to 'approved' for a spike that spends nothing. Every other promotion is the owner's. When in doubt the card stays 'ai-proposed' with the needs-decision label."
+
+    [[custom_fields.provenance.options]]
+      value = "ai-proposed"
+      color = "#94a3b8"
+      description = "An agent raised this, or an agent decided its scope, and nobody has approved it as written. Refine and argue it; do not build it."
+
+    [[custom_fields.provenance.options]]
+      value = "human-raised"
+      color = "#7dd3fc"
+      description = "The owner asked for this in their own words. The premise is theirs, but scope and design may still be open."
+
+    [[custom_fields.provenance.options]]
+      value = "endorsed"
+      color = "#fbbf24"
+      description = "The owner agrees this should happen. Design questions remain."
+
+    [[custom_fields.provenance.options]]
+      value = "agent-approved"
+      color = "#a3e635"
+      description = "An agent approved it under the four tests in AGENTS.md: a defect fix, a follow-on from the owner's ask or unseen upkeep; overturns no owner decision; adds no public interface, persisted format or dependency; spends nothing and changes nothing outside the repo. Safe to implement without asking."
+
+    [[custom_fields.provenance.options]]
+      value = "approved"
+      color = "#4ade80"
+      description = "Concept and open decisions both settled. Safe for an agent to implement without asking."
   [custom_fields.tags]
     type = "free-set"
     description = "Ad-hoc markers, not project doctrine - unlike labels, anything goes here"

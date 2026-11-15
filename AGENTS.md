@@ -430,6 +430,15 @@ regenerates on demand; a normal build does it only when the schema's hash change
   current: move cards as work starts and finishes, and add cards for work discovered along the way. If finishing work
   empties the `next` column, refill it from the backlog by priority and natural sequencing, so there is always a
   scoped next thing to pick up.
+- Every card carries a `provenance` value, and an agent may write production code only for `approved` and
+  `agent-approved` cards (Fencil: `card-build-approval`). A card with no value, as cards made before 2026-11-14 are,
+  counts as `ai-proposed`. An agent may promote a card to `agent-approved` when all four hold: it fixes a defect,
+  finishes or follows from something the owner asked for, or is upkeep that changes nothing a user sees; it overturns
+  no decision recorded at an owner level; it adds no public interface, persisted format or dependency; and it spends
+  nothing and changes nothing outside this repo. Say in a comment which part of the first test applies. An agent may
+  set `approved` when the owner asked in his own words for the work to be built and building it needs no answer only
+  he can give. Every other promotion is the owner's. A card that fails a test stays `ai-proposed`, with a comment
+  naming the failed test and what the agent recommends.
 
 ## Contributing
 

@@ -1,0 +1,30 @@
+id = "card-build-approval"
+question = "Who decides that a Muster card may be built without asking the owner?"
+tags = ["board", "factory"]
+paths = ["AGENTS.md", ".kan/boards/main/config.toml"]
+
+[[revisions]]
+id = "t6l9ea0v"
+date = 2026-11-15
+recorded_by = "other"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Every card carries a provenance value, and an agent builds only cards marked approved or
+agent-approved. An agent may mark a card agent-approved under four tests, the same as on Foreman's
+board: it is a defect fix, a follow-on from the owner's ask or upkeep no user sees; it overturns no
+owner-level decision; it adds no public interface, persisted format or dependency; it spends nothing
+and changes nothing outside the repo. A card with no value counts as ai-proposed.
+'''
+why = '''
+Muster's board had no field saying which cards an agent may build, so Foreman's factory, which
+builds only cards a declared field marks buildable, found nothing to work on here. The four tests
+let agents clear routine work while anything that changes what Muster is still reaches the owner.
+'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-14
+  quote = "Add the provenance field to Muster's board, and let agents approve cards there under the same four tests as Foreman"
+  note = "Asked how a Muster card should become buildable by the factory, he picked this, the recommended one of three offered answers. The others were to treat the labels ai-hi and ai-lo as buildable, and to leave Muster out of the factory for now."
