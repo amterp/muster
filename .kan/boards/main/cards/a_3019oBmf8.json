@@ -1,0 +1,18 @@
+{
+  "_v": 4,
+  "alias": "api-a-post-does-not",
+  "alias_explicit": false,
+  "column": "uncommitted",
+  "created_at_millis": 1794712345379,
+  "creator": "Alexander Terp",
+  "description": "**Doing:** Foreman's factory ends a run once none of the run's agents has an unanswered question to the owner. It reads posts through Muster's API.\n**Happened:** `Post.author` and `Group.members` are strings. When the author is a pane ID, Foreman can tell which run the question belongs to. When it is a name, nothing binds the name to a pane, so Foreman holds every running factory run until the question is answered.\n**Fix:** give the API a binding from a post or a participant to its pane, such as `Post.source_pane` or a participant record carrying a pane ID.\n**Where:** Mac, ~/src/foreman, `internal/factory/runner/tracker.go` (Fencil `factory-run-observation`).",
+  "id": "a_3019oBmf8",
+  "position": "an",
+  "provenance": "ai-proposed",
+  "title": "API: a post does not say which pane sent it",
+  "type": "enhancement",
+  "updated_at_millis": 1794712345379,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1794712345379}
+  ]
+}
