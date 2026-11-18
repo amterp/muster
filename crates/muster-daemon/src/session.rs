@@ -1449,6 +1449,9 @@ impl Session {
                 P::Compact(compact) => self.compact(&compact),
                 P::Clear(clear) => self.clear(&clear),
                 P::Unseen(unseen) => self.unseen(&unseen.pane),
+                P::CreateCanvas(_) | P::WriteCanvas(_) | P::ReadCanvas(_) => {
+                    Reply::refused("this daemon does not hold canvases yet")
+                }
                 P::Quiet(quiet) => self.quiet(&quiet),
                 P::SetCompaction(set) => self.set_compaction(&set),
                 P::MakerClosed(closed) => self.maker_closed(&closed),

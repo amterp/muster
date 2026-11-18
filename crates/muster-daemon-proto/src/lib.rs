@@ -105,6 +105,9 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Send(_)) => "pane.send",
             Some(pane_request::Request::Clear(_)) => "pane.clear",
             Some(pane_request::Request::Unseen(_)) => "pane.unseen",
+            Some(pane_request::Request::CreateCanvas(_)) => "pane.create_canvas",
+            Some(pane_request::Request::WriteCanvas(_)) => "pane.write_canvas",
+            Some(pane_request::Request::ReadCanvas(_)) => "pane.read_canvas",
             None => "pane",
         },
         Service::Msg(asked) => match &asked.request {

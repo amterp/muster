@@ -12,7 +12,12 @@ use crate::msg_request::Request as Asked;
 /// Bump `minor` with any change to the schema once a release has shipped the daemon, and `major`
 /// when a message stops meaning what it meant. `proto/muster_daemon.proto`'s header says how the
 /// baseline follows, and the `compatible` test holds the two together.
-pub const PROTOCOL: Version = Version { major: 1, minor: 16 };
+pub const PROTOCOL: Version = Version { major: 1, minor: 17 };
+
+/// The first minor whose daemon holds canvases: panes with a document and no terminal
+/// (`PaneRequest.CreateCanvas`, `WriteCanvas`, `ReadCanvas`). An older one refuses each as
+/// unknown, so a client asks first and can name the machine that is too old.
+pub const CANVASES: u32 = 17;
 
 /// The first minor whose daemon clears an agent's context (`PaneRequest.Clear`). An older one
 /// refuses the request as unknown, so a client asks first.
