@@ -1529,8 +1529,11 @@ window reads the result the way it reads any other daemon state.
 
 A canvas document is saved in one file per pane. For a daemon listening at `daemon.sock`, the
 files live in the neighboring `daemon.sock.canvases` directory. A replacement writes the title,
-kind, revision, and original bytes together by renaming the new file into place. The daemon saves the canvas pane in its layout and reads the document file to
-restore it after a daemon restart or reopen it within the close history's one-hour window. A
+kind, revision, and original bytes together by renaming the new file into place. The daemon saves
+the canvas pane in its layout and reads the document file to restore it after a daemon restart, or
+to reopen it for as long as the daemon remembers the closed pane: `reopen_closed_minutes`, an hour
+unless configured, or sooner once 64 later closes have pushed it out, at which point the file is
+deleted. A
 live handoff also transfers canvas panes and uses the same document files. Each of these paths
 keeps the revision the file holds. If a document cannot be read, the daemon reports that
 failure. Reopening it does not start a terminal.
