@@ -29,6 +29,11 @@ struct CanvasPage: Sendable {
   let policy: CanvasPolicy
 }
 
+struct CanvasDocumentVersion {
+  let revision: UInt64
+  let generation: UInt64
+}
+
 protocol CanvasPageSource: Sendable {
   @MainActor
   func observeRevisions(
@@ -83,10 +88,10 @@ protocol CanvasBrowser: AnyObject {
   var focusTarget: NSView? { get }
   var onLink: ((UInt64, URL) -> Void)? { get set }
   var onBlockedNavigation: ((URL?) -> Void)? { get set }
-  var onContentLost: (() -> Void)? { get set }
+  var onContentLost: ((CanvasDocumentVersion) -> Void)? { get set }
 
   func prepare(_ policy: CanvasPolicy) async throws
-  func load(_ page: CanvasPage) async throws
+  func load(_ page: CanvasPage, generation: UInt64) async throws
   func scrollPosition() async -> NSPoint?
   func update(appearance: CanvasAppearance, scrollTo: NSPoint?)
   func scroll(_ movement: CanvasScroll)
@@ -97,15 +102,23 @@ protocol CanvasBrowser: AnyObject {
 
 @MainActor
 final class CanvasView: NSView, PaneContent {
+  private struct ProcessRecovery {
+    let revision: UInt64
+    var loadedAt: ContinuousClock.Instant?
+    var exhausted = false
+  }
+
   let pane: PaneKey
   private let source: any CanvasPageSource
   private let browser: any CanvasBrowser
+  private let now: () -> ContinuousClock.Instant
   private let openLink: (URL) -> Void
   private let errorLabel = NSTextField(wrappingLabelWithString: "")
   private var stopObserving: (@MainActor () -> Void)?
   private var work: Task<Void, Never>?
   private var latest: UInt64?
-  private var attachment: UInt64 = 0
+  private var generation: UInt64 = 0
+  private var processRecovery: ProcessRecovery?
   private var displayed: (revision: UInt64, kind: CanvasPage.Kind, policy: CanvasPolicy)?
   private var metadata: CanvasInfo?
   private var terminalAppearance: MusterRenderer.Appearance
@@ -123,11 +136,13 @@ final class CanvasView: NSView, PaneContent {
   init(
     pane: PaneKey, revision: UInt64, title: String, source: any CanvasPageSource,
     terminalAppearance: MusterRenderer.Appearance, browser: any CanvasBrowser = WKCanvasBrowser(),
+    now: @escaping () -> ContinuousClock.Instant = { .now },
     openLink: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }
   ) {
     self.pane = pane
     self.source = source
     self.browser = browser
+    self.now = now
     self.title = title
     self.terminalAppearance = terminalAppearance
     self.style = .resolved(
@@ -141,10 +156,7 @@ final class CanvasView: NSView, PaneContent {
 
     browser.onLink = { [weak self] revision, url in self?.activated(url, revision: revision) }
     browser.onBlockedNavigation = { [weak self] url in self?.blocked(url) }
-    browser.onContentLost = { [weak self] in
-      self?.displayed = nil
-      self?.failed("The canvas web content stopped.")
-    }
+    browser.onContentLost = { [weak self] lost in self?.recoverWebContent(lost) }
 
     stopObserving = source.observeRevisions(for: pane) { [weak self] revision, reset in
       self?.request(revision, reset: reset)
@@ -241,9 +253,8 @@ final class CanvasView: NSView, PaneContent {
   func request(_ revision: UInt64, reset: Bool = false) {
     guard !closed else { return }
     if reset {
-      attachment &+= 1
-      displayed = nil
-      hideBrowser()
+      processRecovery = nil
+      invalidateDocument()
     } else if let latest, revision <= latest {
       return
     }
@@ -251,11 +262,37 @@ final class CanvasView: NSView, PaneContent {
     fetchIfIdle()
   }
 
+  private func recoverWebContent(_ lost: CanvasDocumentVersion) {
+    guard !closed, lost.generation == generation, let revision = latest else { return }
+    invalidateDocument()
+    if lost.revision == revision {
+      if let recovery = processRecovery, recovery.revision == revision,
+        recovery.loadedAt.map({ $0.duration(to: now()) < .seconds(30) }) ?? true
+      {
+        processRecovery?.exhausted = true
+        failed("The canvas web content stopped.")
+        return
+      }
+      processRecovery = ProcessRecovery(revision: revision)
+    }
+    errorLabel.isHidden = true
+    fetchIfIdle()
+  }
+
+  private func invalidateDocument() {
+    generation &+= 1
+    displayed = nil
+    hideBrowser()
+  }
+
   private func fetchIfIdle() {
     guard !closed, work == nil, let revision = latest else { return }
+    if let processRecovery, processRecovery.revision == revision, processRecovery.exhausted {
+      return
+    }
     let source = self.source
     let pane = self.pane
-    let attachment = self.attachment
+    let generation = self.generation
     let started = ContinuousClock.now
     let fetch = Task.detached { try await source.page(for: pane, revision: revision) }
     work = Task { [weak self] in
@@ -265,20 +302,20 @@ final class CanvasView: NSView, PaneContent {
         fetch.cancel()
       }
       guard let self, !Task.isCancelled else { return }
-      await self.render(result, requested: revision, attachment: attachment, started: started)
+      await self.render(result, requested: revision, generation: generation, started: started)
     }
   }
 
   private func render(
-    _ result: Result<CanvasPage, any Error>, requested: UInt64, attachment: UInt64,
+    _ result: Result<CanvasPage, any Error>, requested: UInt64, generation: UInt64,
     started: ContinuousClock.Instant
   ) async {
     var handled = requested
     defer {
       work = nil
-      if self.attachment != attachment || (latest.map { $0 > handled } ?? false) { fetchIfIdle() }
+      if self.generation != generation || (latest.map { $0 > handled } ?? false) { fetchIfIdle() }
     }
-    guard self.attachment == attachment else { return }
+    guard self.generation == generation else { return }
     guard case .success(let page) = result, page.revision >= requested else {
       if latest == requested { failed("Could not read the canvas page.") }
       return
@@ -288,27 +325,33 @@ final class CanvasView: NSView, PaneContent {
     handled = page.revision
 
     let scroll = displayed?.kind == page.kind ? await browser.scrollPosition() : nil
-    guard isLatest(page.revision, attachment: attachment) else { return }
+    guard isLatest(page.revision, generation: generation) else { return }
     do {
       try await browser.prepare(page.policy)
     } catch {
-      if isLatest(page.revision, attachment: attachment) {
+      if isLatest(page.revision, generation: generation) {
         failed("Could not install the canvas content rules.")
       }
       return
     }
-    guard isLatest(page.revision, attachment: attachment) else { return }
+    guard isLatest(page.revision, generation: generation) else { return }
     updateZoom()
     do {
-      try await browser.load(page)
+      try await browser.load(page, generation: generation)
     } catch {
-      if isLatest(page.revision, attachment: attachment) {
+      if isLatest(page.revision, generation: generation) {
         failed("Could not display the canvas page.")
       }
       return
     }
-    guard !closed, self.attachment == attachment else { return }
+    guard !closed, self.generation == generation else { return }
 
+    if processRecovery?.revision == page.revision {
+      // WebKit can finish navigation before it decodes or paints everything in the page.
+      processRecovery?.loadedAt = now()
+    } else {
+      processRecovery = nil
+    }
     // Keep track of what WebKit displayed even if another revision arrived during navigation.
     displayed = (page.revision, page.kind, page.policy)
     browser.update(appearance: style, scrollTo: scroll)
@@ -320,7 +363,7 @@ final class CanvasView: NSView, PaneContent {
     } else if let title = page.title {
       updateTitle(title)
     }
-    guard isLatest(page.revision, attachment: attachment) else { return }
+    guard isLatest(page.revision, generation: generation) else { return }
     let duration = started.duration(to: .now).components
     Core.info(
       "canvas.loaded",
@@ -332,8 +375,8 @@ final class CanvasView: NSView, PaneContent {
       ])
   }
 
-  private func isLatest(_ revision: UInt64, attachment: UInt64) -> Bool {
-    !closed && self.attachment == attachment && latest == revision
+  private func isLatest(_ revision: UInt64, generation: UInt64) -> Bool {
+    !closed && self.generation == generation && latest == revision
   }
 
   func apply(canvas info: CanvasInfo) {

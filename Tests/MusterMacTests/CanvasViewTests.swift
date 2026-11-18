@@ -450,19 +450,20 @@ struct CanvasViewTests {
     #expect(rules?.identifier == "canvas")
   }
 
-  @Test("a stopped web process reloads the current revision once")
-  func reloadsAfterContentLoss() async throws {
+  @Test("each WebKit process loss gets one reload attempt", arguments: [false, true])
+  func reloadsAfterContentLoss(finishBeforeCrash: Bool) async throws {
     let recorder = seam(RecordingDispatcher())
     let source = TestCanvasSource()
     let browser = TestCanvasBrowser()
-    let canvas = makeCanvas(source, browser)
+    var time = ContinuousClock.now
+    let canvas = makeCanvas(source, browser, now: { time })
     defer { canvas.tearDown() }
 
     await until("the first canvas request") { source.requested == [1] }
     try source.answer(1, with: page(1))
     await until("the canvas to display the first page") { canvas.title == "Page 1" }
 
-    browser.onContentLost?()
+    browser.loseContent()
     #expect(browser.view.isHidden)
     #expect(!recorder.requests.contains { $0.logRecord.event == "canvas.failed" })
     await until("the current page to be requested again") { source.requested == [1, 1] }
@@ -470,23 +471,72 @@ struct CanvasViewTests {
     await until("the recovered page to be shown") { !browser.view.isHidden }
     #expect(browser.loads.map(\.revision) == [1, 1])
 
-    browser.onContentLost?()
+    time = time.advanced(by: .seconds(31))
+    browser.holdNavigation = !finishBeforeCrash
+    browser.loseContent()
+    await until("a later crash to get its own recovery") { source.requested == [1, 1, 1] }
+    try source.answer(1, with: page(1))
+    if finishBeforeCrash {
+      await until("the retry to render") { !browser.view.isHidden }
+    } else {
+      await until("the retry to reach WebKit") { browser.isLoading }
+    }
+    browser.loseContent()
+    if browser.isLoading { try browser.finishNavigation() }
     #expect(browser.view.isHidden)
     #expect(recorder.requests.contains { $0.logRecord.event == "canvas.failed" })
     source.notify(2)
-    await until("the next revision to be fetched") { source.requested == [1, 1, 2] }
+    await until("the next revision to be fetched") { source.requested == [1, 1, 1, 2] }
     try source.answer(2, with: page(2))
     await until("the next revision to replace the error") { canvas.title == "Page 2" }
     #expect(!browser.view.isHidden)
   }
 
+  @Test("a previous page's crash does not spend the next page's retry", arguments: [false, true])
+  func preservesRetryAfterEarlierContentLoss(reset: Bool) async throws {
+    let source = TestCanvasSource()
+    let browser = TestCanvasBrowser()
+    let canvas = makeCanvas(source, browser)
+    defer { canvas.tearDown() }
+
+    await until("the first canvas request") { source.requested == [1] }
+    try source.answer(1, with: page(1))
+    await until("the initial page to display") { canvas.title == "Page 1" }
+
+    let next: UInt64 = reset ? 1 : 2
+    source.notify(next, reset: reset)
+    await until("the next document request") { source.requested == [1, next] }
+    browser.loseContent()
+    try source.answer(next, with: page(next))
+    if !reset {
+      await until("the dead browser's pending request to be replaced") {
+        source.requested == [1, next, next]
+      }
+      try source.answer(next, with: page(next))
+    }
+    await until("the replacement page to display") {
+      browser.loads.count == 2 && !browser.view.isHidden
+    }
+
+    let requested = source.requested
+    browser.loseContent()
+    await until("the replacement page to get its own retry") {
+      source.requested == requested + [next]
+    }
+    try source.answer(next, with: page(next))
+    await until("the retried page to display") {
+      browser.loads.count == 3 && !browser.view.isHidden
+    }
+  }
+
   private func makeCanvas(
     _ source: TestCanvasSource, _ browser: TestCanvasBrowser,
+    now: @escaping () -> ContinuousClock.Instant = { .now },
     open: @escaping (URL) -> Void = { _ in }
   ) -> CanvasView {
     CanvasView(
       pane: canvasPane, revision: 1, title: "Opening", source: source,
-      terminalAppearance: Appearance(), browser: browser, openLink: open)
+      terminalAppearance: Appearance(), browser: browser, now: now, openLink: open)
   }
 }
 
@@ -553,7 +603,8 @@ private final class TestCanvasBrowser: CanvasBrowser {
   var focusTarget: NSView? { installed == nil ? nil : responder }
   var onLink: ((UInt64, URL) -> Void)?
   var onBlockedNavigation: ((URL?) -> Void)?
-  var onContentLost: (() -> Void)?
+  var onContentLost: ((CanvasDocumentVersion) -> Void)?
+  private var version: CanvasDocumentVersion?
 
   var holdRules = false
   private var ruleReply: CheckedContinuation<Void, any Error>?
@@ -592,16 +643,23 @@ private final class TestCanvasBrowser: CanvasBrowser {
     }
   }
 
-  func load(_ page: CanvasPage) async throws {
+  func load(_ page: CanvasPage, generation: UInt64) async throws {
     #expect(installed == page.policy || prepared == page.policy)
     installed = page.policy
     loads.append(page)
+    version = CanvasDocumentVersion(revision: page.revision, generation: generation)
     if holdNavigation {
       holdNavigation = false
       try await withCheckedThrowingContinuation { (reply: CheckedContinuation<Void, any Error>) in
         pendingNavigation = reply
       }
     }
+  }
+
+  func loseContent() {
+    guard let version else { return }
+    self.version = nil
+    onContentLost?(version)
   }
 
   func finishNavigation() throws {

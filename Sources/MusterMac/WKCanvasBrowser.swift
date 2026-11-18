@@ -17,7 +17,7 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
   }
 
   private struct Document {
-    let revision: UInt64
+    let version: CanvasDocumentVersion
     let token = UUID().uuidString
   }
 
@@ -54,7 +54,7 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
   var focusTarget: NSView? { webView }
   var onLink: ((UInt64, URL) -> Void)?
   var onBlockedNavigation: ((URL?) -> Void)?
-  var onContentLost: (() -> Void)?
+  var onContentLost: ((CanvasDocumentVersion) -> Void)?
 
   private static let linkMessage = "musterCanvasLink"
 
@@ -121,7 +121,7 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
     return String(decoding: json, as: UTF8.self)
   }
 
-  func load(_ page: CanvasPage) async throws {
+  func load(_ page: CanvasPage, generation: UInt64) async throws {
     guard pending == nil else { throw Failure.navigationFailed }
     try Task.checkCancellation()
     if policy != page.policy {
@@ -132,7 +132,7 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
       self.prepared = nil
     }
     guard let webView else { throw Failure.rulesUnavailable }
-    let document = Document(revision: page.revision)
+    let document = Document(version: .init(revision: page.revision, generation: generation))
     let controller = webView.configuration.userContentController
     controller.removeAllUserScripts()
     controller.addUserScript(
@@ -199,7 +199,7 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
       let body = message.body as? [String: String], body["token"] == displayed.token,
       let raw = body["url"], let url = URL(string: raw)
     else { return }
-    onLink?(displayed.revision, url)
+    onLink?(displayed.version.revision, url)
   }
 
   func webView(
@@ -250,12 +250,11 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
 
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
     guard webView === self.webView else { return }
-    let hadPendingLoad = pending != nil
-    if let pending {
-      takeLoad(pending.navigation)?.completion.resume(throwing: Failure.navigationFailed)
-    }
+    let interrupted = pending.flatMap { takeLoad($0.navigation) }
+    let lost = interrupted?.document ?? displayed
     displayed = nil
-    if !hadPendingLoad { onContentLost?() }
+    if let lost { onContentLost?(lost.version) }
+    interrupted?.completion.resume(throwing: Failure.navigationFailed)
   }
 
   func webView(
