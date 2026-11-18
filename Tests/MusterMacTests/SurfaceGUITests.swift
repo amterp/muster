@@ -1021,9 +1021,16 @@ extension SurfaceGUITests {
   @Test("a canvas leaves shortcuts to AppKit and enables Copy for selected text", .ownsTheSeam)
   func aCanvasHandlesReadingKeys() async throws {
     let fixture = try await CanvasGUI(
-      html: "<p>Copy from the canvas</p><div style='height: 2000px'></div>")
+      html: """
+        <p>Copy from the canvas</p>
+        <img id="sample" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+        <div style="height: 2000px"></div>
+        """)
     defer { fixture.close() }
     let (window, canvas, browser, webView) = fixture.views
+    let imageWidth = try await fixture.javascript(
+      "return document.querySelector('#sample').naturalWidth;")
+    #expect(imageWidth as? Int == 1)
     var routed: [NSEvent.EventType] = []
     canvas.sendKey = { event in
       routed.append(event.type)

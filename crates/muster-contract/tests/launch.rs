@@ -524,7 +524,7 @@ fn a_canvas_renders_and_updates_while_hidden() {
     assert_eq!(
         field(load, "bytes"),
         Some(html.len().to_string()),
-        "WebKit did not receive the complete HTML document that includes the image URLs"
+        "the shell fetched a different HTML document than the one written by the CLI"
     );
     assert!(
         !values(&records, "surface.create", "pane").contains(&id),
