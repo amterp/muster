@@ -11,6 +11,7 @@ use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
 use muster_core::attention::Asker;
+use muster_core::canvas::{self, CanvasDocument, CanvasDocumentKind, CanvasImageType};
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, Step, View};
 use muster_core::config::{self, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
@@ -22,7 +23,9 @@ use muster_core::input::{
     check_sent_keys, composition_outcome,
 };
 use muster_core::intent::Refusal;
-use muster_core::intent::{BackendIntent, Branch, Directory, Maker, Outcome, Side};
+use muster_core::intent::{
+    BackendIntent, Branch, Directory, Maker, NewPane, NewPaneBody, Outcome, PanePlacement, Side,
+};
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::pane_text::{self, Scope, rows_of};
 use muster_core::problems::Severity;
@@ -186,6 +189,7 @@ fn leaves_the_conversation(payload: &request::Payload, origin: Origin) -> bool {
         | request::Payload::FocusPaneAt(_)
         | request::Payload::PressNumberedChord(_)
         | request::Payload::FocusHistory(_) => true,
+        request::Payload::OpenCanvas(open) => open.take_focus && origin == Origin::Window,
         request::Payload::CreateTab(made) => made.take_focus && origin == Origin::Window,
         request::Payload::ReopenPane(reopen) => reopen.take_focus && origin == Origin::Window,
         request::Payload::SplitPane(made) => made.take_focus && origin == Origin::Window,
@@ -299,12 +303,10 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         request::Payload::Wheel(wheel) => wheel_over(&wheel),
         request::Payload::Mouse(mouse) => mouse_over(&mouse),
         request::Payload::SplitPane(split) => split_pane(window, &split),
-        request::Payload::OpenCanvas(_)
-        | request::Payload::WriteCanvas(_)
-        | request::Payload::ReadCanvas(_)
-        | request::Payload::CanvasPage(_) => {
-            Response::failure("canvas documents are not available yet")
-        }
+        request::Payload::OpenCanvas(open) => open_canvas(window, open, from_pane),
+        request::Payload::WriteCanvas(write) => write_canvas(window, write, from_pane),
+        request::Payload::ReadCanvas(read) => read_canvas(window, &read, from_pane),
+        request::Payload::CanvasPage(page) => canvas_page(&page),
         request::Payload::RemoveFromTab(remove) => {
             answer(session::remove_from_tab(window, &PaneId::new(&remove.pane_id)))
         }
@@ -1603,19 +1605,27 @@ fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
     if create.hidden && create.take_focus {
         return Response::failure(muster_core::making::HIDDEN_AND_FOCUSED);
     }
-    let making = Making::of(&create.cwd, &create.run, &create.name, create.quiet, None);
+    let new = new_terminal(&create.cwd, &create.run, &create.name, create.quiet, None);
     let keyboard = if create.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
 
+    make_tab(window, &create.daemon_id, &create.pane_id, keyboard, new, create.hidden)
+}
+
+fn make_tab(
+    window: WindowId,
+    daemon_id: &str,
+    pane_id: &str,
+    keyboard: Keyboard,
+    new: NewPane,
+    hidden: bool,
+) -> Response {
     // A window showing nothing, answered before anything else because every rule below starts
     // from a machine and here nobody has named one - not the request, and not the keyboard.
     // ⌘T is the one request that can refill such a window, so Muster picks the machine: the
     // first local daemon, and any daemon at all when none of them is local. Launch makes the
     // same choice and stops at local, because filling an empty window is Muster's own idea and
     // making things on somebody else's machine uninvited is a bigger claim.
-    if create.pane_id.is_empty()
-        && create.daemon_id.is_empty()
-        && session::focused_daemon(window).is_none()
-    {
+    if pane_id.is_empty() && daemon_id.is_empty() && session::focused_daemon(window).is_none() {
         let chosen =
             session::first_local_daemon(window).or_else(|| session::first_attached_daemon(window));
         let Some(daemon) = chosen else {
@@ -1625,30 +1635,31 @@ fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
                  daemon.unavailable records above say which, if a daemon was meant to be there.",
             );
         };
-        return open_a_tab(window, &daemon, None, keyboard, making, create.hidden);
+        return open_a_tab(window, &daemon, None, keyboard, new, hidden);
     }
 
-    let target = match target(window, &create.daemon_id, &create.pane_id) {
+    let target = match target(window, daemon_id, pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
-    open_a_tab(window, &target.daemon, target.pane.as_ref(), keyboard, making, create.hidden)
+    if !target.held && matches!(new.body, NewPaneBody::Canvas { .. }) {
+        return Response::failure(format!(
+            "no daemon this window follows holds the canvas tab's source pane {pane_id}. \
+             `muster window` lists the panes it holds."
+        ));
+    }
+    open_a_tab(window, &target.daemon, target.pane.as_ref(), keyboard, new, hidden)
 }
 
-/// What a request making a pane asks of the pane itself, beyond where it goes.
-struct Making {
-    cwd: Option<String>,
-    run: Option<String>,
-    name: Option<String>,
-    quiet: bool,
-    maker: Option<Maker>,
-}
-
-impl Making {
-    /// From a request's fields, where empty means unsaid.
-    fn of(cwd: &str, run: &str, name: &str, quiet: bool, maker: Option<Maker>) -> Making {
-        let said = |text: &str| (!text.is_empty()).then(|| text.to_string());
-        Making { cwd: said(cwd), run: said(run), name: said(name), quiet, maker }
+fn new_terminal(cwd: &str, run: &str, name: &str, quiet: bool, maker: Option<Maker>) -> NewPane {
+    NewPane {
+        name: (!name.is_empty()).then(|| name.to_string()),
+        quiet,
+        body: NewPaneBody::Terminal {
+            cwd: (!cwd.is_empty()).then(|| Directory::Named(cwd.to_string())),
+            run: (!run.is_empty()).then(|| run.to_string()),
+            maker,
+        },
     }
 }
 
@@ -1685,13 +1696,14 @@ fn open_a_tab(
     daemon: &DaemonId,
     from: Option<&PaneId>,
     keyboard: Keyboard,
-    making: Making,
+    mut new: NewPane,
     hidden: bool,
 ) -> Response {
-    let Making { cwd, run, name, quiet, maker } = making;
-    let cwd = cwd
-        .map(Directory::Named)
-        .or_else(|| from.and_then(|pane| session::cwd_of(daemon, pane)).map(Directory::Inherited));
+    if let NewPaneBody::Terminal { cwd, .. } = &mut new.body
+        && cwd.is_none()
+    {
+        *cwd = from.and_then(|pane| session::cwd_of(daemon, pane)).map(Directory::Inherited);
+    }
     let keyboard = if hidden {
         Keyboard::StaysPut
     } else if session::focused_daemon(window).is_none() {
@@ -1699,8 +1711,10 @@ fn open_a_tab(
     } else {
         keyboard
     };
-    let intent =
-        BackendIntent::CreateTab { tab: session::mint_tab(), cwd, run, name, quiet, hidden, maker };
+    let intent = BackendIntent::CreatePane {
+        placement: PanePlacement::NewTab { tab: session::mint_tab(), hidden },
+        new,
+    };
     relayed(submit(window, daemon, &intent, keyboard))
 }
 
@@ -2203,8 +2217,8 @@ fn upgrade(window: WindowId) -> Response {
              [[daemon]] block that has no host.",
         );
     };
-    let making = Making { cwd: None, run: Some(command), name: None, quiet: false, maker: None };
-    let response = open_a_tab(window, &daemon, None, Keyboard::Follows, making, false);
+    let new = new_terminal("", &command, "", false, None);
+    let response = open_a_tab(window, &daemon, None, Keyboard::Follows, new, false);
     if let Some(response::Payload::Made(made)) = &response.payload
         && let Some(tab) = session::tab_of(&daemon, &PaneId::new(&made.pane_id))
         && let Err(refusal) = session::rename_tab(window, &tab, Some(UPGRADE_TAB))
@@ -2586,56 +2600,63 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
         Ok(maker) => maker,
         Err(refusal) => return *refusal,
     };
-    let making = Making::of(&split.cwd, &split.run, &split.name, split.quiet, maker);
-
+    let new = new_terminal(&split.cwd, &split.run, &split.name, split.quiet, maker);
     let target = match target(window, &split.daemon_id, &split.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
-    let (daemon, pane) = (target.daemon.clone(), target.pane.clone());
-    let onto = &split.new_pane_daemon_id;
+    make_beside(
+        window,
+        &target,
+        &split.new_pane_daemon_id,
+        side,
+        split.ratio,
+        keyboard,
+        new,
+        split.hidden,
+    )
+}
+
+#[expect(clippy::too_many_arguments, reason = "one split placement for both pane kinds")]
+fn make_beside(
+    window: WindowId,
+    target: &Target,
+    onto: &str,
+    side: Side,
+    ratio: f32,
+    keyboard: Keyboard,
+    new: NewPane,
+    hidden: bool,
+) -> Response {
+    let (daemon, pane) = (&target.daemon, target.pane.as_ref());
     // A pane made hidden is not a split: no window shows it, so it goes in a tab of its own,
     // starting where the split pane is, or on the machine named for it with nothing to inherit.
-    if split.hidden {
+    if hidden {
         if !onto.is_empty() && onto != daemon.as_str() {
             let onto = DaemonId::new(onto);
             if !session::is_following(&onto) {
                 return no_such_daemon(window, &onto);
             }
-            return open_a_tab(window, &onto, None, keyboard, making, true);
+            return open_a_tab(window, &onto, None, keyboard, new, true);
         }
-        return open_a_tab(window, &daemon, pane.as_ref(), keyboard, making, true);
+        return open_a_tab(window, daemon, pane, keyboard, new, true);
     }
     // A machine showing nothing has nothing to split, and what was asked for is a pane on it.
     // Refusing here would leave `--daemon` unable to reach the machine it is most needed for -
     // the one holding no panes, which is every devenv on the day it is attached.
     let Some(pane) = pane else {
-        return open_a_tab(window, &daemon, None, keyboard, making, false);
+        return open_a_tab(window, daemon, None, keyboard, new, false);
     };
+    // Zero is proto3's unset, so the daemon chooses the ratio.
+    let ratio = (ratio > 0.0).then_some(ratio);
     if !onto.is_empty() && onto != daemon.as_str() {
-        return split_onto(window, &DaemonId::new(onto), &pane, side, keyboard, split, making);
+        return split_onto(window, &DaemonId::new(onto), pane, side, ratio, keyboard, new);
     }
-    let Making { cwd, run, name, quiet, maker } = making;
-    placed(
-        submit(
-            window,
-            &daemon,
-            &BackendIntent::SplitPane {
-                pane,
-                side,
-                // Zero is proto3's unset, and a divider at the very edge is not a thing anyone
-                // asks for, so the two are safely the same answer here.
-                ratio: (split.ratio > 0.0).then_some(split.ratio),
-                cwd,
-                run,
-                name,
-                quiet,
-                maker,
-            },
-            keyboard,
-        ),
-        &target,
-    )
+    let intent = BackendIntent::CreatePane {
+        placement: PanePlacement::Beside { pane: pane.clone(), side, ratio },
+        new,
+    };
+    placed(submit(window, daemon, &intent, keyboard), target)
 }
 
 /// Puts a new pane on another machine beside the pane being split, on the side asked for,
@@ -2654,9 +2675,9 @@ fn split_onto(
     onto: &DaemonId,
     beside: &PaneId,
     side: Side,
+    ratio: Option<f32>,
     keyboard: Keyboard,
-    split: &proto::SplitPane,
-    making: Making,
+    new: NewPane,
 ) -> Response {
     if !session::is_following(onto) {
         return no_such_daemon(window, onto);
@@ -2668,31 +2689,170 @@ fn split_onto(
              name came from an older window - `muster window` lists the panes this one has."
         ));
     };
-    let Making { cwd, run, name, quiet, maker } = making;
-    let ratio = (split.ratio > 0.0).then_some(split.ratio);
     let from = session::daemon_holding(beside)
         .map(|daemon| session::Beside { pane: PaneKey::new(&daemon, beside), side });
     if session::tree_cannot_place(window, &tab, onto).is_none() {
         let spot = spanning::Spot::Beside { pane: beside.clone(), side, ratio };
-        let arriving = session::Arriving::Made {
-            cwd,
-            run,
-            name,
-            quiet,
-            maker,
-            keyboard,
-            split: from.as_ref(),
-        };
+        let arriving = session::Arriving::Made { new, keyboard, split: from.as_ref() };
         return relayed(session::arrive(window, onto, &tab, spot, &arriving).map(made_or_ok));
     }
-    let intent = if let Some(pane) = session::pane_in_part(window, onto, &tab) {
-        BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet, maker }
+    let placement = if let Some(pane) = session::pane_in_part(window, onto, &tab) {
+        PanePlacement::Beside { pane, side, ratio }
     } else {
-        // Every part of a tab is hidden or not alike, so a part made from a hidden pane is too.
         let hidden = session::tab_is_hidden(&tab);
-        BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker }
+        PanePlacement::JoinTab { tab, hidden }
     };
+    let intent = BackendIntent::CreatePane { placement, new };
     relayed(session::submit_from(window, onto, &intent, keyboard, from.as_ref()).map(made_or_ok))
+}
+
+fn open_canvas(window: WindowId, open: proto::OpenCanvas, from: &str) -> Response {
+    use proto::open_canvas::Placement;
+    let document = match canvas_document(open.document) {
+        Ok(document) => document,
+        Err(detail) => return Response::failure(detail),
+    };
+    let new = NewPane {
+        name: wanted_name(&open.name),
+        body: NewPaneBody::Canvas {
+            document,
+            opened_by: (!from.is_empty()).then(|| PaneId::new(from)),
+        },
+        ..NewPane::default()
+    };
+    let keyboard = if open.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
+    match open.placement {
+        Some(Placement::Beside(at)) => {
+            let Some(side) = Side::parse(&at.side) else {
+                return Response::failure(format!("unknown canvas split side {:?}", at.side));
+            };
+            let target = match target(window, &at.daemon_id, &at.pane_id) {
+                Ok(target) => target,
+                Err(refusal) => return *refusal,
+            };
+            make_beside(
+                window,
+                &target,
+                &at.new_pane_daemon_id,
+                side,
+                at.ratio,
+                keyboard,
+                new,
+                false,
+            )
+        }
+        Some(Placement::NewTab(at)) => {
+            make_tab(window, &at.daemon_id, &at.pane_id, keyboard, new, false)
+        }
+        None => Response::failure("a canvas needs a split or tab placement"),
+    }
+}
+
+fn canvas_document(
+    document: Option<proto::CanvasDocument>,
+) -> Result<CanvasDocument, &'static str> {
+    let document = document.ok_or("a canvas needs a document")?;
+    let kind = match document.kind() {
+        proto::CanvasKind::Markdown => CanvasDocumentKind::Markdown,
+        proto::CanvasKind::Html => CanvasDocumentKind::Html,
+        proto::CanvasKind::Image => CanvasDocumentKind::Image(
+            CanvasImageType::from_media_type(&document.image_type)
+                .ok_or("a canvas image needs a supported media type")?,
+        ),
+        proto::CanvasKind::Unspecified => return Err("a canvas document needs a kind"),
+    };
+    if !matches!(kind, CanvasDocumentKind::Image(_)) && !document.image_type.is_empty() {
+        return Err("a Markdown or HTML canvas has no image type");
+    }
+    Ok(CanvasDocument { kind, title: document.title, bytes: document.body })
+}
+
+fn original_canvas(document: CanvasDocument) -> proto::CanvasDocument {
+    let kind = convert::canvas_kind(document.kind.into());
+    let image_type = match document.kind {
+        CanvasDocumentKind::Image(image) => image.media_type().into(),
+        _ => String::new(),
+    };
+    proto::CanvasDocument {
+        kind: kind.into(),
+        image_type,
+        title: document.title,
+        body: document.bytes,
+    }
+}
+
+fn canvas_target(
+    window: WindowId,
+    daemon: &str,
+    pane: &str,
+    from: &str,
+) -> Result<Target, Box<Response>> {
+    if !pane.is_empty() {
+        return target(window, daemon, pane);
+    }
+    if !daemon.is_empty() && !session::is_following(&DaemonId::new(daemon)) {
+        return Err(Box::new(no_such_daemon(window, &DaemonId::new(daemon))));
+    }
+    session::canvas_opened_by(from, daemon)
+        .map(|key| Target { daemon: key.daemon, pane: Some(key.pane), held: true })
+        .map_err(|detail| Box::new(Response::failure(detail)))
+}
+
+fn write_canvas(window: WindowId, write: proto::WriteCanvas, from: &str) -> Response {
+    let document = match canvas_document(write.document) {
+        Ok(document) => document,
+        Err(detail) => return Response::failure(detail),
+    };
+    let target = match canvas_target(window, &write.daemon_id, &write.pane_id, from) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let pane = target.pane.as_ref().expect("a canvas target always resolves a pane");
+    let written = session::write_canvas(&target.daemon, pane, document).map(|revision| Response {
+        payload: Some(response::Payload::CanvasWritten(proto::CanvasWritten { revision })),
+    });
+    placed(written, &target)
+}
+
+fn read_canvas(window: WindowId, read: &proto::ReadCanvas, from: &str) -> Response {
+    let target = match canvas_target(window, &read.daemon_id, &read.pane_id, from) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let pane = target.pane.as_ref().expect("a canvas target always resolves a pane");
+    let read = session::read_canvas(&target.daemon, pane).map(|read| Response {
+        payload: Some(response::Payload::CanvasRead(proto::CanvasRead {
+            revision: read.revision,
+            document: Some(original_canvas(read.document)),
+        })),
+    });
+    placed(read, &target)
+}
+
+fn canvas_page(page: &proto::CanvasPage) -> Response {
+    if page.daemon_id.is_empty() || page.pane_id.is_empty() {
+        return Response::failure("a canvas page needs its daemon and pane IDs");
+    }
+    let read = session::read_canvas(&DaemonId::new(&page.daemon_id), &PaneId::new(&page.pane_id));
+    relayed(read.and_then(|read| {
+        let page = canvas::render(&read.document)
+            .map_err(|_| Refusal::Declined("canvas text must be UTF-8".into()))?;
+        Ok(Response {
+            payload: Some(response::Payload::CanvasRendered(proto::CanvasRendered {
+                revision: read.revision,
+                kind: convert::canvas_kind(read.document.kind.into()).into(),
+                html: page.html,
+                load_schemes: page.policy.load_schemes.iter().map(ToString::to_string).collect(),
+                external_link_schemes: page
+                    .policy
+                    .external_link_schemes
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                scripts_enabled: page.policy.scripts_enabled,
+            })),
+        })
+    }))
 }
 
 /// Types text into a pane and presses keys in it, named rather than focused.

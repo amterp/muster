@@ -23,11 +23,16 @@ pub(crate) type Withheld = Arc<dyn Fn(&proto::Request) -> bool + Send + Sync>;
 pub(crate) struct DaemonPump {
     withheld: Withheld,
     holding: Holding,
+    protocol_minor: Option<u32>,
 }
 
 impl DaemonPump {
+    pub(crate) fn saying_protocol_minor(minor: u32) -> Self {
+        Self { protocol_minor: Some(minor), ..Self::new(Arc::new(|_| false), Holding::Forever) }
+    }
+
     pub(crate) fn new(withheld: Withheld, holding: Holding) -> DaemonPump {
-        DaemonPump { withheld, holding }
+        DaemonPump { withheld, holding, protocol_minor: None }
     }
 }
 
@@ -71,7 +76,10 @@ impl Pump for DaemonPump {
         });
 
         let mut welcomed = false;
-        while let Ok(Some(frame)) = read_frame_or_end(&mut from_daemon, LARGEST_MESSAGE) {
+        while let Ok(Some(mut frame)) = read_frame_or_end(&mut from_daemon, LARGEST_MESSAGE) {
+            if !welcomed && let Some(minor) = self.protocol_minor {
+                frame = with_protocol_minor(frame, minor);
+            }
             if welcomed && withholds(&frame, &ids) {
                 match &self.holding {
                     Holding::Forever => continue,
@@ -105,6 +113,16 @@ impl Pump for DaemonPump {
         }
         let _ = to_client.lock().expect("the relay's writer").shutdown(Shutdown::Both);
     }
+}
+
+fn with_protocol_minor(frame: Vec<u8>, minor: u32) -> Vec<u8> {
+    let Ok(mut hello) = proto::HelloAnswer::decode(frame.as_slice()) else { return frame };
+    let Some(proto::hello_answer::Answer::Welcome(welcome)) = &mut hello.answer else {
+        return frame;
+    };
+    let Some(protocol) = &mut welcome.protocol else { return frame };
+    protocol.minor = minor;
+    hello.encode_to_vec()
 }
 
 /// Whether a frame from the daemon is the answer to a request being withheld.

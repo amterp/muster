@@ -18,6 +18,7 @@ use muster_core::AgentState;
 use muster_core::attention::{
     Alert, Asker, Attend, Attention, GroupKey, HumanNotice, Note, Noticed, Notifications,
 };
+use muster_core::canvas::{CanvasDocument, CanvasRead};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
@@ -32,8 +33,8 @@ use muster_core::focus_history::FocusHistory;
 use muster_core::helpers::{MakerHearing, quiet_in_effect};
 use muster_core::input::{ImageInput, InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Branch, Grid, InTree, Maker, MoveDestination, Outcome, Refusal,
-    Side,
+    BackendChannel, BackendIntent, Branch, Grid, InTree, Maker, MoveDestination, NewPane, Outcome,
+    PanePlacement, Refusal, Side,
 };
 use muster_core::making;
 use muster_core::message_groups::{self, MessageGroup};
@@ -3077,10 +3078,13 @@ pub(crate) fn submit_from(
         // have moved.
         let source = match intent {
             _ if split.is_some() => split.map(|split| split.pane.clone()),
-            BackendIntent::SplitPane { pane, .. } => Some(PaneKey::new(daemon, pane)),
-            BackendIntent::CreateTab { .. } | BackendIntent::JoinTab { .. } => {
-                session.keyboard_key(window)
+            BackendIntent::CreatePane { placement: PanePlacement::Beside { pane, .. }, .. } => {
+                Some(PaneKey::new(daemon, pane))
             }
+            BackendIntent::CreatePane {
+                placement: PanePlacement::NewTab { .. } | PanePlacement::JoinTab { .. },
+                ..
+            } => session.keyboard_key(window),
             _ => None,
         };
         // Which region this is about, for the keyboard afterwards. None is an answer rather
@@ -3091,9 +3095,14 @@ pub(crate) fn submit_from(
             // pane every daemon holds, and the ones worth naming are the ones no region is
             // showing. Arranging the list is the same: the rows worth dragging are very often
             // the ones no region is showing. A new tab has no region until it exists.
-            BackendIntent::CreateTab { .. }
-            | BackendIntent::JoinTab { .. }
-            | BackendIntent::CreateInTree { .. }
+            BackendIntent::CreatePane {
+                placement:
+                    PanePlacement::NewTab { .. }
+                    | PanePlacement::JoinTab { .. }
+                    | PanePlacement::InTree { .. },
+                ..
+            }
+            | BackendIntent::WriteCanvas { .. }
             | BackendIntent::RenamePane { .. }
             | BackendIntent::CompactPane { .. }
             | BackendIntent::ClearPane { .. }
@@ -3123,7 +3132,9 @@ pub(crate) fn submit_from(
             // Closing deliberately stays below. Its argument is the same on paper and its
             // risk is not: it destroys something, and `muster docs limits` already singles
             // it out as the one command whose default destroys the pane it runs in.
-            BackendIntent::SplitPane { pane, .. } => session.region_holding(window, daemon, pane),
+            BackendIntent::CreatePane { placement: PanePlacement::Beside { pane, .. }, .. } => {
+                session.region_holding(window, daemon, pane)
+            }
             BackendIntent::ClosePane { pane, .. }
             | BackendIntent::ResizePane { pane, .. }
             | BackendIntent::ZoomPane { pane } => Some(
@@ -3208,12 +3219,18 @@ pub(crate) fn submit_from(
         // tab. The mirror already holds it, since a daemon's events arrive before its answer,
         // but the reconcile behind them runs on the daemon's notice thread and may not have
         // yet - and without the region the keyboard could not follow the new pane.
-        if matches!(intent, BackendIntent::JoinTab { .. } | BackendIntent::CreateInTree { .. }) {
+        if matches!(
+            intent,
+            BackendIntent::CreatePane {
+                placement: PanePlacement::JoinTab { .. } | PanePlacement::InTree { .. },
+                ..
+            }
+        ) {
             session.reconcile(daemon);
         }
         let composition = &mut session.windows[window].composition;
         let region = region.or_else(|| match intent {
-            BackendIntent::JoinTab { tab, .. } => {
+            BackendIntent::CreatePane { placement: PanePlacement::JoinTab { tab, .. }, .. } => {
                 let joined = composition.region_of(daemon, tab)?;
                 // Beside the region holding the split pane rather than at the tab's end, where
                 // opening a region puts it. A tab lays its machines side by side, so up and down
@@ -3226,7 +3243,9 @@ pub(crate) fn submit_from(
                 }
                 Some(joined)
             }
-            BackendIntent::CreateInTree { at, .. } => composition.region_of(daemon, &at.tab),
+            BackendIntent::CreatePane { placement: PanePlacement::InTree { at, .. }, .. } => {
+                composition.region_of(daemon, &at.tab)
+            }
             _ => None,
         });
         if let (Some(region), Keyboard::Follows) = (region, keyboard) {
@@ -3257,7 +3276,10 @@ pub(crate) fn submit_from(
 /// Nor is a hidden tab, which no window takes.
 fn made_tab(intent: &BackendIntent) -> Option<&TabId> {
     match intent {
-        BackendIntent::CreateTab { tab, hidden: false, .. }
+        BackendIntent::CreatePane {
+            placement: PanePlacement::NewTab { tab, hidden: false },
+            ..
+        }
         | BackendIntent::ReopenPane { tab, .. }
         | BackendIntent::MovePane {
             to: MoveDestination::NewTab { tab, hidden: false, .. }, ..
@@ -7293,18 +7315,8 @@ fn write_trees(
 
 /// How a pane arrives in a tab's tree: made there, or moved in from another tab.
 pub(crate) enum Arriving<'a> {
-    Made {
-        cwd: Option<String>,
-        run: Option<String>,
-        name: Option<String>,
-        quiet: bool,
-        maker: Option<Maker>,
-        keyboard: Keyboard,
-        split: Option<&'a Beside>,
-    },
-    Moved {
-        pane: PaneId,
-    },
+    Made { new: NewPane, keyboard: Keyboard, split: Option<&'a Beside> },
+    Moved { pane: PaneId },
 }
 
 /// Puts a pane `daemon` runs into `tab` at `spot`, worked out on the tab's whole tree: the pane's
@@ -7445,15 +7457,10 @@ fn place(
     arriving: &Arriving<'_>,
 ) -> Result<Outcome, Refusal> {
     match arriving {
-        Arriving::Made { cwd, run, name, quiet, maker, keyboard, split } => {
-            let intent = BackendIntent::CreateInTree {
-                pane: pane.clone(),
-                at,
-                cwd: cwd.clone(),
-                run: run.clone(),
-                name: name.clone(),
-                quiet: *quiet,
-                maker: maker.clone(),
+        Arriving::Made { new, keyboard, split } => {
+            let intent = BackendIntent::CreatePane {
+                placement: PanePlacement::InTree { pane: pane.clone(), at },
+                new: new.clone(),
             };
             submit_from(window, daemon, &intent, *keyboard, *split)
         }
@@ -7839,6 +7846,63 @@ pub(crate) fn send_to_pane(
              own; `muster window` says whether {daemon} is connected, and sending again once it \
              is sends it once."
         ))
+    })
+}
+
+pub(crate) fn canvas_opened_by(from: &str, daemon: &str) -> Result<PaneKey, String> {
+    let session = poison::lock(&SESSION, "session");
+    let mut canvases = Vec::new();
+    let mut matches = Vec::new();
+    for (id, backend) in &session.backends {
+        if !daemon.is_empty() && id.as_str() != daemon {
+            continue;
+        }
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        for pane in mirror.panes() {
+            let Some(canvas) = &pane.canvas else { continue };
+            let name = pane.callsign.as_deref().unwrap_or(pane.id.as_str()).to_string();
+            if !from.is_empty()
+                && canvas.opened_by.as_ref().is_some_and(|pane| pane.as_str() == from)
+            {
+                matches.push((PaneKey::new(id, &pane.id), name.clone()));
+            }
+            canvases.push(name);
+        }
+    }
+    let reason = match matches.as_slice() {
+        [(key, _)] => return Ok(key.clone()),
+        [] if from.is_empty() => "this command has no opening pane".to_string(),
+        [] => format!("pane {from} has no open canvas"),
+        _ => format!("pane {from} opened multiple canvases"),
+    };
+    let mut names = if matches.is_empty() {
+        canvases
+    } else {
+        matches.into_iter().map(|(_, name)| name).collect()
+    };
+    names.sort_unstable();
+    if names.is_empty() {
+        Err(format!("{reason}. Use --pane to name a canvas"))
+    } else {
+        Err(format!("{reason}. Use --pane with one of: {}", names.join(", ")))
+    }
+}
+
+pub(crate) fn read_canvas(daemon: &DaemonId, pane: &PaneId) -> Result<CanvasRead, Refusal> {
+    channel(daemon).map_err(Refusal::Declined)?.read_canvas(pane)
+}
+
+pub(crate) fn write_canvas(
+    daemon: &DaemonId,
+    pane: &PaneId,
+    document: CanvasDocument,
+) -> Result<u64, Refusal> {
+    let channel = channel(daemon).map_err(Refusal::Declined)?;
+    let written =
+        submit_on(channel.as_ref(), &BackendIntent::WriteCanvas { pane: pane.clone(), document })?;
+    written.canvas_revision.ok_or_else(|| Refusal::Unanswered {
+        detail: "the backend acknowledged the canvas write without a revision".into(),
+        made: None,
     })
 }
 

@@ -8,13 +8,13 @@
 
 use super::{
     ATTACHES, BTreeMap, BTreeSet, BackendIntent, Daemon, DaemonId, Event, GroupKey, Health,
-    Implicitly, Keyboard, Lifecycle, PaneId, Refusal, SESSION, Sent, ShutWindow, TabId, Window,
-    WindowId, address, announce_presentation, arrangement_path, attaching::APPLIED_DAEMONS,
-    catch_up_tab_trees, daemon_holding, daemon_holding_tab, event, ffi, fields, focus, focus_tab,
-    follow_implicitly_if_nothing_else, has_spoken, local_daemon_to_fill_from, log, mint_tab,
-    move_tab, poison, publish, reconcile_sidebar_with_problems, save, saved_arrangement,
-    saved_arrangement_at, saved_presentation, settle_what_the_window_shows, submit,
-    tell_window_each_health,
+    Implicitly, Keyboard, Lifecycle, NewPane, PaneId, PanePlacement, Refusal, SESSION, Sent,
+    ShutWindow, TabId, Window, WindowId, address, announce_presentation, arrangement_path,
+    attaching::APPLIED_DAEMONS, catch_up_tab_trees, daemon_holding, daemon_holding_tab, event, ffi,
+    fields, focus, focus_tab, follow_implicitly_if_nothing_else, has_spoken,
+    local_daemon_to_fill_from, log, mint_tab, move_tab, poison, publish,
+    reconcile_sidebar_with_problems, save, saved_arrangement, saved_arrangement_at,
+    saved_presentation, settle_what_the_window_shows, submit, tell_window_each_health,
 };
 
 /// Takes the panes of every machine this window followed when it was last open, and its config no
@@ -646,14 +646,9 @@ pub(super) fn open_a_tab_if_the_window_is_empty(window: WindowId) {
 /// a daemon says no is written down once.
 pub(super) fn ask_for_a_tab(window: WindowId, daemon: &DaemonId) {
     log::info("tab.first.creating", fields! { "daemon" => daemon.to_string() });
-    let intent = BackendIntent::CreateTab {
-        tab: mint_tab(),
-        cwd: None,
-        run: None,
-        name: None,
-        quiet: false,
-        hidden: false,
-        maker: None,
+    let intent = BackendIntent::CreatePane {
+        placement: PanePlacement::NewTab { tab: mint_tab(), hidden: false },
+        new: NewPane::default(),
     };
     let asked = submit(window, daemon, &intent, Keyboard::Follows);
     if let Err(Refusal::Unanswered { detail, .. }) = &asked {

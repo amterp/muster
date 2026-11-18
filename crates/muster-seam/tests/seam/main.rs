@@ -8,6 +8,7 @@ mod asking;
 mod attach;
 mod background_tab;
 mod banners;
+mod canvas;
 mod closed_windows;
 mod cold_start;
 mod command;

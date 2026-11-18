@@ -11,10 +11,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use muster_core::Key;
+use muster_core::canvas::{CanvasDocument, CanvasDocumentKind, CanvasImageType, CanvasRead};
 use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Directory, Grid, InTree, Maker, MoveDestination, Outcome,
-    Refusal, Reopened, Restarted, Side,
+    BackendChannel, BackendIntent, Directory, Grid, InTree, MoveDestination, NewPane, NewPaneBody,
+    Outcome, PanePlacement, Refusal, Reopened, Restarted, Side,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -171,63 +172,97 @@ impl DaemonBackend {
         self.minter.lock().unwrap_or_else(PoisonError::into_inner).pane()
     }
 
-    /// Makes a pane, and says which and the callsign its daemon drew it.
-    fn create(&self, placement: placement::Where, making: Making) -> Result<Outcome, Refusal> {
-        self.create_named(self.mint_pane(), placement, making)
-    }
-
-    /// [`DaemonBackend::create`], for a pane the window has already named.
-    fn create_named(
-        &self,
-        pane: PaneId,
-        placement: placement::Where,
-        making: Making,
-    ) -> Result<Outcome, Refusal> {
-        let Making { cwd, run, name, quiet, maker } = making;
-        let (cwd, cwd_inherited) = match cwd {
-            Some(Directory::Named(cwd)) => (Some(cwd), false),
-            Some(Directory::Inherited(cwd)) => (Some(cwd), true),
-            None => (None, false),
+    fn create(&self, at: PanePlacement, new: NewPane) -> Result<Outcome, Refusal> {
+        let NewPane { name, quiet, body } = new;
+        if matches!(body, NewPaneBody::Canvas { .. }) {
+            self.speaks_since(proto::version::CANVASES, "open a canvas")?;
+        }
+        let (pane, placement, created_tab) = match at {
+            PanePlacement::Beside { pane, side, ratio } => {
+                (self.mint_pane(), beside_at(&pane, side, ratio), None)
+            }
+            PanePlacement::NewTab { tab, hidden } => {
+                let placement = match &body {
+                    NewPaneBody::Terminal { maker: Some(maker), .. } if hidden => {
+                        placement::Where::Helpers(placement::Helpers {
+                            tab: tab.to_string(),
+                            label: Some(proto::Label {
+                                text: Some(muster_core::making::helpers_tab(&maker.name)),
+                                generation: muster_core::making::HELPERS_TAB_GENERATION,
+                            }),
+                        })
+                    }
+                    _ => new_tab(&tab, hidden),
+                };
+                (self.mint_pane(), placement, Some(tab))
+            }
+            PanePlacement::JoinTab { tab, hidden } => {
+                (self.mint_pane(), new_tab(&tab, hidden), None)
+            }
+            PanePlacement::InTree { pane, at } => {
+                self.speaks_since(
+                    proto::version::SPANNING,
+                    "make a pane beside another machine's",
+                )?;
+                (pane, in_tree(&at), None)
+            }
         };
-        let hidden = matches!(&placement, placement::Where::NewTab(new_tab) if new_tab.hidden);
-        if hidden {
+        if matches!(&placement, placement::Where::NewTab(new_tab) if new_tab.hidden) {
             self.hides_and_quiets("make a hidden pane")?;
         }
         if quiet {
             self.hides_and_quiets("make a quiet pane")?;
         }
-        if maker.is_some() {
-            self.speaks_since(muster_daemon_proto::version::HELPERS, "make a helper")?;
-        }
-        let answer = self
-            .pane_request(pane_request::Request::Create(pane_request::Create {
-                pane: pane.to_string(),
-                placement: Some(proto::Placement { r#where: Some(placement) }),
-                grid: None,
-                cwd,
-                cwd_inherited,
-                env: self.environment.clone().into_iter().collect(),
-                command: run,
-                label: name,
-                quiet,
-                maker: maker.map(|maker| maker.pane.to_string()),
-                callsigns_elsewhere: self
-                    .elsewhere
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .clone(),
-            }))
-            .map_err(|refusal| match refusal {
-                Refusal::Unanswered { detail, .. } => {
-                    Refusal::Unanswered { detail, made: Some(pane.clone()) }
+        let placement = Some(proto::Placement { r#where: Some(placement) });
+        let callsigns_elsewhere =
+            self.elsewhere.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let request = match body {
+            NewPaneBody::Terminal { cwd, run, maker } => {
+                if maker.is_some() {
+                    self.speaks_since(proto::version::HELPERS, "make a helper")?;
                 }
-                refusal => refusal,
-            })?;
+                let (cwd, cwd_inherited) = match cwd {
+                    Some(Directory::Named(cwd)) => (Some(cwd), false),
+                    Some(Directory::Inherited(cwd)) => (Some(cwd), true),
+                    None => (None, false),
+                };
+                pane_request::Request::Create(pane_request::Create {
+                    pane: pane.to_string(),
+                    placement,
+                    grid: None,
+                    cwd,
+                    cwd_inherited,
+                    env: self.environment.clone().into_iter().collect(),
+                    command: run,
+                    label: name,
+                    quiet,
+                    maker: maker.map(|maker| maker.pane.to_string()),
+                    callsigns_elsewhere,
+                })
+            }
+            NewPaneBody::Canvas { document, opened_by } => {
+                pane_request::Request::CreateCanvas(pane_request::CreateCanvas {
+                    pane: pane.to_string(),
+                    placement,
+                    label: name,
+                    document: Some(canvas_document(document)),
+                    quiet,
+                    opened_by: opened_by.map(|pane| pane.to_string()),
+                    callsigns_elsewhere,
+                })
+            }
+        };
+        let answer = self.pane_request(request).map_err(|refusal| match refusal {
+            Refusal::Unanswered { detail, .. } => {
+                Refusal::Unanswered { detail, made: Some(pane.clone()) }
+            }
+            refusal => refusal,
+        })?;
         let callsign = match answer.detail {
             Some(answer::Detail::Created(created)) => Some(created.callsign),
             _ => None,
         };
-        Ok(Outcome { created: Some(pane), callsign, ..Outcome::default() })
+        Ok(Outcome { created: Some(pane), callsign, created_tab, ..Outcome::default() })
     }
 
     /// Where a pane moved into an existing tab lands: beside the tab's last pane, when this
@@ -279,15 +314,6 @@ impl DaemonBackend {
     }
 }
 
-/// What a create asks of the pane itself, beyond where it goes.
-struct Making {
-    cwd: Option<Directory>,
-    run: Option<String>,
-    name: Option<String>,
-    quiet: bool,
-    maker: Option<Maker>,
-}
-
 /// A tab here, or this machine's part of a Muster tab, unnamed.
 fn new_tab(tab: &TabId, hidden: bool) -> placement::Where {
     placement::Where::NewTab(placement::NewTab {
@@ -311,11 +337,43 @@ fn in_tree(at: &InTree) -> placement::Where {
 }
 
 fn beside(pane: &PaneId, side: Side) -> placement::Where {
+    beside_at(pane, side, None)
+}
+
+fn beside_at(pane: &PaneId, side: Side, ratio: Option<f32>) -> placement::Where {
     placement::Where::Beside(placement::Beside {
         pane: pane.to_string(),
         side: convert::side(side).into(),
-        ratio: None,
+        ratio,
     })
+}
+
+fn canvas_document(document: CanvasDocument) -> proto::CanvasDocument {
+    let CanvasDocument { kind, bytes, title } = document;
+    let (kind, image_type) = match kind {
+        CanvasDocumentKind::Markdown => (proto::CanvasKind::Markdown, ""),
+        CanvasDocumentKind::Html => (proto::CanvasKind::Html, ""),
+        CanvasDocumentKind::Image(image) => (proto::CanvasKind::Image, image.media_type()),
+    };
+    proto::CanvasDocument { kind: kind.into(), body: bytes, image_type: image_type.into(), title }
+}
+
+fn read_canvas_document(document: proto::CanvasDocument) -> Result<CanvasDocument, Refusal> {
+    let kind = match document.kind() {
+        proto::CanvasKind::Markdown => CanvasDocumentKind::Markdown,
+        proto::CanvasKind::Html => CanvasDocumentKind::Html,
+        proto::CanvasKind::Image => {
+            let image =
+                CanvasImageType::from_media_type(&document.image_type).ok_or_else(|| {
+                    Refusal::Declined("the daemon returned an unknown canvas image type".into())
+                })?;
+            CanvasDocumentKind::Image(image)
+        }
+        proto::CanvasKind::Unspecified => {
+            return Err(Refusal::Declined("the daemon returned an unknown canvas kind".into()));
+        }
+    };
+    Ok(CanvasDocument { kind, bytes: document.body, title: document.title })
 }
 
 impl BackendChannel for DaemonBackend {
@@ -323,45 +381,23 @@ impl BackendChannel for DaemonBackend {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
         let done = Ok(Outcome::default());
         match intent.clone() {
-            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet, maker } => {
-                let placement = placement::Where::Beside(placement::Beside {
-                    pane: pane.to_string(),
-                    side: convert::side(side).into(),
-                    ratio,
-                });
-                let cwd = cwd.map(Directory::Named);
-                self.create(placement, Making { cwd, run, name, quiet, maker })
-            }
-            // A hidden helper goes among its maker's other helpers, in the tab they share, and
-            // `tab` is made only when there is none yet.
-            BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden, maker } => {
-                let placement = match &maker {
-                    Some(maker) if hidden => placement::Where::Helpers(placement::Helpers {
-                        tab: tab.to_string(),
-                        label: Some(proto::Label {
-                            text: Some(muster_core::making::helpers_tab(&maker.name)),
-                            generation: muster_core::making::HELPERS_TAB_GENERATION,
-                        }),
-                    }),
-                    _ => new_tab(&tab, hidden),
+            BackendIntent::CreatePane { placement, new } => self.create(placement, new),
+            BackendIntent::WriteCanvas { pane, document } => {
+                self.speaks_since(proto::version::CANVASES, "write a canvas")?;
+                let answer = self.pane_request(pane_request::Request::WriteCanvas(
+                    pane_request::WriteCanvas {
+                        pane: pane.to_string(),
+                        document: Some(canvas_document(document)),
+                    },
+                ))?;
+                let Some(answer::Detail::CanvasWritten(written)) = answer.detail else {
+                    return Err(Refusal::Unanswered {
+                        detail: "the daemon acknowledged the canvas write without a revision"
+                            .into(),
+                        made: None,
+                    });
                 };
-                let made = self.create(placement, Making { cwd, run, name, quiet, maker })?;
-                Ok(Outcome { created_tab: Some(tab), ..made })
-            }
-            // The same placement `placement_in` asks for when a moved pane is this machine's
-            // first in the tab, and unnamed for the same reason: the window names this part
-            // after the rest when the daemon announces it.
-            BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker } => {
-                let cwd = cwd.map(Directory::Named);
-                self.create(new_tab(&tab, hidden), Making { cwd, run, name, quiet, maker })
-            }
-            BackendIntent::CreateInTree { pane, at, cwd, run, name, quiet, maker } => {
-                self.speaks_since(
-                    muster_daemon_proto::version::SPANNING,
-                    "make a pane beside another machine's",
-                )?;
-                let cwd = cwd.map(Directory::Named);
-                self.create_named(pane, in_tree(&at), Making { cwd, run, name, quiet, maker })
+                Ok(Outcome { canvas_revision: Some(written.revision), ..Outcome::default() })
             }
             BackendIntent::ClosePane { pane, by } => {
                 self.pane_request(pane_request::Request::Close(pane_request::Close {
@@ -591,6 +627,21 @@ impl BackendChannel for DaemonBackend {
         {
             drop(control.set_callsigns_elsewhere(held));
         }
+    }
+
+    fn read_canvas(&self, pane: &PaneId) -> Result<CanvasRead, Refusal> {
+        self.speaks_since(proto::version::CANVASES, "read a canvas")?;
+        let answer =
+            self.pane_request(pane_request::Request::ReadCanvas(pane_request::ReadCanvas {
+                pane: pane.to_string(),
+            }))?;
+        let Some(answer::Detail::CanvasRead(read)) = answer.detail else {
+            return Err(Refusal::Declined("the daemon did not return a canvas document".into()));
+        };
+        let document = read.document.ok_or_else(|| {
+            Refusal::Declined("the daemon returned an empty canvas answer".into())
+        })?;
+        Ok(CanvasRead { revision: read.revision, document: read_canvas_document(document)? })
     }
 
     fn read(&self, pane: &PaneId, scope: Scope) -> Result<PaneText, Refusal> {

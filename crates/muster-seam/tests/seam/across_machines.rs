@@ -942,6 +942,60 @@ fn a_pane_moved_into_another_machines_tab_goes_beside_the_pane_or_at_the_right()
     );
 }
 
+#[test]
+fn a_canvas_can_split_below_a_pane_on_another_machine_and_take_focus() {
+    use muster::proto::{CanvasDocument, CanvasKind, OpenCanvas, WriteCanvas, open_canvas};
+
+    let _turn = muster::testing::fresh_session();
+    let machines = a_window_showing_two_machines();
+    let laptop = pane_on("laptop").expect("the fixture waited for it");
+    put_the_keyboard_on(&laptop);
+    let tab = tab_holding(&laptop).expect("the tab holding the laptop pane");
+    let document = |body: &str| CanvasDocument {
+        kind: CanvasKind::Markdown.into(),
+        body: body.as_bytes().to_vec(),
+        ..CanvasDocument::default()
+    };
+    let opened = request::Payload::OpenCanvas(OpenCanvas {
+        placement: Some(open_canvas::Placement::Beside(open_canvas::Beside {
+            pane_id: laptop.clone(),
+            new_pane_daemon_id: "devenv".into(),
+            side: "down".into(),
+            ratio: 0.5,
+            ..open_canvas::Beside::default()
+        })),
+        document: Some(document("original")),
+        take_focus: true,
+        ..OpenCanvas::default()
+    });
+    let asked = |payload| {
+        let mut request = Request::new(payload);
+        request.from_pane.clone_from(&laptop);
+        let reply = muster::dispatch(&request.encode_to_vec());
+        Response::decode(reply.as_slice()).expect("the window answered")
+    };
+    let canvas = made(asked(opened));
+    let written = asked(request::Payload::WriteCanvas(WriteCanvas {
+        document: Some(document("from the laptop")),
+        ..WriteCanvas::default()
+    }));
+    assert!(
+        matches!(written.payload, Some(response::Payload::CanvasWritten(written)) if written.revision == 2)
+    );
+    let arranged = format!("rows({laptop}@laptop, {canvas}@devenv)");
+    until(
+        "the devenv canvas to split below the laptop pane and take the keyboard",
+        || {
+            drawn(&tab).as_deref() == Some(arranged.as_str())
+                && keyboard() == Some(("devenv".to_string(), canvas.clone()))
+        },
+        || format!("{tab} is drawn as {:?} and the keyboard is on {:?}", drawn(&tab), keyboard()),
+    );
+    let panes = muster_harness::requests::snapshot(&mut machines.devenv.connect()).panes;
+    let held = panes.iter().find(|pane| pane.pane == canvas).unwrap().canvas.as_ref().unwrap();
+    assert_eq!(held.opened_by.as_deref(), Some(laptop.as_str()));
+}
+
 /// A machine on a daemon from before a tab could span machines keeps a tab the old way: a pane
 /// made there joins the tab as that machine's part, beside the others, and a pane cannot be
 /// dropped beside another machine's.

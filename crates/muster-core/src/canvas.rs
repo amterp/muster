@@ -1,5 +1,6 @@
 //! Build the page a shell draws in a canvas and state the rules it must enforce.
 
+use std::fmt;
 use std::str::{Utf8Error, from_utf8};
 
 use base64::Engine;
@@ -7,6 +8,19 @@ use base64::engine::general_purpose::STANDARD;
 use pulldown_cmark::{Event, Options, Parser, html};
 
 use crate::mirror::PaneId;
+
+pub const MAX_BODY: usize = 4 << 20;
+const MAX_TITLE: usize = 256;
+
+pub fn validate_title(title: &str) -> Result<(), &'static str> {
+    if title.len() > MAX_TITLE || title.chars().any(char::is_control) {
+        Err("a canvas title is at most 256 bytes and contains no control characters")
+    } else {
+        Ok(())
+    }
+}
+
+mod image;
 
 const MARKDOWN_STYLE: &str = include_str!("canvas/markdown.css");
 const IMAGE_STYLE: &str = include_str!("canvas/image.css");
@@ -33,11 +47,27 @@ pub struct CanvasMetadata {
     pub opened_by: Option<PaneId>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct CanvasDocument {
     pub kind: CanvasDocumentKind,
     pub bytes: Vec<u8>,
     pub title: String,
+}
+
+impl fmt::Debug for CanvasDocument {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CanvasDocument")
+            .field("kind", &self.kind)
+            .field("byte_count", &self.bytes.len())
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CanvasRead {
+    pub revision: u64,
+    pub document: CanvasDocument,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +75,16 @@ pub enum CanvasDocumentKind {
     Markdown,
     Html,
     Image(CanvasImageType),
+}
+
+impl From<CanvasDocumentKind> for CanvasKind {
+    fn from(kind: CanvasDocumentKind) -> Self {
+        match kind {
+            CanvasDocumentKind::Markdown => Self::Markdown,
+            CanvasDocumentKind::Html => Self::Html,
+            CanvasDocumentKind::Image(_) => Self::Image,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +97,21 @@ pub enum CanvasImageType {
 }
 
 impl CanvasImageType {
-    fn media_type(self) -> &'static str {
+    pub fn from_media_type(media_type: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.media_type() == media_type)
+    }
+
+    const ALL: [Self; 5] = [Self::Png, Self::Jpeg, Self::Gif, Self::Webp, Self::Svg];
+
+    pub fn detect(bytes: &[u8]) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.matches(bytes))
+    }
+
+    pub fn matches(self, bytes: &[u8]) -> bool {
+        image::matches(self, bytes)
+    }
+
+    pub fn media_type(self) -> &'static str {
         match self {
             Self::Png => "image/png",
             Self::Jpeg => "image/jpeg",

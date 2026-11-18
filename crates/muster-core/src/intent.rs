@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::canvas::{CanvasDocument, CanvasRead};
 use crate::mirror::backend::{PaneId, TabId};
 use crate::pane_text::{PaneText, Scope};
 
@@ -139,7 +140,6 @@ pub struct Maker {
     pub name: String,
 }
 
-/// One requested change.
 /// Where a new tab's pane starts, and whether anybody chose it.
 ///
 /// The difference decides what a directory that cannot be entered means. One somebody named is
@@ -152,113 +152,62 @@ pub enum Directory {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum BackendIntent {
-    /// Splits a pane, putting the new one on the named side of it. The adapter mints the new
-    /// pane's name and says it in [`Outcome::created`].
-    SplitPane {
+pub enum PanePlacement {
+    Beside {
         pane: PaneId,
         side: Side,
-        /// The existing pane's share afterwards. `None` takes the daemon's own default,
-        /// which is what a keybinding wants; a drag-to-split would say.
-        ///
-        /// The existing pane's rather than the first child's, so that one number means one
-        /// thing on all four sides.
         ratio: Option<f32>,
-        /// Where the new pane starts. `None` takes the daemon's own rule, the directory the
-        /// split came from - what somebody splitting a pane mid-task means, and the reason
-        /// this is not resolved here.
-        cwd: Option<String>,
-        /// What to run in it, as somebody would have typed it. `None` runs whatever a new pane
-        /// runs anyway.
-        ///
-        /// Part of making the pane, not a thing to do afterwards: the daemon starts it with the
-        /// pane, so no caller races a shell prompt it cannot see.
-        run: Option<String>,
-        /// What to call it. `None` leaves it unnamed.
-        ///
-        /// Along with the split because they are one intention: an agent making three panes has
-        /// to be able to say which is which, and a rename arriving separately would leave the
-        /// pane briefly nameless in every window showing it.
-        name: Option<String>,
-        /// Whether to make it quiet (`crate::mirror::Pane::quiet`). With the pane rather than
-        /// after it for the reason `name` is: a pane quieted a moment late has already asked.
-        quiet: bool,
-        /// Whose helper it is, if anybody's. Never changed once the pane is made.
-        maker: Option<Maker>,
+    },
+    /// The window reserves this new name before asking the daemon.
+    NewTab {
+        tab: TabId,
+        hidden: bool,
+    },
+    /// Adds a machine's first pane to a tab the window already holds.
+    JoinTab {
+        tab: TabId,
+        hidden: bool,
+    },
+    /// The window names the new pane in the tab's whole tree before asking.
+    InTree {
+        pane: PaneId,
+        at: InTree,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NewPane {
+    pub name: Option<String>,
+    pub quiet: bool,
+    pub body: NewPaneBody,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NewPaneBody {
+    Terminal { cwd: Option<Directory>, run: Option<String>, maker: Option<Maker> },
+    Canvas { document: CanvasDocument, opened_by: Option<PaneId> },
+}
+
+impl Default for NewPaneBody {
+    fn default() -> Self {
+        Self::Terminal { cwd: None, run: None, maker: None }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BackendIntent {
+    CreatePane {
+        placement: PanePlacement,
+        new: NewPane,
+    },
+    WriteCanvas {
+        pane: PaneId,
+        document: CanvasDocument,
     },
     ClosePane {
         pane: PaneId,
         /// The pane whose agent asked for it, or nothing when a person did.
         by: Option<PaneId>,
-    },
-    /// Makes a tab, with one pane of its own in it. The adapter mints the pane's name and says
-    /// it in [`Outcome::created`].
-    ///
-    /// The one intent that needs nothing to exist, so it is also what is asked for when there
-    /// is nothing: a daemon Muster just started holds no panes, and a window showing none of
-    /// them is not a window.
-    CreateTab {
-        /// What to call the tab, which the window mints and takes before it asks: the daemon
-        /// announces the tab before it answers, and a window that did not already hold it could
-        /// lose it to another window in that moment.
-        tab: TabId,
-        /// Where its pane starts. Unlike a split, this is resolved before it is sent - a new
-        /// tab has nothing to inherit from, and the daemon's own answer is a home directory
-        /// nobody asked for.
-        cwd: Option<Directory>,
-        /// What to run in the tab's pane, and what to call it. Both mean what they mean on
-        /// [`BackendIntent::SplitPane`], because a tab is the other way to make a pane and a
-        /// caller equipping one and not the other would have to race a shell prompt itself.
-        run: Option<String>,
-        name: Option<String>,
-        quiet: bool,
-        /// A tab no window shows, so the window that asked does not take it: a pane made hidden
-        /// from the start, which is an agent nobody is looking at.
-        hidden: bool,
-        /// Whose helper it is, as on [`BackendIntent::SplitPane`]. A hidden helper goes into the
-        /// hidden tab its maker's helpers share rather than into `tab`, unless none holds one yet.
-        maker: Option<Maker>,
-    },
-    /// Makes a pane on this machine as a new part of a Muster tab another machine already holds
-    /// part of, which is what splitting a laptop pane onto a devenv means when the devenv has no
-    /// part of that tab yet. The adapter mints the pane's name and says it in
-    /// [`Outcome::created`].
-    ///
-    /// Not [`BackendIntent::CreateTab`], although the daemon is asked for the same placement:
-    /// that makes a tab under a name the window has only just minted, and this joins one the
-    /// window already holds. The window takes the one before asking and surfaces it after; doing
-    /// either to a tab it already shows would be a write to the shared record of which window
-    /// holds which tab, about a tab whose holder has not changed.
-    JoinTab {
-        tab: TabId,
-        /// Where its pane starts. `None` takes the daemon's own default: the pane it is joining
-        /// is on another machine, so its directory names nothing here.
-        cwd: Option<String>,
-        /// Both mean what they mean on [`BackendIntent::SplitPane`].
-        run: Option<String>,
-        name: Option<String>,
-        quiet: bool,
-        /// Whether the tab being joined is hidden. Every part of a tab says the same, so a pane
-        /// split from a hidden one onto another machine is hidden there too.
-        hidden: bool,
-        /// Whose helper it is, as on [`BackendIntent::SplitPane`].
-        maker: Option<Maker>,
-    },
-    /// Makes `pane` on this machine at its leaf of a tab's whole tree, which the window worked
-    /// out because the place is beside another machine's pane or at the edge of the whole tab
-    /// (MIP-8, section 6). Makes this machine's part of the tab when it has none yet.
-    ///
-    /// Names its pane, unlike every other create: the tree has to say where the pane goes, so the
-    /// window mints the name before asking.
-    CreateInTree {
-        pane: PaneId,
-        at: InTree,
-        /// Each means what it means on [`BackendIntent::JoinTab`].
-        cwd: Option<String>,
-        run: Option<String>,
-        name: Option<String>,
-        quiet: bool,
-        maker: Option<Maker>,
     },
     /// Grows or shrinks a pane against its neighbour, by a share of the region.
     ///
@@ -283,7 +232,9 @@ pub enum BackendIntent {
     ///
     /// A toggle, because that is what one key does. The adapter reads what is zoomed now from
     /// its mirror and asks the daemon for the other.
-    ZoomPane { pane: PaneId },
+    ZoomPane {
+        pane: PaneId,
+    },
 
     /// Exchanges two panes' places in their tab's tree.
     ///
@@ -293,21 +244,29 @@ pub enum BackendIntent {
     /// dragging one row expects.
     ///
     /// Both panes are in the same tab. Crossing tabs is [`BackendIntent::MovePane`].
-    SwapPanes { pane: PaneId, with: PaneId },
+    SwapPanes {
+        pane: PaneId,
+        with: PaneId,
+    },
 
     /// Moves a pane out of its place and puts it somewhere else.
     ///
     /// Asked of the daemon running the pane, which keeps running it: a pane is a PTY the daemon
     /// owns, so a move changes where it sits and never which machine it is on. Beside another
     /// machine's pane is a place in a tab's tree like any other ([`MoveDestination::InTree`]).
-    MovePane { pane: PaneId, to: MoveDestination },
+    MovePane {
+        pane: PaneId,
+        to: MoveDestination,
+    },
 
     /// Closes a tab, and every pane in it with it.
     ///
     /// The one verb here that destroys more than it names. Muster sends it rather than closing
     /// the panes one at a time because a daemon closing its own tab is one act, where N closes
     /// is N chances to be interrupted half way and left with a tab holding one pane.
-    CloseTab { tab: TabId },
+    CloseTab {
+        tab: TabId,
+    },
 
     /// Moves one divider in a tab's tree.
     SetSplitRatio {
@@ -363,7 +322,9 @@ pub enum BackendIntent {
     },
 
     /// Marks a pane unread: its idle agent reads as finished and unseen until somebody sees it.
-    MarkUnread { pane: PaneId },
+    MarkUnread {
+        pane: PaneId,
+    },
 
     /// Brings back a pane its daemon remembers closing, under its id, callsign and name, where it
     /// was ([`crate::mirror::ClosedPane`]).
@@ -374,7 +335,7 @@ pub enum BackendIntent {
         /// Its id, or its callsign as it closed.
         pane: String,
         /// A tab to make when it needs one, which the window mints and takes before it asks, as
-        /// for [`BackendIntent::CreateTab`].
+        /// for [`PanePlacement::NewTab`].
         tab: TabId,
     },
 
@@ -394,7 +355,10 @@ pub enum BackendIntent {
     /// `None` is the other of what it is now, read from the mirror as zoom is, which is what a
     /// menu item means; `Some` is what a script means, which must not depend on what the pane
     /// was before.
-    QuietPane { pane: PaneId, quiet: Option<bool> },
+    QuietPane {
+        pane: PaneId,
+        quiet: Option<bool>,
+    },
 
     /// Calls a tab what somebody wants to call it.
     ///
@@ -472,40 +436,36 @@ impl BackendIntent {
             }
             // A command line, for the reason above and one more: an environment set on the way
             // to a program is a normal thing to type, and a token is a normal thing to set.
-            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet, maker } => {
+            BackendIntent::CreatePane { placement, new } => {
+                let at = match placement {
+                    PanePlacement::Beside { pane, side, ratio } => {
+                        format!("pane: {pane}, side: {side:?}, ratio: {ratio:?}")
+                    }
+                    PanePlacement::NewTab { tab, hidden }
+                    | PanePlacement::JoinTab { tab, hidden } => {
+                        format!("tab: {tab}, hidden: {hidden}")
+                    }
+                    PanePlacement::InTree { pane, at } => format!(
+                        "pane: {pane}, tab: {}, generation: {}, based_on: {}, hidden: {}",
+                        at.tab, at.generation, at.based_on, at.hidden,
+                    ),
+                };
+                let body = match &new.body {
+                    NewPaneBody::Terminal { cwd, run, maker } => format!(
+                        "cwd: {cwd:?}, run: {}, maker: {}",
+                        counted(run.as_ref()),
+                        made_by(maker.as_ref()),
+                    ),
+                    NewPaneBody::Canvas { document, opened_by } => {
+                        format!("document: {document:?}, opened_by: {opened_by:?}")
+                    }
+                };
                 format!(
-                    "SplitPane {{ pane: {pane}, side: {side:?}, ratio: {ratio:?}, cwd: {cwd:?}, \
-                 run: {}, name: {}, quiet: {quiet}, maker: {} }}",
-                    counted(run.as_ref()),
-                    named(name.as_deref()),
-                    made_by(maker.as_ref())
+                    "CreatePane {{ {at}, name: {}, quiet: {}, {body} }}",
+                    named(new.name.as_deref()),
+                    new.quiet,
                 )
             }
-            BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden, maker } => format!(
-                "CreateTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, \
-                 hidden: {hidden}, maker: {} }}",
-                counted(run.as_ref()),
-                named(name.as_deref()),
-                made_by(maker.as_ref())
-            ),
-            BackendIntent::CreateInTree { pane, at, cwd, run, name, quiet, maker } => format!(
-                "CreateInTree {{ pane: {pane}, tab: {}, generation: {}, based_on: {}, hidden: {}, \
-                 cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, maker: {} }}",
-                at.tab,
-                at.generation,
-                at.based_on,
-                at.hidden,
-                counted(run.as_ref()),
-                named(name.as_deref()),
-                made_by(maker.as_ref())
-            ),
-            BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker } => format!(
-                "JoinTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, \
-                 hidden: {hidden}, maker: {} }}",
-                counted(run.as_ref()),
-                named(name.as_deref()),
-                made_by(maker.as_ref())
-            ),
             BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear } => format!(
                 "SetPaneCompaction {{ pane: {pane}, compact_at: {compact_at:?}, nudge_at: \
                  {nudge_at:?}, clear: {clear} }}"
@@ -570,6 +530,7 @@ pub struct Outcome {
     pub restarted: Option<Restarted>,
     /// What a reopen brought back beyond the pane it made.
     pub reopened: Option<Reopened>,
+    pub canvas_revision: Option<u64>,
 }
 
 /// What a daemon did to reopen a pane, beyond making it.
@@ -673,6 +634,8 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// asks a daemon to *do*, and putting a question in it would make `Outcome` - a statement
     /// about a change just made - carry answers to things that changed nothing.
     fn read(&self, pane: &PaneId, scope: Scope) -> Result<PaneText, Refusal>;
+
+    fn read_canvas(&self, pane: &PaneId) -> Result<CanvasRead, Refusal>;
 
     /// How big every pane's terminal is, by pane. A read, for the reason [`Self::read`] is.
     ///

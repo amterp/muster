@@ -8,7 +8,9 @@ use muster_core::compaction::{Rules, Setting, Thresholds};
 use muster_core::config::{ClipboardWrite, Cursor, CursorStyle, Shell, ShellMode};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::input::NotSent;
-use muster_core::intent::{BackendChannel, BackendIntent, Maker, Side};
+use muster_core::intent::{
+    BackendChannel, BackendIntent, Maker, NewPane, NewPaneBody, PanePlacement, Side,
+};
 use muster_core::mirror::Mirror;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -84,14 +86,9 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
 
     let made = followed
         .backend
-        .submit(&BackendIntent::CreateTab {
-            tab: TabId::new("t1"),
-            cwd: None,
-            run: None,
-            name: Some("first".into()),
-            quiet: false,
-            hidden: false,
-            maker: None,
+        .submit(&BackendIntent::CreatePane {
+            placement: PanePlacement::NewTab { tab: TabId::new("t1"), hidden: false },
+            new: NewPane { name: Some("first".into()), ..NewPane::default() },
         })
         .unwrap();
     let (pane, tab) = (made.created.unwrap(), TabId::new("t1"));
@@ -104,15 +101,9 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
 
     let split = followed
         .backend
-        .submit(&BackendIntent::SplitPane {
-            pane: pane.clone(),
-            side: Side::Left,
-            ratio: None,
-            cwd: None,
-            run: None,
-            name: None,
-            quiet: false,
-            maker: None,
+        .submit(&BackendIntent::CreatePane {
+            placement: PanePlacement::Beside { pane: pane.clone(), side: Side::Left, ratio: None },
+            new: NewPane::default(),
         })
         .unwrap()
         .created
@@ -128,14 +119,12 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
 fn a_makers_hidden_helpers_land_in_one_tab_named_for_it() {
     let daemon = Daemon::start_built();
     let followed = follow(&daemon);
-    let tab = |name: &str, maker: Option<Maker>| BackendIntent::CreateTab {
-        tab: TabId::new(name),
-        cwd: None,
-        run: None,
-        name: None,
-        quiet: false,
-        hidden: maker.is_some(),
-        maker,
+    let tab = |name: &str, maker: Option<Maker>| BackendIntent::CreatePane {
+        placement: PanePlacement::NewTab { tab: TabId::new(name), hidden: maker.is_some() },
+        new: NewPane {
+            body: NewPaneBody::Terminal { cwd: None, run: None, maker },
+            ..NewPane::default()
+        },
     };
     let maker = followed.backend.submit(&tab("t1", None)).unwrap().created.unwrap();
     let helper = |name: &str| {
@@ -159,14 +148,12 @@ fn a_makers_hidden_helpers_land_in_one_tab_named_for_it() {
 fn zooming_twice_puts_the_tab_back() {
     let daemon = Daemon::start_built();
     let followed = follow(&daemon);
-    let made = followed.backend.submit(&BackendIntent::CreateTab {
-        tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
-        cwd: None,
-        run: None,
-        name: None,
-        quiet: false,
-        hidden: false,
-        maker: None,
+    let made = followed.backend.submit(&BackendIntent::CreatePane {
+        placement: PanePlacement::NewTab {
+            tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+            hidden: false,
+        },
+        new: NewPane::default(),
     });
     let pane = made.unwrap().created.unwrap();
     let zoomed = |followed: &Followed, pane: &PaneId| {
@@ -197,14 +184,15 @@ fn a_read_longer_than_one_answer_ends_at_the_newest_row() {
     // About 5.7 MB of text, past the daemon's 4 MiB page, in rows too short to wrap.
     let run = "awk 'BEGIN { for (i = 0; i < 80000; i++) printf \"%070d\\n\", i; \
                print \"THE-END\" }'";
-    let made = followed.backend.submit(&BackendIntent::CreateTab {
-        tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
-        cwd: None,
-        run: Some(run.into()),
-        name: None,
-        quiet: false,
-        hidden: false,
-        maker: None,
+    let made = followed.backend.submit(&BackendIntent::CreatePane {
+        placement: PanePlacement::NewTab {
+            tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+            hidden: false,
+        },
+        new: NewPane {
+            body: NewPaneBody::Terminal { cwd: None, run: Some(run.into()), maker: None },
+            ..NewPane::default()
+        },
     });
     let pane = made.unwrap().created.unwrap();
 
@@ -235,14 +223,12 @@ fn a_daemon_that_comes_back_is_followed_again() {
     let followed = follow(&daemon);
     followed
         .backend
-        .submit(&BackendIntent::CreateTab {
-            tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
-            cwd: None,
-            run: None,
-            name: None,
-            quiet: false,
-            hidden: false,
-            maker: None,
+        .submit(&BackendIntent::CreatePane {
+            placement: PanePlacement::NewTab {
+                tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+                hidden: false,
+            },
+            new: NewPane::default(),
         })
         .unwrap();
 
@@ -257,14 +243,12 @@ fn a_daemon_that_comes_back_is_followed_again() {
         let heard = followed.notices.lock().unwrap();
         heard.iter().any(|n| matches!(n, Notice::Reconnected)).then_some(())
     });
-    let made = followed.backend.submit(&BackendIntent::CreateTab {
-        tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
-        cwd: None,
-        run: None,
-        name: None,
-        quiet: false,
-        hidden: false,
-        maker: None,
+    let made = followed.backend.submit(&BackendIntent::CreatePane {
+        placement: PanePlacement::NewTab {
+            tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+            hidden: false,
+        },
+        new: NewPane::default(),
     });
     assert!(made.is_ok(), "requests work again: {made:?}");
     drop(followed.follower);
@@ -431,14 +415,12 @@ fn the_census_asks_each_daemon_what_it_holds() {
     let followed = follow(&daemon);
     followed
         .backend
-        .submit(&BackendIntent::CreateTab {
-            tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
-            cwd: None,
-            run: None,
-            name: None,
-            quiet: false,
-            hidden: false,
-            maker: None,
+        .submit(&BackendIntent::CreatePane {
+            placement: PanePlacement::NewTab {
+                tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+                hidden: false,
+            },
+            new: NewPane::default(),
         })
         .unwrap();
     let records = daemon.root().join("records");
@@ -536,14 +518,9 @@ fn a_reaction_to_a_notice_can_ask_the_same_daemon() {
                 return;
             }
             let backend = until_some("the backend", || asking.lock().unwrap().take());
-            let made = backend.submit(&BackendIntent::CreateTab {
-                tab: TabId::new("t1"),
-                cwd: None,
-                run: None,
-                name: None,
-                quiet: false,
-                hidden: false,
-                maker: None,
+            let made = backend.submit(&BackendIntent::CreatePane {
+                placement: PanePlacement::NewTab { tab: TabId::new("t1"), hidden: false },
+                new: NewPane::default(),
             });
             let _ = answered.send(made.map(|outcome| outcome.created_tab));
         }),
@@ -578,14 +555,12 @@ fn typed(pane: &PaneId, text: &str) -> proto::InputEvent {
 fn a_paste_too_large_to_send_leaves_typing_working() {
     let daemon = Daemon::start_built();
     let followed = follow(&daemon);
-    let made = followed.backend.submit(&BackendIntent::CreateTab {
-        tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
-        cwd: None,
-        run: None,
-        name: None,
-        quiet: false,
-        hidden: false,
-        maker: None,
+    let made = followed.backend.submit(&BackendIntent::CreatePane {
+        placement: PanePlacement::NewTab {
+            tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+            hidden: false,
+        },
+        new: NewPane::default(),
     });
     let pane = made.unwrap().created.unwrap();
     let mut control = daemon.connect();

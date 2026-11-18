@@ -374,6 +374,12 @@ impl Daemon {
         Api::connect(&self.socket_path)
     }
 
+    /// Relays the real daemon with a different protocol minor in its welcome.
+    pub fn saying_protocol_minor(&self, minor: u32) -> Relay {
+        let pump = DaemonPump::saying_protocol_minor(minor);
+        Relay::start(&self.root, &self.socket_path, Arc::new(pump))
+    }
+
     /// A relay in front of this daemon that never delivers the answer to any request `withheld`
     /// picks out. The daemon still does the work, and every event still arrives.
     pub fn withholding_answers_where(
