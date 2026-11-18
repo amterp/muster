@@ -733,7 +733,7 @@ fn a_message_for_the_human_raises_musters_own_banner() {
     let ask = |caller: msg_request::Caller, asked: msg_request::Request| {
         Service::Msg(proto::MsgRequest { caller: Some(caller), request: Some(asked) })
     };
-    for (who, name) in [(None, "@human"), (Some("otter"), "otter")] {
+    for (who, name) in [(None, "@human"), (Some("reviewer"), "reviewer")] {
         let join = msg_request::Request::Join(msg_request::Join {
             name: Some(name.to_string()),
             group: Some("review".to_string()),
@@ -747,7 +747,7 @@ fn a_message_for_the_human_raises_musters_own_banner() {
         body: "can you run the **contract** tier?".to_string(),
         ..Default::default()
     });
-    expect(&mut control, ask(caller(Some("otter")), post), proto::Outcome::Done);
+    expect(&mut control, ask(caller(Some("reviewer")), post), proto::Outcome::Done);
 
     app.until_event(
         "banners.received",
@@ -789,7 +789,7 @@ fn a_group_conversation_is_drawn_in_place_of_the_panes() {
     let ask = |caller: msg_request::Caller, asked: msg_request::Request| {
         Service::Msg(proto::MsgRequest { caller: Some(caller), request: Some(asked) })
     };
-    for (who, name) in [(None, "@human"), (Some("otter"), "otter")] {
+    for (who, name) in [(None, "@human"), (Some("reviewer"), "reviewer")] {
         let join = msg_request::Request::Join(msg_request::Join {
             name: Some(name.to_string()),
             group: Some("review".to_string()),
@@ -803,7 +803,7 @@ fn a_group_conversation_is_drawn_in_place_of_the_panes() {
         body: "is the **contract** tier green?".to_string(),
         ..Default::default()
     });
-    expect(&mut control, ask(caller(Some("otter")), post), proto::Outcome::Done);
+    expect(&mut control, ask(caller(Some("reviewer")), post), proto::Outcome::Done);
     app.until_event("groups.received", "the window never heard that the human is in review");
 
     let opened: Value =
