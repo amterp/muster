@@ -1,0 +1,23 @@
+id = "canvas-lifetime"
+question = "When does a canvas close?"
+tags = ["canvas", "daemon"]
+
+[[revisions]]
+id = "ozuxw2mx"
+date = 2026-11-18
+recorded_by = "other"
+level = "owner-nodded"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+When somebody closes it. It does not close with the pane that opened it. The daemon records which pane opened it only so that pane can write to it without naming it; a canvas is not that pane's helper.
+'''
+why = '''
+A canvas is on screen in a split, so it cannot pile up unseen as hidden helpers did. Tying its life to its opener's would bring in the helpers' close and reopen machinery, which is built for agents: the delayed close in the maker watch, the helpers' shared tab, and the relay of a close to another machine.
+'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-18
+  quote = "Yep this all sounds good, including the 3 decisions."
+  note = "Agreeing to a design summary and three choices put together. This was choice 3: a canvas stays open until somebody closes it (recommended), or closes with the pane that opened it."

@@ -1,0 +1,23 @@
+id = "canvas-person-editing"
+question = "Can the person edit a canvas?"
+tags = ["canvas", "ui"]
+
+[[revisions]]
+id = "vi9yk45v"
+date = 2026-11-18
+recorded_by = "other"
+level = "owner-nodded"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Not in the first version. The person reads, selects and copies; only an agent writes. Editing by the person gets a design of its own afterwards.
+'''
+why = '''
+The agent's half is useful alone and is the part the owner's whiteboard use needs first. How a person's edit reaches the agent, as a message or as a changed document, is a separate design.
+'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-18
+  quote = "Yep this all sounds good, including the 3 decisions."
+  note = "Agreeing to a design summary and three choices put together. This was choice 2: the person cannot edit a canvas in this version (recommended), against the older card's 'and you can edit'."

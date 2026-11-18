@@ -1,0 +1,29 @@
+id = "canvas-web-view"
+question = "What draws a canvas pane's document?"
+tags = ["canvas", "ui", "shell"]
+
+[[revisions]]
+id = "4fmgx5mh"
+date = 2026-11-18
+recorded_by = "other"
+level = "owner-nodded"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+A web view, handed one HTML page that the core builds from the canvas's Markdown, HTML or image. The page has no network and no navigation, and its scripts stay off until a test shows a page with scripts on cannot reach the network. The rules a page lives under are stated once in the core, so a shell on another platform enforces them and does not decide them.
+'''
+why = '''
+The owner wants diagrams, tables and visualizations beside an agent's chat, and HTML is the one format that covers them and that every agent writes. Drawing Markdown and images natively would stop at the diagram. An agent may relay text it read somewhere, so the page must not be able to send anything out. WebKit's content rules govern resource loads and say nothing of peer networking, so scripts wait for proof. Each platform has a web view of its own, so "the shell is handed one page" ports.
+'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-18
+  quote = "Yep this all sounds good, including the 3 decisions."
+  note = "Agreeing to a design summary and three choices put together. This was choice 1: a web view with the network off and scripts off until a test proves isolation (recommended), or native drawing of Markdown and images only."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-18
+  quote = "Remember muster may be macos only now (for window) but we're committed to portability and leaving door open for and building for cross platform"
+  note = "Said with the same answer, about the canvas design as a whole."
