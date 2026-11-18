@@ -217,9 +217,13 @@ fn run(
     let (stopping, stop) = mpsc::channel();
     let inherited: Vec<_> = std::env::vars_os().collect();
     let places = Places::of_this_process(&socket.path, data, log);
-    let (saved, state) = saved(&socket.path);
+    let (saved, state, state_known) = saved(&socket.path);
     let persister = Arc::clone(&saved.persister);
     let shared = Shared::new(instance(), stopping.clone(), inherited, places, saved, socket);
+    shared.canvases.initialize_saved(persister.path(), state_known, state.as_ref());
+    if shared.canvases.can_collect() {
+        shared.canvases.sweep(std::iter::empty());
+    }
     shared.point_link();
     // Before the restore, which brings the saved panes back on a thread of its own and is not
     // waited for: until it ends, a wake for a pane not yet back is held for it.
@@ -349,9 +353,11 @@ fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
 /// daemon, and one that is damaged is moved aside, so that whatever it held can still be read
 /// by a person. Either way the daemon starts, empty, rather than refusing to: a daemon that will
 /// not start ends no agent, but it starts none either.
-fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
+fn saved(socket: &Path) -> (Saved, Option<persist::State>, bool) {
     let path = persist::path_for(socket);
-    let (disabled, state) = match persist::load(&path) {
+    let loaded = persist::load(&path);
+    let known = matches!(loaded, persist::Loaded::Nothing | persist::Loaded::State(_));
+    let (disabled, state) = match loaded {
         persist::Loaded::Nothing => (false, None),
         persist::Loaded::State(state) => (false, Some(*state)),
         persist::Loaded::Newer(version) => {
@@ -432,7 +438,7 @@ fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
         .unwrap_or_default();
     let restoring = state.is_some();
     let persister = Persister::new(path, disabled);
-    (Saved { persister, settings, pane_operations, closed_panes, restoring }, state)
+    (Saved { persister, settings, pane_operations, closed_panes, restoring }, state, known)
 }
 
 /// Refuses a path that holds something other than a socket, because binding replaces what is

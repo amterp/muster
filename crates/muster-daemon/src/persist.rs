@@ -25,7 +25,8 @@
 //!   which a version-1 daemon's parser cannot read. A file is written at the oldest version
 //!   that holds it ([`version_for`]), so a daemon downgraded before anybody made a tab spanning
 //!   machines still reads its file; one with such a tab refuses a version-2 file and saves
-//!   nothing over it.
+//!   nothing over it. Version 3 holds canvases. A live or remembered canvas points at its
+//!   document file instead of carrying a terminal's directory, grid or resume command.
 //! - A fixture is frozen once written. A new version gets a fixture of its own, and so does a
 //!   setting added since the last fixture: the tests' `FIXTURES` says which fixture holds which
 //!   setting, and fails until every setting is held by one.
@@ -33,6 +34,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::io::Write as _;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, PoisonError, Weak};
@@ -49,7 +51,8 @@ use crate::session::{Shared, valid_name, valid_ratio};
 use crate::tree::{Neighbours, Node};
 
 /// The file's format. A daemon reads every version up to its own and refuses a newer one.
-pub(crate) const VERSION: u32 = 2;
+pub(crate) const CANVAS_VERSION: u32 = 3;
+pub(crate) const VERSION: u32 = CANVAS_VERSION;
 
 /// The oldest version that holds these tabs: 2 once a tree holds another machine's pane, else 1.
 pub(crate) fn version_for(tabs: &[Tab]) -> u32 {
@@ -81,6 +84,26 @@ pub(crate) struct State {
     /// written before they were kept, or while none is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) closed_panes: Vec<ClosedPane>,
+}
+
+impl State {
+    pub(crate) fn canvas_names(&self) -> impl Iterator<Item = &str> {
+        self.panes
+            .iter()
+            .chain(self.closed_panes.iter().map(|closed| &closed.pane))
+            .filter(|pane| pane.canvas.is_some())
+            .map(|pane| pane.name.as_str())
+    }
+
+    fn canvas_expiry(&self) -> Option<Instant> {
+        let now = crate::state_since::now_ms();
+        self.closed_panes
+            .iter()
+            .filter(|closed| closed.pane.canvas.is_some())
+            .map(|closed| closed.until_ms.saturating_sub(now))
+            .min()
+            .and_then(|remaining| Instant::now().checked_add(Duration::from_millis(remaining)))
+    }
 }
 
 /// A closed pane, remembered so that a reopen brings it back (`proto::ClosedPane`): the pane as
@@ -189,9 +212,13 @@ pub(crate) struct Pane {
     /// its name when the format was set.
     #[serde(default, rename = "word", skip_serializing_if = "Option::is_none")]
     pub(crate) callsign: Option<String>,
+    #[serde(default, skip_serializing_if = "empty_path")]
     pub(crate) cwd: PathBuf,
     /// The size it was last shown at, so its shell starts at that size.
-    pub(crate) grid: Grid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) grid: Option<Grid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) canvas: Option<Canvas>,
     /// What starts its agent's session again, when its agent reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) resume: Option<Resume>,
@@ -220,6 +247,16 @@ pub(crate) struct Pane {
     /// is not hidden, or was hidden as it was made.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) hidden_from: Option<ClosedTab>,
+}
+
+fn empty_path(path: &Path) -> bool {
+    path.as_os_str().is_empty()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Canvas {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) opened_by: Option<String>,
 }
 
 /// The command that starts a pane's agent session again after a restart: the agent's manifest's
@@ -330,7 +367,12 @@ pub(crate) enum Loaded {
 pub(crate) fn load(path: &Path) -> Loaded {
     match std::fs::read(path) {
         Ok(bytes) => parse(&bytes),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Loaded::Nothing,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            match std::fs::symlink_metadata(path) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Loaded::Nothing,
+                _ => Loaded::Unreadable(error.to_string()),
+            }
+        }
         Err(error) => Loaded::Unreadable(error.to_string()),
     }
 }
@@ -408,15 +450,38 @@ fn validate(state: &State) -> Result<(), String> {
         if !placed.contains(&pane.name) {
             return Err(format!("pane {} is in no tab", pane.name));
         }
-        if pane.grid.cols == 0 || pane.grid.rows == 0 {
-            return Err(format!("pane {} has no cells", pane.name));
-        }
+        validate_pane(pane, state.version)?;
+    }
+    for closed in &state.closed_panes {
+        validate_pane(&closed.pane, state.version)?;
     }
     if let Some(missing) = placed.iter().find(|pane| !recorded.contains(pane.as_str())) {
         return Err(format!("pane {missing} is in a tab and not recorded"));
     }
     if state.settings.palette.as_ref().is_some_and(|palette| palette.entries.len() > 256) {
         return Err("the palette has more than 256 entries".to_string());
+    }
+    Ok(())
+}
+
+fn validate_pane(pane: &Pane, version: u32) -> Result<(), String> {
+    if let Some(canvas) = &pane.canvas {
+        if version < CANVAS_VERSION {
+            return Err(format!("canvas {} requires state format {CANVAS_VERSION}", pane.name));
+        }
+        valid_name("pane", &pane.name)?;
+        if let Some(opened_by) = &canvas.opened_by {
+            valid_name("opening pane", opened_by)?;
+        }
+        if pane.grid.is_some()
+            || !pane.cwd.as_os_str().is_empty()
+            || pane.resume.is_some()
+            || pane.maker.is_some()
+        {
+            return Err(format!("canvas {} carries terminal state", pane.name));
+        }
+    } else if pane.grid.is_none_or(|grid| grid.cols == 0 || grid.rows == 0) {
+        return Err(format!("pane {} has no cells", pane.name));
     }
     Ok(())
 }
@@ -436,6 +501,27 @@ pub(crate) fn move_aside(path: &Path, why: &str) -> std::io::Result<PathBuf> {
     let aside = aside(path, why);
     std::fs::rename(path, &aside)?;
     Ok(aside)
+}
+
+pub(crate) fn recovery_files(path: &Path) -> std::io::Result<Vec<(PathBuf, bool)>> {
+    let Some(basename) = path.file_name() else { return Ok(Vec::new()) };
+    let parent =
+        path.parent().filter(|part| !part.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let mut backups = Vec::new();
+    for entry in std::fs::read_dir(parent)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(suffix) = name.as_bytes().strip_prefix(basename.as_bytes()) else { continue };
+        for (prefix, corrupt) in [(b".corrupt-".as_slice(), true), (b".unrestored-", false)] {
+            if suffix
+                .strip_prefix(prefix)
+                .is_some_and(|time| !time.is_empty() && time.iter().all(u8::is_ascii_digit))
+            {
+                backups.push((entry.path(), corrupt));
+            }
+        }
+    }
+    Ok(backups)
 }
 
 /// Copies the file at `path` beside itself, as `<file>.unrestored-<seconds>`: what a previous
@@ -593,13 +679,20 @@ impl Persister {
         }
         let persister = Arc::clone(self);
         let started = std::thread::Builder::new().name("persist".to_string()).spawn(move || {
-            persister.run(|| match shared.upgrade() {
-                None => Copied::Gone,
-                Some(shared) => shared
-                    .lock()
-                    .persisted_unless_stopping()
-                    .map_or(Copied::Stopping, |state| Copied::State(Box::new(state))),
-            });
+            persister.run(
+                || match shared.upgrade() {
+                    None => Copied::Gone,
+                    Some(shared) => shared
+                        .lock()
+                        .persisted_unless_stopping()
+                        .map_or(Copied::Stopping, |state| Copied::State(Box::new(state))),
+                },
+                |state, durable| {
+                    if let Some(shared) = shared.upgrade() {
+                        shared.collect_canvas_files(state, durable);
+                    }
+                },
+            );
         });
         if let Err(error) = started {
             // Nothing will ever write, so a stop must not wait for a write.
@@ -716,8 +809,9 @@ impl Persister {
 
     /// Writes whatever `copy` takes out of the session, a second after each change, until the
     /// daemon stops.
-    fn run(&self, copy: impl Fn() -> Copied) {
+    fn run(&self, copy: impl Fn() -> Copied, collect: impl Fn(&State, bool)) {
         let mut written = Vec::new();
+        let mut expiry = None;
         let mut pending = self.pending();
         loop {
             match pending.phase {
@@ -738,7 +832,8 @@ impl Persister {
                 }
                 Phase::Writing => {}
             }
-            let Some(due) = pending.changed.map(|changed| changed + DELAY) else {
+            let changed = pending.changed.map(|changed| changed + DELAY);
+            let Some(due) = changed.into_iter().chain(expiry).min() else {
                 pending = self.woken.wait(pending).unwrap_or_else(PoisonError::into_inner);
                 continue;
             };
@@ -755,8 +850,11 @@ impl Persister {
             pending.writing = true;
             drop(pending);
             let copied = copy();
+            expiry = None;
             if let Copied::State(state) = &copied {
-                self.write_if_changed(state, &mut written);
+                expiry = state.canvas_expiry();
+                let durable = self.write_if_changed(state, &mut written);
+                collect(state, durable);
             }
             pending = self.pending();
             pending.writing = false;
@@ -773,7 +871,7 @@ impl Persister {
     /// Writes `state` unless it is exactly what was written last: a title changing moves no
     /// byte of the file, and costs no write. Never a state this daemon's next start would refuse:
     /// that would lose every tab, where keeping the last file loses only the latest change.
-    fn write_if_changed(&self, state: &State, written: &mut Vec<u8>) {
+    fn write_if_changed(&self, state: &State, written: &mut Vec<u8>) -> bool {
         if let Err(why) = validate(state) {
             log::error(
                 "daemon.state.invalid",
@@ -785,7 +883,7 @@ impl Persister {
                                 refuse",
                 },
             );
-            return;
+            return false;
         }
         let bytes = match serde_json::to_vec_pretty(state) {
             Ok(mut bytes) => {
@@ -801,29 +899,34 @@ impl Persister {
                         "check" => "this is a bug: every state the session holds should encode",
                     },
                 );
-                return;
+                return false;
             }
         };
         if bytes == *written {
-            return;
+            return true;
         }
         match write(&self.path, &bytes) {
             Ok(()) => {
                 *written = bytes;
                 #[cfg(test)]
                 poison::lock(&self.writes, "daemon.persist.writes").push(state.clone());
+                true
             }
-            Err(error) => log::warn(
-                "daemon.state.not_written",
-                fields! {
-                    "path" => self.path.display(),
-                    "error" => error,
-                    "impact" => "a restart before the next write succeeds brings back the tabs \
-                                 as they were at the last one",
-                    "check" => "whether the disk is full or the directory is writable; the next \
-                                change tries again",
-                },
-            ),
+            Err(error) => {
+                written.clear();
+                log::warn(
+                    "daemon.state.not_written",
+                    fields! {
+                        "path" => self.path.display(),
+                        "error" => error,
+                        "impact" => "a restart before the next write succeeds brings back the tabs \
+                                     as they were at the last one",
+                        "check" => "whether the disk is full or the directory is writable; the next \
+                                    change tries again",
+                    },
+                );
+                false
+            }
         }
     }
 }
@@ -862,7 +965,8 @@ mod tests {
             label_from_session: false,
             callsign: Some(format!("word-{name}")),
             cwd: PathBuf::from("/tmp"),
-            grid: Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 },
+            grid: Some(Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 }),
+            canvas: None,
             resume: None,
             quiet: false,
             maker: None,
@@ -979,21 +1083,24 @@ mod tests {
         let session = Arc::new(Mutex::new((false, state())));
         let (writing, held) = (Arc::clone(&persister), Arc::clone(&session));
         let thread = std::thread::spawn(move || {
-            writing.run(|| {
-                let mut session = held.lock().unwrap();
-                if !session.0 {
-                    // The stop ran first: `close_everything`.
-                    writing.stopping(session.1.clone());
-                    session.0 = true;
-                    session.1.tabs.clear();
-                    session.1.panes.clear();
-                }
-                if session.0 {
-                    Copied::Stopping
-                } else {
-                    Copied::State(Box::new(session.1.clone()))
-                }
-            });
+            writing.run(
+                || {
+                    let mut session = held.lock().unwrap();
+                    if !session.0 {
+                        // The stop ran first: `close_everything`.
+                        writing.stopping(session.1.clone());
+                        session.0 = true;
+                        session.1.tabs.clear();
+                        session.1.panes.clear();
+                    }
+                    if session.0 {
+                        Copied::Stopping
+                    } else {
+                        Copied::State(Box::new(session.1.clone()))
+                    }
+                },
+                |_, _| {},
+            );
         });
         thread.join().unwrap();
         assert_eq!(*persister.writes.lock().unwrap(), [state()], "only what it held");
@@ -1032,7 +1139,8 @@ mod tests {
         persister.changed();
         persister.pending().changed = Instant::now().checked_sub(DELAY * 2);
         let writing = Arc::clone(&persister);
-        let thread = std::thread::spawn(move || writing.run(|| Copied::State(Box::new(state()))));
+        let thread =
+            std::thread::spawn(move || writing.run(|| Copied::State(Box::new(state())), |_, _| {}));
         std::thread::sleep(Duration::from_millis(100));
         assert!(persister.writes.lock().unwrap().is_empty(), "written while restoring");
         persister.arm();
@@ -1057,7 +1165,7 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 13] = [
+    const FIXTURES: [(&str, &[&str]); 14] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
@@ -1081,6 +1189,7 @@ mod tests {
         ("state-v2-reopen-closed.json", &["reopen_closed_minutes"]),
         // Also the first to hold a pane's own compaction thresholds.
         ("state-v2-compaction.json", &["compaction_rules"]),
+        ("state-v3-canvas.json", &[]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -1102,7 +1211,8 @@ mod tests {
             label_from_session: false,
             callsign: None,
             cwd: PathBuf::from("/tmp"),
-            grid,
+            grid: Some(grid),
+            canvas: None,
             resume: None,
             quiet: false,
             maker: None,
@@ -1272,7 +1382,7 @@ mod tests {
                 *ratio = 1.5;
             }
         });
-        corrupt(|state| state.panes[0].grid.cols = 0);
+        corrupt(|state| state.panes[0].grid.as_mut().unwrap().cols = 0);
         corrupt(|state| {
             state.tabs[0].root = Node::Split {
                 axis: Axis::Rows,

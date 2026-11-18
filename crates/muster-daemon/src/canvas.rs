@@ -1,17 +1,20 @@
 //! A canvas document on disk. Its revision and bytes commit together.
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
 use prost::Message as _;
+
+use crate::persist::{self, Loaded, State};
 
 mod requests;
 pub(crate) use requests::serve;
@@ -27,6 +30,14 @@ pub(crate) struct Store {
     directory: PathBuf,
     parent_synced: Mutex<bool>,
     lifetime: RwLock<()>,
+    kept: Mutex<Option<References>>,
+    directory_seen: AtomicBool,
+}
+
+#[derive(Debug)]
+struct References {
+    saved: HashSet<String>,
+    recovery: HashSet<String>,
 }
 
 #[derive(Debug, Default)]
@@ -86,7 +97,113 @@ impl Store {
             directory: PathBuf::from(directory),
             parent_synced: Mutex::new(false),
             lifetime: RwLock::new(()),
+            kept: Mutex::new(None),
+            directory_seen: AtomicBool::new(false),
         }
+    }
+
+    pub(crate) fn initialize_saved(
+        &self,
+        state_path: &Path,
+        state_known: bool,
+        state: Option<&State>,
+    ) {
+        let backups = match persist::recovery_files(state_path) {
+            Ok(backups) => backups,
+            Err(error) => {
+                log::warn(
+                    "daemon.canvas.collection_off",
+                    fields! {
+                        "state" => state_path.display(),
+                        "error" => error,
+                        "impact" => "could not check for state backups; canvas collection is off",
+                    },
+                );
+                return;
+            }
+        };
+        let mut recovery = HashSet::new();
+        for (aside, corrupt) in backups {
+            if !corrupt && let Loaded::State(state) = persist::load(&aside) {
+                recovery.extend(state.canvas_names().map(str::to_owned));
+            } else {
+                collection_off(&aside);
+                return;
+            }
+        }
+        if !state_known {
+            return;
+        }
+        let saved = state.into_iter().flat_map(State::canvas_names).map(str::to_owned).collect();
+        *poison::lock(&self.kept, "daemon.canvas.kept") = Some(References { saved, recovery });
+        self.directory_seen.store(self.directory.exists(), Ordering::Relaxed);
+    }
+
+    pub(crate) fn keep_recovery(&self, backup: &Path) {
+        let recovered = persist::load(backup);
+        let mut kept = poison::lock(&self.kept, "daemon.canvas.kept");
+        if let Some(refs) = kept.as_mut() {
+            if let Loaded::State(state) = recovered {
+                refs.recovery.extend(state.canvas_names().map(str::to_owned));
+            } else {
+                *kept = None;
+                collection_off(backup);
+            }
+        }
+    }
+
+    pub(crate) fn saved_state<'a>(&self, names: impl Iterator<Item = &'a str>, durable: bool) {
+        if let Some(kept) = poison::lock(&self.kept, "daemon.canvas.kept").as_mut() {
+            if durable {
+                kept.saved.clear();
+            }
+            kept.saved.extend(names.map(str::to_owned));
+        }
+    }
+
+    pub(crate) fn can_collect(&self) -> bool {
+        self.directory_seen.load(Ordering::Relaxed)
+            && poison::lock(&self.kept, "daemon.canvas.kept").is_some()
+    }
+
+    pub(crate) fn sweep<'a>(&self, names: impl Iterator<Item = &'a str>) {
+        let files = {
+            let kept = poison::lock(&self.kept, "daemon.canvas.kept");
+            let Some(kept) = kept.as_ref() else { return };
+            kept.saved
+                .iter()
+                .chain(&kept.recovery)
+                .map(|name| file_name(name))
+                .chain(names.map(file_name))
+                .collect::<HashSet<_>>()
+        };
+        if let Err(error) = self.delete_unreferenced(&files) {
+            log::warn(
+                "daemon.canvas.sweep_failed",
+                fields! { "directory" => self.directory.display(), "error" => error },
+            );
+        }
+    }
+
+    fn delete_unreferenced(&self, files: &HashSet<String>) -> io::Result<()> {
+        match self.check_directory() {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            found => found?,
+        }
+        let mut deleted = false;
+        for entry in fs::read_dir(&self.directory)? {
+            match entry.and_then(|entry| delete_unreferenced_entry(&entry, files)) {
+                Ok(removed) => deleted |= removed,
+                Err(error) => log::warn(
+                    "daemon.canvas.sweep_entry_failed",
+                    fields! { "directory" => self.directory.display(), "error" => error },
+                ),
+            }
+        }
+        if deleted {
+            sync_directory(&self.directory)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn operation(&self) -> RwLockReadGuard<'_, ()> {
@@ -197,6 +314,7 @@ impl Store {
             Err(error) => return Err(error),
         }
         self.check_directory()?;
+        self.directory_seen.store(true, Ordering::Relaxed);
         if !*synced {
             sync_directory(parent(&self.directory))?;
             *synced = true;
@@ -221,6 +339,32 @@ impl Store {
     }
 }
 
+fn collection_off(aside: &Path) {
+    log::warn(
+        "daemon.canvas.collection_off",
+        fields! {
+            "aside" => aside.display(),
+            "impact" => "canvas collection is off; closed canvas documents accumulate",
+            "fix" => "after recovering anything you need from the state backup, remove it and \
+                      restart the daemon to turn collection back on",
+        },
+    );
+}
+
+fn delete_unreferenced_entry(entry: &fs::DirEntry, files: &HashSet<String>) -> io::Result<bool> {
+    let name = entry.file_name();
+    let Some(name) = name.to_str() else { return Ok(false) };
+    if files.contains(name) || !entry.file_type()?.is_file() {
+        return Ok(false);
+    }
+    let path = entry.path();
+    if temporary_name(name) || (document_name(name) && has_magic(&path)?) {
+        fs::remove_file(path)?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 fn parent(path: &Path) -> &Path {
     path.parent().filter(|part| !part.as_os_str().is_empty()).unwrap_or(Path::new("."))
 }
@@ -241,6 +385,47 @@ fn file_name(pane: &str) -> String {
         write!(name, "{byte:02x}").expect("writing to a string cannot fail");
     }
     name
+}
+
+fn temporary_name(name: &str) -> bool {
+    name.strip_prefix(".tmp-")
+        .and_then(|rest| rest.split_once('-'))
+        .is_some_and(|(pid, nonce)| pid.parse::<u32>().is_ok() && nonce.parse::<u64>().is_ok())
+}
+
+fn document_name(name: &str) -> bool {
+    if let Some(encoded) = name.strip_prefix('~') {
+        if encoded.len() % 2 != 0 || encoded.len() > 128 {
+            return false;
+        }
+        let Ok(decoded) = encoded
+            .as_bytes()
+            .chunks(2)
+            .map(|pair| {
+                let pair = std::str::from_utf8(pair).map_err(|_| ())?;
+                u8::from_str_radix(pair, 16).map_err(|_| ())
+            })
+            .collect::<Result<Vec<_>, _>>()
+        else {
+            return false;
+        };
+        let Ok(pane) = std::str::from_utf8(&decoded) else { return false };
+        return crate::session::valid_name("pane", pane).is_ok() && file_name(pane) == name;
+    }
+    crate::session::valid_name("pane", name).is_ok() && file_name(name) == name
+}
+
+fn has_magic(path: &Path) -> io::Result<bool> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let mut magic = [0; MAGIC.len()];
+    match file.read_exact(&mut magic) {
+        Ok(()) => Ok(magic == *MAGIC),
+        Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 fn read_document(mut file: File) -> io::Result<Document> {

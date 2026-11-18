@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "daemon": "0.27.0",
+  "settings": {},
+  "tabs": [
+    {
+      "tab": "t1",
+      "label": {"generation": 0},
+      "root": {"pane": "paper"}
+    }
+  ],
+  "panes": [
+    {
+      "pane": "paper",
+      "label": "Notes",
+      "word": "seabass",
+      "quiet": true,
+      "canvas": {"opened_by": "p1"}
+    }
+  ]
+}

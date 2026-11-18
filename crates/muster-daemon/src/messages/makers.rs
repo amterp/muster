@@ -36,7 +36,7 @@ use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
 use super::{Block, delivering, notices, now_ms, told, waits, words};
 use crate::pane::TypedBy;
-use crate::session::{Orphaned, Session, Shared};
+use crate::session::{Handled, Orphaned, Session, Shared};
 
 /// How long a helper's need must hold before its maker is told of it.
 pub(crate) const SETTLE: Duration = Duration::from_secs(10);
@@ -909,7 +909,8 @@ fn reopen_with_maker(shared: &Arc<Shared>, session: &mut Session, helper: &str) 
         tab: Minter::new(Mint::Drawn).tab().to_string(),
     };
     let starting = match session.prepare_reopen(reopen, true) {
-        Ok(starting) => starting,
+        Ok(Handled::Start(starting)) => starting,
+        Ok(other) => unreachable!("a helper runs a terminal, got {other:?}"),
         Err(reply) => return not_reopened(helper, &reply.reason),
     };
     let slot = Arc::new(Mutex::new(Some(starting)));
@@ -918,7 +919,7 @@ fn reopen_with_maker(shared: &Arc<Shared>, session: &mut Session, helper: &str) 
         move || {
             let Some(mut starting) = poison::lock(&slot, "reopen").take() else { return };
             let started = starting.start();
-            let reply = shared.lock().started(starting, started);
+            let reply = shared.lock().started(*starting, started);
             if reply.outcome != proto::Outcome::Done {
                 not_reopened(&helper, &reply.reason);
             }
@@ -927,7 +928,7 @@ fn reopen_with_maker(shared: &Arc<Shared>, session: &mut Session, helper: &str) 
     if let Err(error) = spawned
         && let Some(starting) = poison::lock(&slot, "reopen").take()
     {
-        let reply = session.started(starting, Err(error));
+        let reply = session.started(*starting, Err(error));
         not_reopened(helper, &reply.reason);
     }
 }

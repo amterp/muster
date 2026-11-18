@@ -289,6 +289,22 @@ impl Shared {
         (Some(exclusive), lock())
     }
 
+    pub(crate) fn collect_canvas_files(&self, state: &persist::State, durable: bool) {
+        self.canvases.saved_state(state.canvas_names(), durable);
+        if !durable || !self.canvases.can_collect() {
+            return;
+        }
+        let _exclusive = self.canvases.exclusive();
+        let names = {
+            let session = self.lock();
+            if session.unavailable().is_some() || session.restoring() {
+                return;
+            }
+            session.retained_canvas_names()
+        };
+        self.canvases.sweep(names.iter().map(String::as_str));
+    }
+
     pub(crate) fn messages(&self) -> MutexGuard<'_, Messages> {
         poison::lock(&self.messages, "daemon.messages")
     }
@@ -619,6 +635,7 @@ pub(crate) enum Handled {
     Reply(Reply),
     /// A pane to start with the session unlocked, then finish with [`Session::started`].
     Start(Box<Starting>),
+    ReopenCanvas(Box<ReopeningCanvas>),
     /// A pane's text to read with the session unlocked, since a long page takes a while to
     /// format. It holds the pane's lock a batch of rows at a time.
     Read(Box<Reading>),
@@ -787,6 +804,11 @@ struct Restoring {
 #[derive(Debug)]
 struct RestoringPane {
     saved: persist::Pane,
+    terminal: Option<RestoringTerminal>,
+}
+
+#[derive(Debug)]
+struct RestoringTerminal {
     /// What starts its agent's session again, when it starts with that rather than a shell.
     resume: Option<persist::Resume>,
     /// The configured shell, running the resume when there is one.
@@ -807,6 +829,12 @@ struct Restarted {
     resumed: bool,
 }
 
+#[derive(Debug)]
+enum RestoredBody {
+    Canvas(std::io::Result<Document>),
+    Terminal(Restarted),
+}
+
 impl Restoring {
     /// Starts each pane's shell in its saved directory, or at home when that is gone. A shell
     /// and never the command a pane was made with: an agent started afresh in every pane is not
@@ -817,83 +845,100 @@ impl Restoring {
     /// may not enter - is tried again as the default shell, in the same directory and then at
     /// home, so a setting that went bad between runs costs neither the panes nor where they
     /// start, and a directory that did costs only where they start.
-    fn start(&self, directories: &HashMap<PathBuf, Option<bool>>) -> Vec<Restarted> {
+    fn start(
+        &self,
+        directories: &HashMap<PathBuf, Option<bool>>,
+        canvases: &Store,
+    ) -> Vec<RestoredBody> {
         self.panes
             .iter()
-            .map(|pane| {
-                let saved = &pane.saved.cwd;
-                let cwd = match directories.get(saved).copied().flatten() {
-                    Some(true) => saved.clone(),
-                    Some(false) => {
-                        log::warn(
-                            "daemon.state.cwd_gone",
-                            fields! {
-                                "pane" => pane.saved.name,
-                                "cwd" => saved.display(),
-                                "impact" => "the pane's shell starts in the home directory instead",
-                                "check" => "whether the directory was removed or its mount is gone",
-                            },
-                        );
-                        self.home.clone()
-                    }
-                    None => {
-                        log::warn(
-                            "daemon.state.cwd_unanswered",
-                            fields! {
-                                "pane" => pane.saved.name,
-                                "cwd" => saved.display(),
-                                "seconds" => DIRECTORY_PATIENCE.as_secs(),
-                                "impact" => "the pane's shell starts in the home directory \
-                                             instead, and a thread still waiting on the directory \
-                                             is left until it answers",
-                                "check" => "whether the directory is on a network mount that has \
-                                            hung",
-                            },
-                        );
-                        self.home.clone()
-                    }
-                };
-                // A session resumed anywhere but where it ran finds no conversation to resume, so a
-                // pane whose directory is gone comes back as a shell, and its agent as stopped.
-                let resumes = pane.resume.is_some() && cwd == *saved;
-                if pane.resume.is_some() && !resumes {
-                    log::warn(
-                        "daemon.state.resume_skipped",
-                        fields! {
-                            "pane" => pane.saved.name,
-                            "impact" => "the pane comes back as a shell rather than running its \
-                                         agent's session, which would not find its conversation \
-                                         from another directory",
-                            "check" => "the daemon.state.cwd line above says why the directory \
-                                        could not be used; restore it and start the session \
-                                        again by hand",
-                        },
-                    );
+            .map(|pane| match &pane.terminal {
+                None => RestoredBody::Canvas(canvases.read(&pane.saved.name)),
+                Some(terminal) => {
+                    RestoredBody::Terminal(self.start_terminal(&pane.saved, terminal, directories))
                 }
-                let launch = if resumes { &pane.launch } else { &pane.plain };
-                let mut first = start_launched(launch, &cwd, pane.saved.grid);
-                first.resumed = resumes;
-                let Err(error) = first.started else { return first };
-                log::warn(
-                    "daemon.state.fallback",
-                    fields! {
-                        "pane" => pane.saved.name,
-                        "program" => first.program,
-                        "cwd" => cwd.display(),
-                        "error" => error,
-                        "impact" => "the default shell is tried instead, in this directory and \
-                                     then at home",
-                        "check" => "whether the configured shell still exists, and whether the \
-                                    directory can be entered",
-                    },
-                );
-                let fallback = start_launched(&pane.fallback, &cwd, pane.saved.grid);
-                if fallback.started.is_ok() || cwd == self.home {
-                    return fallback;
-                }
-                start_launched(&pane.fallback, &self.home, pane.saved.grid)
             })
             .collect()
+    }
+
+    fn start_terminal(
+        &self,
+        pane: &persist::Pane,
+        terminal: &RestoringTerminal,
+        directories: &HashMap<PathBuf, Option<bool>>,
+    ) -> Restarted {
+        let grid = pane.grid.expect("the state file checked this terminal's grid");
+        let saved = &pane.cwd;
+        let cwd = match directories.get(saved).copied().flatten() {
+            Some(true) => saved.clone(),
+            Some(false) => {
+                log::warn(
+                    "daemon.state.cwd_gone",
+                    fields! {
+                        "pane" => pane.name,
+                        "cwd" => saved.display(),
+                        "impact" => "the pane's shell starts in the home directory instead",
+                        "check" => "whether the directory was removed or its mount is gone",
+                    },
+                );
+                self.home.clone()
+            }
+            None => {
+                log::warn(
+                    "daemon.state.cwd_unanswered",
+                    fields! {
+                        "pane" => pane.name,
+                        "cwd" => saved.display(),
+                        "seconds" => DIRECTORY_PATIENCE.as_secs(),
+                        "impact" => "the pane's shell starts in the home directory \
+                                     instead, and a thread still waiting on the directory \
+                                     is left until it answers",
+                        "check" => "whether the directory is on a network mount that has \
+                                    hung",
+                    },
+                );
+                self.home.clone()
+            }
+        };
+        // A session resumed anywhere but where it ran finds no conversation to resume, so a
+        // pane whose directory is gone comes back as a shell, and its agent as stopped.
+        let resumes = terminal.resume.is_some() && cwd == *saved;
+        if terminal.resume.is_some() && !resumes {
+            log::warn(
+                "daemon.state.resume_skipped",
+                fields! {
+                    "pane" => pane.name,
+                    "impact" => "the pane comes back as a shell rather than running its \
+                                 agent's session, which would not find its conversation \
+                                 from another directory",
+                    "check" => "the daemon.state.cwd line above says why the directory \
+                                could not be used; restore it and start the session \
+                                again by hand",
+                },
+            );
+        }
+        let launch = if resumes { &terminal.launch } else { &terminal.plain };
+        let mut first = start_launched(launch, &cwd, grid);
+        first.resumed = resumes;
+        let Err(error) = first.started else { return first };
+        log::warn(
+            "daemon.state.fallback",
+            fields! {
+                "pane" => pane.name,
+                "program" => first.program,
+                "cwd" => cwd.display(),
+                "error" => error,
+                "impact" => "the default shell is tried instead, in this directory and \
+                             then at home",
+                "check" => "whether the configured shell still exists, and whether the \
+                            directory can be entered",
+            },
+        );
+        let fallback = start_launched(&terminal.fallback, &cwd, grid);
+        if fallback.started.is_ok() || cwd == self.home {
+            return fallback;
+        }
+        start_launched(&terminal.fallback, &self.home, grid)
     }
 }
 
@@ -982,15 +1027,21 @@ fn place_in(tab: &Tab, pane: &str) -> persist::ClosedTab {
 }
 
 /// A pane as the state file keeps it.
-fn saved_pane(pane: &Pane, terminal: &TerminalPane) -> persist::Pane {
+fn saved_pane(pane: &Pane) -> persist::Pane {
+    let terminal = pane.body.terminal();
     persist::Pane {
         name: pane.record.pane.clone(),
         label: pane.record.label.clone(),
         label_from_session: pane.record.label_from_session,
         callsign: pane.record.callsign.clone(),
         cwd: PathBuf::from(&pane.record.cwd),
-        grid: terminal.io.grid(),
-        resume: terminal.resume.clone(),
+        grid: terminal.map(|terminal| terminal.io.grid()),
+        canvas: pane
+            .record
+            .canvas
+            .as_ref()
+            .map(|canvas| persist::Canvas { opened_by: canvas.opened_by.clone() }),
+        resume: terminal.and_then(|terminal| terminal.resume.clone()),
         quiet: pane.record.quiet,
         maker: pane.record.maker.clone(),
         maker_closed: pane.record.maker_closed,
@@ -998,6 +1049,18 @@ fn saved_pane(pane: &Pane, terminal: &TerminalPane) -> persist::Pane {
         compaction: pane.record.own_compaction,
         kept_after_maker_closed: pane.kept_after_maker_closed,
         hidden_from: pane.hidden_from.clone(),
+    }
+}
+
+fn saved_canvas_record(saved: &persist::Pane, document: &Document) -> proto::Pane {
+    let canvas = saved.canvas.as_ref().expect("the saved pane is a canvas");
+    proto::Pane {
+        pane: saved.name.clone(),
+        label: saved.label.clone(),
+        callsign: saved.callsign.clone(),
+        quiet: saved.quiet,
+        canvas: Some(document.metadata(canvas.opened_by.clone())),
+        ..proto::Pane::default()
     }
 }
 
@@ -1032,7 +1095,7 @@ pub(crate) fn restore(shared: &Shared, state: persist::State) {
     // Every directory asked about up front, together: a hung mount then costs the restore one
     // wait rather than one per pane in it.
     let directories = probe_directories(
-        saved.values().map(|pane| pane.cwd.clone()),
+        saved.values().filter(|pane| pane.canvas.is_none()).map(|pane| pane.cwd.clone()),
         DIRECTORY_PATIENCE,
         Path::is_dir,
     );
@@ -1042,7 +1105,7 @@ pub(crate) fn restore(shared: &Shared, state: persist::State) {
         for tab in state.tabs {
             let restoring = shared.lock().prepare_restore(tab, &saved, &mut lost);
             if let Some(restoring) = restoring {
-                let started = restoring.start(&directories);
+                let started = restoring.start(&directories, &shared.canvases);
                 shared.lock().restored(restoring, started, &mut lost);
             }
             done += 1;
@@ -1118,8 +1181,8 @@ fn finish_restore(shared: &Shared, lost: Lost, failed: Option<&str>) {
     };
     // Outside the lock, as every other disk operation is: a hung disk must not stall every
     // connection.
-    let saving =
-        failed.is_none() && (lost.is_empty() || keep_what_was_lost(persister.path(), &lost));
+    let saving = failed.is_none()
+        && (lost.is_empty() || keep_what_was_lost(persister.path(), &shared.canvases, &lost));
     let mut session = shared.lock();
     session.restoring = false;
     if session.stopping {
@@ -1142,9 +1205,10 @@ fn finish_restore(shared: &Shared, lost: Lost, failed: Option<&str>) {
 /// Copies the state file aside before the persister's first write leaves out the saved tabs
 /// and panes that did not come back. False when the copy failed, and nothing may be written
 /// this run: the file is then the only record of them.
-fn keep_what_was_lost(path: &Path, lost: &Lost) -> bool {
+fn keep_what_was_lost(path: &Path, canvases: &Store, lost: &Lost) -> bool {
     match persist::keep_aside(path) {
         Ok(kept) => {
+            canvases.keep_recovery(&kept);
             log::warn(
                 "daemon.state.unrestored",
                 fields! {
@@ -1199,6 +1263,22 @@ pub(crate) struct Starting {
     environment: Vec<(OsString, OsString)>,
     /// What a reopen brings back beyond what a create does.
     reopening: Option<Box<Reopening>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ReopeningCanvas {
+    closed: persist::ClosedPane,
+    target: Target,
+    label: Option<String>,
+    callsign: String,
+    callsign_taken: Option<String>,
+    name_taken: Option<String>,
+}
+
+impl ReopeningCanvas {
+    pub(crate) fn name(&self) -> &str {
+        &self.closed.pane.name
+    }
 }
 
 /// A closed pane being brought back ([`Session::prepare_reopen`]).
@@ -1980,9 +2060,11 @@ impl Session {
         let name = record.pane.clone();
         self.release_pane(&name, &target);
         if let Err(refused) = stored {
+            self.state_changed();
             return refused;
         }
         if let Some(refused) = self.starting_refusal(&name, &target) {
+            self.state_changed();
             return refused;
         }
         record.canvas = Some(document.metadata(opened_by));
@@ -2079,7 +2161,7 @@ impl Session {
     /// [`Session::started`] places it.
     fn reopen(&mut self, reopen: pane_request::Reopen) -> Handled {
         match self.prepare_reopen(reopen, false) {
-            Ok(starting) => Handled::Start(Box::new(starting)),
+            Ok(starting) => starting,
             Err(reply) => Handled::Reply(reply),
         }
     }
@@ -2090,16 +2172,17 @@ impl Session {
         &mut self,
         reopen: pane_request::Reopen,
         with_maker: bool,
-    ) -> Result<Starting, Reply> {
+    ) -> Result<Handled, Reply> {
         if self.stopping {
             return Err(Reply::refused("the daemon is stopping"));
         }
         valid_name("tab", &reopen.tab).map_err(Reply::refused)?;
         let now_ms = state_since::now_ms();
-        self.closed.retain(|closed| closed.until_ms > now_ms);
+        self.closed.retain(|closed| closed.reopening || closed.until_ms > now_ms);
         let asked = reopen.pane.as_str();
         let Some(index) = self.closed.iter().rposition(|closed| {
-            closed.pane.name == asked || closed.pane.callsign.as_deref() == Some(asked)
+            closed.until_ms > now_ms
+                && (closed.pane.name == asked || closed.pane.callsign.as_deref() == Some(asked))
         }) else {
             return Err(Reply::not_there(format!(
                 "no pane closed on this daemon is remembered as {asked}: it was not closed here, \
@@ -2115,6 +2198,9 @@ impl Session {
                 "pane {pane} is open, or being started, so there is nothing to reopen"
             )));
         }
+        if with_maker && self.closed[index].pane.canvas.is_some() {
+            return Err(Reply::refused(format!("canvas {pane} has no maker")));
+        }
         self.free_tab(&reopen.tab)?;
         self.closed[index].reopening = true;
         let closed = self.closed[index].clone();
@@ -2128,8 +2214,25 @@ impl Session {
             saved.callsign.clone().filter(|callsign| self.callsign_clashes(callsign, &pane));
         let callsign = match saved.callsign.clone().filter(|_| callsign_taken.is_none()) {
             Some(callsign) => callsign,
-            None => self.draw_callsign(given_name(label.as_deref()), Some(&saved.cwd), &[]),
+            None => self.draw_callsign(
+                given_name(label.as_deref()),
+                saved.canvas.is_none().then_some(saved.cwd.as_path()),
+                &[],
+            ),
         };
+        let target = Target::Reopened { tab: closed.tab.clone(), fresh: reopen.tab };
+        self.reserve_pane(&pane, &target, &callsign);
+        if saved.canvas.is_some() {
+            return Ok(Handled::ReopenCanvas(Box::new(ReopeningCanvas {
+                closed,
+                target,
+                label,
+                callsign,
+                callsign_taken,
+                name_taken,
+            })));
+        }
+
         let called = given_name(label.as_deref()).unwrap_or(&callsign).to_string();
         let which = spawn::Which { pane: &pane, name: &called, callsign: &callsign };
         let shell = self.settings.shell.clone().unwrap_or_default();
@@ -2140,13 +2243,7 @@ impl Session {
         let (argv, environment) = self.launch_with(&shell, which, line.as_deref(), &HashMap::new());
         let plain = self.launch_with(&shell, which, None, &HashMap::new());
 
-        let target = Target::Reopened { tab: closed.tab.clone(), fresh: reopen.tab };
-        self.reserved.insert(pane.clone());
-        if let Some(fresh) = target.new_tab() {
-            self.reserved.insert(fresh.to_string());
-        }
-        self.naming.insert(callsign.clone(), pane.clone());
-        Ok(Starting {
+        Ok(Handled::Start(Box::new(Starting {
             pane,
             label_from_session: saved.label_from_session && label.is_some(),
             label,
@@ -2155,7 +2252,7 @@ impl Session {
             quiet: saved.quiet,
             maker: saved.maker.clone(),
             target,
-            grid: saved.grid,
+            grid: saved.grid.expect("the state file checked this terminal's grid"),
             cwd: saved.cwd.clone(),
             home_instead: None,
             argv,
@@ -2169,7 +2266,48 @@ impl Session {
                 name_taken,
                 with_maker,
             })),
-        })
+        })))
+    }
+
+    pub(crate) fn reopen_canvas(
+        &mut self,
+        starting: ReopeningCanvas,
+        document: std::io::Result<Document>,
+    ) -> Reply {
+        let ReopeningCanvas { closed, target, label, callsign, callsign_taken, name_taken } =
+            starting;
+        let name = closed.pane.name.clone();
+        self.release_pane(&name, &target);
+        let document = match document {
+            Ok(document) => document,
+            Err(error) => {
+                self.reopen_failed(&closed);
+                return Reply::refused(format!("could not reopen canvas {name}: {error}"));
+            }
+        };
+        if let Some(refused) = self.starting_refusal(&name, &target) {
+            self.reopen_failed(&closed);
+            return refused;
+        }
+        let mut record = saved_canvas_record(&closed.pane, &document);
+        record.label = label;
+        record.callsign = Some(callsign.clone());
+        self.open_canvas(record, closed.pane.hidden_from);
+        self.closed.retain(|closed| closed.pane.name != name);
+        let Target::Reopened { tab, fresh } = target else {
+            unreachable!("a canvas is reopened where it was placed")
+        };
+        let (tab, made_tab) = self.place_reopened(&name, &tab, fresh);
+        let reopened = proto::Reopened {
+            pane: name,
+            callsign,
+            tab,
+            made_tab,
+            resumed: false,
+            callsign_taken,
+            name_taken,
+        };
+        Reply { detail: Some(Box::new(Detail::Reopened(reopened))), ..Reply::done() }
     }
 
     /// Whether `callsign`, a closed pane's, would now mean another pane too: one open here, or
@@ -3606,15 +3744,14 @@ impl Session {
         }
         let (Some(index), Some(tab)) = (self.pane_index(pane), self.tab_of(pane)) else { return };
         let (held, tab) = (&self.panes[index], &self.tabs[tab]);
-        let Some(terminal) = held.body.terminal() else { return };
         let closed_at_ms = state_since::now_ms();
         let closed = persist::ClosedPane {
-            pane: saved_pane(held, terminal),
+            pane: saved_pane(held),
             agent: held.record.agent.clone(),
             closed_at_ms,
             until_ms: closed_at_ms.saturating_add(u64::from(minutes) * 60_000),
             tab: place_in(tab, pane),
-            groups: terminal.groups(),
+            groups: held.body.terminal().map_or_else(Vec::new, TerminalPane::groups),
             reopening: false,
             with_maker,
         };
@@ -4919,49 +5056,47 @@ impl Session {
 
     /// What a restart needs of the session now.
     pub(crate) fn persisted(&self) -> persist::State {
-        let canvases: Vec<_> = self
-            .panes
-            .iter()
-            .filter(|pane| pane.body.terminal().is_none())
-            .map(|pane| pane.record.pane.as_str())
-            .collect();
-        let tabs: Vec<persist::Tab> = self
+        let tabs: Vec<_> = self
             .tabs
             .iter()
-            .filter_map(|tab| {
-                // The terminal-only state format would restore a shell for a canvas.
-                let root = canvases
-                    .iter()
-                    .try_fold(tab.root.clone(), |root, pane| root.without(pane).0)?;
-                if !canvases.is_empty() && root.panes().is_empty() {
-                    return None;
-                }
-                let zoomed = tab.zoomed.as_ref().filter(|pane| !canvases.contains(&pane.as_str()));
-                Some(persist::Tab {
-                    name: tab.name.clone(),
-                    label: tab.label.clone(),
-                    zoomed: zoomed.cloned(),
-                    root,
-                    hidden: tab.hidden,
-                    helpers_of: tab.helpers_of.clone(),
-                    layout_generation: tab.layout_generation,
-                })
+            .map(|tab| persist::Tab {
+                name: tab.name.clone(),
+                label: tab.label.clone(),
+                zoomed: tab.zoomed.clone(),
+                root: tab.root.clone(),
+                hidden: tab.hidden,
+                helpers_of: tab.helpers_of.clone(),
+                layout_generation: tab.layout_generation,
             })
             .collect();
-        persist::State {
+        let mut state = persist::State {
             version: persist::version_for(&tabs),
             daemon: env!("CARGO_PKG_VERSION").to_string(),
             settings: self.settings.clone(),
             tabs,
-            panes: self
-                .panes
-                .iter()
-                .filter_map(|pane| Some(saved_pane(pane, pane.body.terminal()?)))
-                .collect(),
+            panes: self.panes.iter().map(saved_pane).collect(),
             released_callsigns: self.released.iter().cloned().collect(),
             pane_operations: self.pane_operations.saved(),
             closed_panes: self.remembered(state_since::now_ms()).cloned().collect(),
+        };
+        if state.canvas_names().next().is_some() {
+            state.version = persist::CANVAS_VERSION;
         }
+        state
+    }
+
+    fn retained_canvas_names(&self) -> Vec<String> {
+        self.panes
+            .iter()
+            .filter(|pane| pane.body.canvas().is_some())
+            .map(|pane| pane.record.pane.clone())
+            .chain(
+                self.remembered(state_since::now_ms())
+                    .filter(|closed| closed.pane.canvas.is_some())
+                    .map(|closed| closed.pane.name.clone()),
+            )
+            .chain(self.reserved.iter().cloned())
+            .collect()
     }
 
     /// Checks a saved tab against what is here and reserves its names, for its panes' shells to
@@ -5020,10 +5155,18 @@ impl Session {
                 .take()
                 .filter(|callsign| self.callsign_holder(callsign, name).is_none())
                 .unwrap_or_else(|| {
-                    self.draw_callsign(given_name(pane.label.as_deref()), Some(&pane.cwd), &[])
+                    self.draw_callsign(
+                        given_name(pane.label.as_deref()),
+                        pane.canvas.is_none().then_some(pane.cwd.as_path()),
+                        &[],
+                    )
                 });
             self.naming.insert(callsign.clone(), name.to_string());
             pane.callsign = Some(callsign.clone());
+            if pane.canvas.is_some() {
+                panes.push(RestoringPane { saved: pane, terminal: None });
+                continue;
+            }
             let called = given_name(pane.label.as_deref()).unwrap_or(&callsign).to_string();
             let which = spawn::Which { pane: name, name: &called, callsign: &callsign };
             let shell = self.settings.shell.clone().unwrap_or_default();
@@ -5039,7 +5182,10 @@ impl Session {
             let plain = self.launch_with(&shell, which, None, &HashMap::new());
             let fallback = proto::Shell { command: None, ..shell };
             let fallback = self.launch_with(&fallback, which, None, &HashMap::new());
-            panes.push(RestoringPane { saved: pane, resume, launch, plain, fallback });
+            panes.push(RestoringPane {
+                saved: pane,
+                terminal: Some(RestoringTerminal { resume, launch, plain, fallback }),
+            });
         }
         self.reserved.insert(tab.name.clone());
         for pane in &panes {
@@ -5048,9 +5194,98 @@ impl Session {
         Some(Restoring { tab, panes, home: self.home.clone() })
     }
 
+    fn restore_canvas(
+        &mut self,
+        saved: &persist::Pane,
+        document: std::io::Result<Document>,
+    ) -> bool {
+        if self.stopping {
+            return false;
+        }
+        match document {
+            Ok(document) => {
+                self.open_canvas(saved_canvas_record(saved, &document), saved.hidden_from.clone());
+                self.restored_from_file = true;
+                true
+            }
+            Err(error) => {
+                log::warn(
+                    "daemon.canvas.not_restored",
+                    fields! { "pane" => saved.name, "error" => error },
+                );
+                false
+            }
+        }
+    }
+
+    fn restore_terminal(&mut self, pane: RestoringPane, restarted: Restarted) -> bool {
+        let Restarted { cwd, program, started, resumed } = restarted;
+        let program = &program;
+        let RestoringPane { saved, terminal } = pane;
+        let name = saved.name;
+        let (master, child) = match started {
+            Ok(started) => started,
+            Err(error) => {
+                Self::could_not_start(&name, program, &cwd, &error);
+                return false;
+            }
+        };
+        if self.stopping {
+            drop(master);
+            pty::abandon(child.id().cast_signed());
+            return false;
+        }
+        let resume = terminal.expect("a terminal was started").resume.filter(|_| resumed);
+        let record = proto::Pane {
+            pane: name.clone(),
+            label: saved.label,
+            label_from_session: saved.label_from_session,
+            callsign: saved.callsign,
+            cwd: cwd.display().to_string(),
+            command: resume.as_ref().map(|resume| resume.command.join(" ")),
+            quiet: saved.quiet,
+            maker: saved.maker,
+            maker_closed: saved.maker_closed,
+            own_compaction: saved.compaction,
+            session_id: resume.as_ref().map(|resume| resume.session.clone()),
+            resume: resume.as_ref().map(persist::Resume::record),
+            // A resumed agent was in its state before the restart, which this daemon did not
+            // see; a shell it started, it did.
+            state_since_ms: resume.is_none().then(state_since::now_ms),
+            ..proto::Pane::default()
+        };
+        if self
+            .open(
+                record,
+                saved.grid.expect("the state file checked this terminal's grid"),
+                master,
+                child,
+                program,
+            )
+            .is_err()
+        {
+            return false;
+        }
+        let index = self.pane_index(&name).expect("the pane just opened");
+        self.panes[index].quiet_before_orphaned = saved.quiet_before_orphaned;
+        self.panes[index].kept_after_maker_closed = saved.kept_after_maker_closed;
+        self.panes[index].hidden_from.clone_from(&saved.hidden_from);
+        if let Some(resume) = resume {
+            Self::resumed(&name, &resume);
+            let index = self.pane_index(&name).expect("the pane just opened");
+            let terminal =
+                self.panes[index].body.terminal_mut().expect("just opened a terminal pane");
+            terminal.session_id = Some(resume.session.clone());
+            terminal.restart_env.clone_from(&resume.env);
+            terminal.resume = Some(resume);
+        }
+        self.restored_from_file = true;
+        true
+    }
+
     /// Finishes restoring a tab once its panes' shells have started, or failed to. The tab
     /// comes back with the panes that did.
-    fn restored(&mut self, restoring: Restoring, started: Vec<Restarted>, lost: &mut Lost) {
+    fn restored(&mut self, restoring: Restoring, started: Vec<RestoredBody>, lost: &mut Lost) {
         let Restoring { tab, panes, .. } = restoring;
         self.reserved.remove(&tab.name);
         for pane in &panes {
@@ -5058,56 +5293,13 @@ impl Session {
             self.naming.retain(|_, restoring| *restoring != pane.saved.name);
         }
         let mut back = HashSet::new();
-        for (pane, Restarted { cwd, program, started, resumed }) in panes.into_iter().zip(started) {
-            let program = &program;
-            let name = pane.saved.name;
-            let (master, child) = match started {
-                Ok(started) => started,
-                Err(error) => {
-                    Self::could_not_start(&name, program, &cwd, &error);
-                    lost.panes.push(name);
-                    continue;
-                }
+        for (pane, started) in panes.into_iter().zip(started) {
+            let name = pane.saved.name.clone();
+            let restored = match started {
+                RestoredBody::Canvas(document) => self.restore_canvas(&pane.saved, document),
+                RestoredBody::Terminal(restarted) => self.restore_terminal(pane, restarted),
             };
-            if self.stopping {
-                drop(master);
-                pty::abandon(child.id().cast_signed());
-                continue;
-            }
-            let resume = pane.resume.filter(|_| resumed);
-            let record = proto::Pane {
-                pane: name.clone(),
-                label: pane.saved.label,
-                label_from_session: pane.saved.label_from_session,
-                callsign: pane.saved.callsign,
-                cwd: cwd.display().to_string(),
-                command: resume.as_ref().map(|resume| resume.command.join(" ")),
-                quiet: pane.saved.quiet,
-                maker: pane.saved.maker,
-                maker_closed: pane.saved.maker_closed,
-                own_compaction: pane.saved.compaction,
-                session_id: resume.as_ref().map(|resume| resume.session.clone()),
-                resume: resume.as_ref().map(persist::Resume::record),
-                // A resumed agent was in its state before the restart, which this daemon did not
-                // see; a shell it started, it did.
-                state_since_ms: resume.is_none().then(state_since::now_ms),
-                ..proto::Pane::default()
-            };
-            if self.open(record, pane.saved.grid, master, child, program).is_ok() {
-                let index = self.pane_index(&name).expect("the pane just opened");
-                self.panes[index].quiet_before_orphaned = pane.saved.quiet_before_orphaned;
-                self.panes[index].kept_after_maker_closed = pane.saved.kept_after_maker_closed;
-                self.panes[index].hidden_from.clone_from(&pane.saved.hidden_from);
-                if let Some(resume) = resume {
-                    Self::resumed(&name, &resume);
-                    let index = self.pane_index(&name).expect("the pane just opened");
-                    let terminal =
-                        self.panes[index].body.terminal_mut().expect("just opened a terminal pane");
-                    terminal.session_id = Some(resume.session.clone());
-                    terminal.restart_env.clone_from(&resume.env);
-                    terminal.resume = Some(resume);
-                }
-                self.restored_from_file = true;
+            if restored {
                 back.insert(name);
             } else {
                 lost.panes.push(name);
@@ -6535,6 +6727,7 @@ mod tests {
             record: proto::Pane {
                 pane: "canvas".into(),
                 callsign: Some("paper".into()),
+                canvas: Some(proto::Canvas { revision: 1, ..Default::default() }),
                 ..Default::default()
             },
             serial,
@@ -6617,7 +6810,7 @@ mod tests {
     }
 
     #[test]
-    fn a_canvas_is_open_to_watches_and_does_not_enter_terminal_lifecycle() {
+    fn a_canvas_is_open_to_watches_without_terminal_state() {
         let dir = scratch("cv-life");
         let (shared, events, pid) = mixed_tab(&dir);
         let presence = crate::messages::TestPresence::of(&shared);
@@ -6628,18 +6821,16 @@ mod tests {
         assert!(session.nudges_due().is_empty());
         assert!(!session.wants_typing());
         let state = session.persisted();
-        assert_eq!(state.tabs[0].root.panes(), ["terminal"]);
-        assert_eq!(
-            state.panes.iter().map(|pane| pane.name.as_str()).collect::<Vec<_>>(),
-            ["terminal"]
-        );
+        assert_eq!(state.tabs[0].root.panes(), ["terminal", "canvas"]);
+        assert_eq!(state.canvas_names().collect::<Vec<_>>(), ["canvas"]);
+        assert_eq!(state.version, persist::CANVAS_VERSION);
         let asker = Outbox::open(&events).unwrap();
         assert_eq!(outcome(session.handle(replace_request(), &asker)), Outcome::Refused);
         assert!(session.begin_replacing().unwrap_err().contains("canvas"));
 
         assert_eq!(session.close_pane("canvas", "").outcome, Outcome::Done);
         assert_eq!(session.tabs[0].root.panes(), ["terminal"]);
-        assert!(session.reopen_until("canvas").is_none());
+        assert!(session.reopen_until("canvas").is_some());
         assert_eq!(session.begin_replacing(), Ok(()));
         let mut handing = session.handing();
         session.recapture(&mut handing).unwrap();

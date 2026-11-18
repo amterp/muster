@@ -268,8 +268,8 @@ fn reopened(
     session.cause = Some(operation.cause.clone());
     let handled = session.handle(service, &caller.outbox);
     session.cause = None;
-    let mut starting = match handled {
-        Handled::Start(starting) => starting,
+    let starting = match handled {
+        Handled::Start(_) | Handled::ReopenCanvas(_) => handled,
         Handled::Reply(reply) => {
             operation.forget(&mut session);
             let refusal = match reply.outcome {
@@ -282,12 +282,25 @@ fn reopened(
     };
     drop(session);
 
-    // Outside the lock: the pane starts once what ran in it has ended, which takes seconds.
-    let started = starting.start();
-    let ran = started.is_ok();
-    let mut session = shared.lock();
-    session.cause = Some(operation.cause.clone());
-    let reply = session.started(*starting, started);
+    let _canvas;
+    let (reply, ran, mut session) = match starting {
+        Handled::Start(mut starting) => {
+            // The pane starts once what ran in it has ended, which takes seconds.
+            let started = starting.start();
+            let ran = started.is_ok();
+            let mut session = shared.lock();
+            session.cause = Some(operation.cause.clone());
+            (session.started(*starting, started), ran, session)
+        }
+        Handled::ReopenCanvas(starting) => {
+            _canvas = shared.canvases.operation();
+            let document = shared.canvases.read(starting.name());
+            let mut session = shared.lock();
+            session.cause = Some(operation.cause.clone());
+            (session.reopen_canvas(*starting, document), false, session)
+        }
+        other => unreachable!("only a prepared reopen gets here, never {other:?}"),
+    };
     session.cause = None;
     let correlation = operation.cause.correlation.clone();
     let answer = match reply.detail.as_deref() {

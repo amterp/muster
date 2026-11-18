@@ -482,6 +482,11 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 let started = starting.start();
                 locked().started(*starting, started)
             }
+            Handled::ReopenCanvas(starting) => {
+                let _operation = shared.canvases.operation();
+                let document = shared.canvases.read(starting.name());
+                locked().reopen_canvas(*starting, document)
+            }
             Handled::Read(reading) => reading.read(),
             // Outside the lock too: compiling reads the override directory, which can hang.
             Handled::Manifests(loading) => {

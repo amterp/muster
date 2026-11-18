@@ -293,3 +293,264 @@ fn stopping_waits_for_the_first_canvas_create_and_its_answer() {
     assert_eq!(answer(&mut stop, stopped).outcome(), Outcome::Done);
     assert!(daemon.wait_for_exit().success());
 }
+
+fn saved_state(daemon: &Daemon) -> serde_json::Value {
+    serde_json::from_str(&written(&crate::persistence::state_file(daemon))).unwrap()
+}
+
+#[test]
+fn a_mixed_tab_restores_the_latest_canvas_and_reopens_it_in_place() {
+    use crate::persistence::{stop, until_restored, until_saved};
+    use crate::reopen::{close, reopened};
+
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    expect(
+        &mut control,
+        pane(opening("paper", beside("p1", proto::Side::Right), markdown("Plan", "first"))),
+        Outcome::Done,
+    );
+    let latest = markdown("Latest", "the revised bytes");
+    expect(&mut control, writing("paper", latest.clone()), Outcome::Done);
+    let before = snapshot(&mut control);
+    let before_record = record(&before, "paper");
+
+    stop(&mut daemon, &mut control);
+    assert!(file(&daemon, "paper").is_file());
+    let state = saved_state(&daemon);
+    assert_eq!(state["version"], 3);
+    let saved = &state["panes"][1];
+    assert_eq!(saved["canvas"]["opened_by"], "p1");
+    assert!(saved.get("grid").is_none());
+    assert!(saved.get("cwd").is_none());
+
+    daemon.restart();
+    let mut control = daemon.connect();
+    let after = until_restored(&mut control, 2);
+    let after_record = record(&after, "paper");
+    assert_eq!(after.tabs, before.tabs);
+    assert_eq!(after_record.canvas, before_record.canvas);
+    assert_eq!(
+        (&after_record.label, &after_record.callsign),
+        (&before_record.label, &before_record.callsign)
+    );
+    assert!(after_record.quiet);
+    assert_eq!(
+        read(&mut control, "paper"),
+        proto::CanvasRead { revision: 2, document: Some(latest.clone()) }
+    );
+
+    close(&mut control, "paper");
+    until_saved(&daemon, "closed_panes");
+    let state = saved_state(&daemon);
+    assert_eq!(state["version"], 3, "a remembered canvas also sets the format floor");
+    assert_eq!(state["closed_panes"][0]["pane"]["canvas"]["opened_by"], "p1");
+    assert!(file(&daemon, "paper").is_file());
+    let back = reopened(&mut control, before_record.callsign.as_deref().unwrap(), "reopened");
+    assert_eq!(
+        (&*back.pane, &*back.tab, back.made_tab, back.resumed),
+        ("paper", "t1", false, false)
+    );
+    assert_eq!(snapshot(&mut control).tabs, before.tabs);
+    assert_eq!(
+        read(&mut control, "paper"),
+        proto::CanvasRead { revision: 2, document: Some(latest) }
+    );
+}
+
+#[test]
+fn the_api_reopens_a_canvas_remembered_from_a_previous_run() {
+    use crate::persistence::{stop, until_restored};
+    use crate::reopen::close;
+
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    open(&mut control, "paper", "retained");
+    close(&mut control, "paper");
+    stop(&mut daemon, &mut control);
+    daemon.restart();
+    let mut control = daemon.connect();
+    assert_eq!(until_restored(&mut control, 0).closed[0].pane, "paper");
+    let mut api = daemon.api();
+    let reopen = on_pane(api::pane_request::Request::Reopen(api::ReopenPane {
+        pane: "paper".into(),
+        operation: "reopen-paper".into(),
+    }));
+    let opened = api.ask(reopen.clone());
+    assert_eq!(opened.outcome(), api::Outcome::Done, "{:?}", opened.answer);
+    let Some(api::answer::Detail::Made(made)) = opened.answer.detail.as_ref() else {
+        panic!("pane.reopen returned {:?}", opened.answer);
+    };
+    assert_eq!(made.pane, "paper");
+    assert_eq!(api.ask(reopen).answer.detail, opened.answer.detail);
+    assert_eq!(read(&mut control, "paper").document.unwrap().body, b"retained");
+}
+
+#[test]
+fn closing_without_reopen_keeps_a_canvas_until_the_state_save_succeeds() {
+    use crate::persistence::{state_file, until_saved};
+    use crate::reopen::close;
+
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    open(&mut control, "paper", "retained");
+    until_saved(&daemon, "paper");
+    let temporary = state_file(&daemon).with_extension("json.tmp");
+    assert!(!temporary.exists());
+    std::fs::create_dir(&temporary).unwrap();
+    let mut log = following(&daemon);
+    let set = proto::SetReopenClosed { minutes: 0 };
+    expect(&mut control, session(session_request::Request::SetReopenClosed(set)), Outcome::Done);
+    close(&mut control, "paper");
+    wait_in_log(&mut log, "daemon.state.not_written");
+    assert!(snapshot(&mut control).closed.is_empty());
+    assert!(file(&daemon, "paper").is_file());
+    assert_eq!(saved_state(&daemon)["version"], 3);
+
+    std::fs::remove_dir(temporary).unwrap();
+    let set = proto::SetScrollback { bytes: Some(1_000_000) };
+    expect(&mut control, session(session_request::Request::SetScrollback(set)), Outcome::Done);
+    until("unreferenced document to be collected", || !file(&daemon, "paper").exists(), ());
+    assert_eq!(saved_state(&daemon)["version"], 1);
+}
+
+#[test]
+fn the_oldest_remembered_canvas_is_collected_when_evicted() {
+    use crate::persistence::until_saved;
+    use crate::reopen::close;
+
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    open(&mut control, "paper", "first");
+    close(&mut control, "paper");
+    until_saved(&daemon, "closed_panes");
+    assert!(file(&daemon, "paper").exists());
+    for index in 0..proto::CLOSED_PANES_KEPT {
+        let name = format!("canvas-{index}");
+        open(&mut control, &name, "new");
+        close(&mut control, &name);
+    }
+    until("evicted document to be collected", || !file(&daemon, "paper").exists(), ());
+    assert!(file(&daemon, "canvas-0").exists());
+    assert_eq!(snapshot(&mut control).closed.len(), proto::CLOSED_PANES_KEPT);
+}
+
+#[test]
+fn a_canvas_file_is_collected_when_its_reopen_deadline_passes() {
+    use crate::persistence::{state_file, stop};
+    use crate::reopen::close;
+    use std::time::{Duration, SystemTime};
+
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    open(&mut control, "paper", "first");
+    close(&mut control, "paper");
+    stop(&mut daemon, &mut control);
+    let mut kept = saved_state(&daemon);
+    let expires =
+        SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap() + Duration::from_secs(3);
+    kept["closed_panes"][0]["until_ms"] =
+        serde_json::json!(u64::try_from(expires.as_millis()).unwrap());
+    std::fs::write(state_file(&daemon), kept.to_string()).unwrap();
+    daemon.restart();
+    assert_eq!(snapshot(&mut daemon.connect()).closed[0].pane, "paper");
+    assert!(file(&daemon, "paper").is_file());
+    until(
+        "expired document to be collected without a request",
+        || !file(&daemon, "paper").exists(),
+        (),
+    );
+    assert!(snapshot(&mut daemon.connect()).closed.is_empty());
+    assert_eq!(saved_state(&daemon)["version"], 1);
+}
+
+#[test]
+fn a_startup_sweep_needs_a_readable_state_or_confirmed_absence() {
+    use crate::persistence::{state_file, stop, until_restored};
+
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    open(&mut control, "paper", "retained");
+    stop(&mut daemon, &mut control);
+    let state = state_file(&daemon);
+    let known = written(&state);
+    let document = file(&daemon, "paper");
+    let orphan = file(&daemon, "orphan");
+    std::fs::copy(&document, &orphan).unwrap();
+    std::fs::write(file(&daemon, "other"), "leave me alone").unwrap();
+
+    std::fs::write(&state, "unreadable state data").unwrap();
+    daemon.restart();
+    let mut control = daemon.connect();
+    assert!(snapshot(&mut control).panes.is_empty());
+    assert!(document.is_file() && orphan.is_file());
+    stop(&mut daemon, &mut control);
+
+    let aside = std::fs::read_dir(daemon.root())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name().unwrap().to_string_lossy().starts_with("daemon.state.json.corrupt-")
+        })
+        .unwrap();
+    daemon.restart();
+    let mut control = daemon.connect();
+    assert!(snapshot(&mut control).panes.is_empty());
+    assert!(document.is_file() && orphan.is_file());
+    let log = written(&daemon.root().join("daemon.log"));
+    assert!(log.contains("daemon.canvas.collection_off"));
+    assert!(log.contains(aside.file_name().unwrap().to_str().unwrap()));
+    stop(&mut daemon, &mut control);
+
+    std::fs::remove_file(aside).unwrap();
+    std::fs::write(&state, known).unwrap();
+    daemon.restart();
+    let mut control = daemon.connect();
+    until_restored(&mut control, 1);
+    assert!(!orphan.exists());
+    assert_eq!(read(&mut control, "paper").document.unwrap().body, b"retained");
+    stop(&mut daemon, &mut control);
+
+    std::fs::remove_file(state).unwrap();
+    daemon.restart();
+    assert!(snapshot(&mut daemon.connect()).panes.is_empty());
+    assert!(!document.exists());
+    assert_eq!(std::fs::read(file(&daemon, "other")).unwrap(), b"leave me alone");
+}
+
+#[test]
+fn a_recovery_copy_preserves_the_documents_it_names_after_restart() {
+    use crate::persistence::{state_file, stop, until_restored};
+
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    open(&mut control, "paper", "recover this");
+    stop(&mut daemon, &mut control);
+    let state = state_file(&daemon);
+    let document = file(&daemon, "paper");
+    let temporary = file(&daemon, ".away");
+    std::fs::rename(&document, &temporary).unwrap();
+    daemon.restart();
+    let mut control = daemon.connect();
+    until("restore to finish without its missing canvas", || !snapshot(&mut control).restoring, ());
+    assert!(snapshot(&mut control).panes.is_empty());
+    std::fs::rename(temporary, &document).unwrap();
+    open(&mut control, "other", "unrelated");
+    until(
+        "the replacement state to be written",
+        || {
+            let saved = saved_state(&daemon);
+            saved["panes"][0]["pane"] == "other"
+        },
+        (),
+    );
+    stop(&mut daemon, &mut control);
+    daemon.restart();
+    let mut control = daemon.connect();
+    assert!(document.is_file());
+    until_restored(&mut control, 1);
+    assert_eq!(read(&mut control, "other").document.unwrap().body, b"unrelated");
+    stop(&mut daemon, &mut control);
+    assert!(written(&state).contains("other"));
+}
