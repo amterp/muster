@@ -2535,10 +2535,15 @@ enum DetachReason {
 // Never on the daemon's socket. The old daemon starts the new one with one end of a socket pair
 // as the descriptor `--handoff` names, and they speak Handoff frames over it, framed as every
 // connection is. A frame that brings descriptors follows a single byte that carries them as
-// SCM_RIGHTS. In order: Offer; Accept or Refused; Session, bringing the listening socket and
-// the lock file; for each pane, Pane bringing its PTY master, then its replay in replay_piece
-// frames; Ready; Commit; Serving. Until Serving the old daemon keeps its own copy of every
-// descriptor, so a new daemon that fails at any point takes no pane with it.
+// SCM_RIGHTS. Offer and Accept or Refused come first. Session brings the listening socket and
+// lock file. Each terminal sends a Pane with its PTY master, then its replay_piece frames.
+// Each canvas then sends a Pane containing only its record. Session's state identifies canvas
+// panes, whose documents stay in their files. Ready, Commit and Serving follow.
+// A successor must speak protocol 1.17 or later if the session holds a live or remembered
+// canvas. If both daemons speak 1.17 or later, the predecessor replies to Serving with Serving
+// to confirm the handoff. The successor waits for confirmation or for the predecessor to exit
+// before accepting connections. It logs a timeout and serves if neither arrives in time.
+// Until Serving the predecessor keeps its copy of every descriptor.
 message Handoff {
   oneof message {
     Offer offer = 1;

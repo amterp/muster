@@ -664,6 +664,7 @@ pub(crate) struct Handing {
     pub(crate) state: persist::State,
     pub(crate) app_manifests: Vec<(String, String)>,
     pub(crate) panes: Vec<HandedPane>,
+    pub(crate) canvases: Vec<HandedCanvas>,
     pub(crate) persister: Arc<Persister>,
     pub(crate) log: Option<Arc<DaemonLog>>,
 }
@@ -687,6 +688,11 @@ pub(crate) struct Resuming<'a> {
     pub(crate) nudged: bool,
     pub(crate) kept_after_maker_closed: bool,
     pub(crate) hidden_from: Option<&'a persist::ClosedTab>,
+}
+
+pub(crate) struct HandedCanvas {
+    pub(crate) record: proto::Pane,
+    pub(crate) canvas: Arc<Canvas>,
 }
 
 pub(crate) struct HandedPane {
@@ -2063,7 +2069,7 @@ impl Session {
             self.state_changed();
             return refused;
         }
-        if let Some(refused) = self.starting_refusal(&name, &target) {
+        if let Some(refused) = self.placement_refusal(&name, &target) {
             self.state_changed();
             return refused;
         }
@@ -2075,8 +2081,16 @@ impl Session {
     }
 
     fn open_canvas(&mut self, record: proto::Pane, hidden_from: Option<persist::ClosedTab>) {
-        self.next_serial += 1;
         self.emit(Payload::PaneOpened(proto::PaneOpened { pane: Some(record.clone()) }));
+        self.adopt_canvas(record, hidden_from);
+    }
+
+    pub(crate) fn adopt_canvas(
+        &mut self,
+        record: proto::Pane,
+        hidden_from: Option<persist::ClosedTab>,
+    ) {
+        self.next_serial += 1;
         self.panes.push(Pane {
             record,
             serial: self.next_serial,
@@ -2139,6 +2153,12 @@ impl Session {
             _ if self.replacing != Replacing::No => Some(Reply::refused(
                 "the daemon began handing its panes to a new one while the pane started; ask again",
             )),
+            _ => self.placement_refusal(pane, target),
+        }
+    }
+
+    fn placement_refusal(&self, pane: &str, target: &Target) -> Option<Reply> {
+        match target {
             Target::Beside { pane, .. } if self.tab_of(pane).is_none() => Some(Reply::not_there(
                 format!("{pane} closed while the pane beside it was starting"),
             )),
@@ -5404,8 +5424,6 @@ impl Session {
             Some("the daemon is still bringing back its saved tabs; ask again once it has")
         } else if self.replacing != Replacing::No {
             Some("the daemon is already being replaced")
-        } else if self.has_live_canvas() {
-            Some("this daemon cannot hand over a canvas yet")
         } else {
             None
         }
@@ -5438,6 +5456,16 @@ impl Session {
                     })
                 })
                 .collect(),
+            canvases: self
+                .panes
+                .iter()
+                .filter_map(|pane| {
+                    pane.body.canvas().map(|canvas| HandedCanvas {
+                        record: pane.record.clone(),
+                        canvas: Arc::clone(canvas),
+                    })
+                })
+                .collect(),
             persister: Arc::clone(&self.persister),
             log: self.log.clone(),
         }
@@ -5458,10 +5486,21 @@ impl Session {
             handed.record = pane.record.clone();
             handed.nudged = terminal.compaction.nudged();
         }
-        if let Some(made) = self.panes.iter().find(|pane| {
-            pane.body.terminal().is_none_or(|terminal| {
+        for handed in &mut handing.canvases {
+            let Some(pane) = self.panes.iter().find(|pane| {
+                pane.body.canvas().is_some_and(|canvas| Arc::ptr_eq(canvas, &handed.canvas))
+            }) else {
+                return Err(format!("canvas {} closed during the handoff", handed.record.pane));
+            };
+            handed.record = pane.record.clone();
+        }
+        if let Some(made) = self.panes.iter().find(|pane| match &pane.body {
+            PaneBody::Terminal(terminal) => {
                 !handing.panes.iter().any(|handed| Arc::ptr_eq(&terminal.io, &handed.io))
-            })
+            }
+            PaneBody::Canvas(canvas) => {
+                !handing.canvases.iter().any(|handed| Arc::ptr_eq(canvas, &handed.canvas))
+            }
         }) {
             return Err(format!("pane {} was made during the handoff", made.record.pane));
         }
@@ -5586,6 +5625,12 @@ impl Session {
         Ok(())
     }
 
+    pub(crate) fn order_handed_panes(&mut self, saved: &[persist::Pane]) {
+        let by_name: HashMap<&str, usize> =
+            saved.iter().enumerate().map(|(index, pane)| (pane.name.as_str(), index)).collect();
+        self.panes.sort_by_key(|pane| by_name[&pane.record.pane.as_str()]);
+    }
+
     /// The tabs of a handed-over state, every pane in them already adopted and every adopted
     /// pane in one of them: a pane in no tab could never be closed or saved.
     pub(crate) fn adopt_tabs(&mut self, tabs: Vec<persist::Tab>) -> Result<(), String> {
@@ -5630,10 +5675,6 @@ impl Session {
 
     // -----------------------------------------------------------------------------------------
     // Lookups
-
-    pub(crate) fn has_live_canvas(&self) -> bool {
-        self.panes.iter().any(|pane| pane.body.canvas().is_some())
-    }
 
     pub(crate) fn changes_canvas(&self, service: &Service) -> bool {
         match service {
@@ -6666,7 +6707,7 @@ mod tests {
         let path = file.with_extension("sock");
         let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
         let lock = std::fs::File::create(file.with_extension("lock")).unwrap();
-        let socket = Socket::new(path, listener, lock).unwrap();
+        let socket = Socket::new(path, listener, lock, false).unwrap();
         let shared = Shared::new(1, stopping, Vec::new(), places, saved, socket);
         let (ours, theirs) = UnixStream::pair().unwrap();
         let outbox = Outbox::open(&ours).unwrap();
@@ -6825,8 +6866,13 @@ mod tests {
         assert_eq!(state.canvas_names().collect::<Vec<_>>(), ["canvas"]);
         assert_eq!(state.version, persist::CANVAS_VERSION);
         let asker = Outbox::open(&events).unwrap();
-        assert_eq!(outcome(session.handle(replace_request(), &asker)), Outcome::Refused);
-        assert!(session.begin_replacing().unwrap_err().contains("canvas"));
+        assert!(matches!(session.handle(replace_request(), &asker), Handled::Replace(_)));
+        assert_eq!(session.begin_replacing(), Ok(()));
+        let mut handing = session.handing();
+        session.recapture(&mut handing).unwrap();
+        assert_eq!(handing.canvases.len(), 1);
+        assert_eq!(handing.canvases[0].record.pane, "canvas");
+        assert!(!session.not_replaced());
 
         assert_eq!(session.close_pane("canvas", "").outcome, Outcome::Done);
         assert_eq!(session.tabs[0].root.panes(), ["terminal"]);

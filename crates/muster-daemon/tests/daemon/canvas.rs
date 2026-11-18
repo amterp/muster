@@ -554,3 +554,182 @@ fn a_recovery_copy_preserves_the_documents_it_names_after_restart() {
     stop(&mut daemon, &mut control);
     assert!(written(&state).contains("other"));
 }
+
+fn shell_pid(daemon: &Daemon, marker: &str) -> u32 {
+    let mut input = muster_harness::Input::connect(daemon.socket_path());
+    let file = daemon.root().join(marker);
+    let send = proto::input_event::Send {
+        text: format!("echo $$ > '{}'", file.display()),
+        enter: true,
+        ..Default::default()
+    };
+    input.send("p1", proto::input_event::Input::Send(send));
+    written(&file).trim().parse().unwrap()
+}
+
+#[test]
+fn a_mixed_handoff_waits_for_the_canvas_write_and_keeps_the_terminal_process() {
+    let mut daemon = daemon_with(&[(FAULT, "pause-before-rename")]);
+    let mut writer = daemon.connect();
+    open(&mut writer, "paper", "first");
+    make(&mut writer, create("p1", beside("paper", proto::Side::Right)));
+    let old_shell = shell_pid(&daemon, "shell-before");
+    let old_daemon = daemon.pid();
+    let before = snapshot(&mut writer);
+    let mut logging = following(&daemon);
+    let latest = markdown("Second", "the accepted write");
+    let write = writer.send(writing("paper", latest.clone()));
+    wait_for_write(&daemon);
+
+    let replacement = daemon.start_replacing(None);
+    wait_in_log(&mut logging, "daemon.handoff.canvas_wait");
+    let mut observer = daemon.connect();
+    let refused = expect(
+        &mut observer,
+        writing("paper", markdown("", "asked after replacement began")),
+        Outcome::Refused,
+    );
+    assert!(refused.answer.reason.contains("handing its panes"), "{:?}", refused.answer);
+    resume_write(&daemon);
+    assert_eq!(revision(&answer(&mut writer, write)), 2);
+    let replaced = daemon.finish_replacing(replacement);
+    assert_eq!(replaced.outcome(), Outcome::Done, "{replaced:?}");
+
+    let mut control = daemon.connect();
+    let after = snapshot(&mut control);
+    assert_ne!(daemon.pid(), old_daemon);
+    assert_eq!(after.tabs, before.tabs);
+    assert_eq!(
+        after.panes.iter().map(|pane| pane.pane.as_str()).collect::<Vec<_>>(),
+        ["paper", "p1"],
+    );
+    assert_eq!(
+        read(&mut control, "paper"),
+        proto::CanvasRead { revision: 2, document: Some(latest) }
+    );
+    assert_eq!(shell_pid(&daemon, "shell-after"), old_shell);
+    assert!(file(&daemon, "paper").is_file());
+}
+
+#[test]
+fn handoff_to_an_older_protocol_refuses_live_and_remembered_canvases() {
+    use crate::reopen::{close, reopened};
+
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "accept-1.16")]);
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    expect(
+        &mut control,
+        pane(opening("paper", beside("p1", proto::Side::Right), markdown("", "retained"))),
+        Outcome::Done,
+    );
+    let pid = daemon.pid();
+    for state in ["live", "remembered"] {
+        if state == "remembered" {
+            close(&mut control, "paper");
+        }
+        let refused = daemon.replace(None);
+        assert_eq!(refused.outcome(), Outcome::Refused, "{state}: {refused:?}");
+        assert!(refused.reason.contains("requires handoff protocol 1.17"), "{refused:?}");
+        assert!(refused.reason.contains("1.16"), "{refused:?}");
+        assert_eq!(daemon.pid(), pid);
+        assert!(file(&daemon, "paper").is_file());
+    }
+    reopened(&mut control, "paper", "reopened");
+    assert_eq!(read(&mut control, "paper").document.unwrap().body, b"retained");
+}
+
+#[test]
+fn a_successor_that_fails_before_serving_never_takes_a_canvas_write() {
+    use std::io::{ErrorKind, Read as _};
+    use std::time::Duration;
+
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-serving")]);
+    let mut predecessor = daemon.connect();
+    open(&mut predecessor, "paper", "kept");
+    let old_pid = daemon.pid();
+    let replacement = daemon.start_replacing(None);
+    let successor = daemon.paused();
+    assert_ne!(successor.cast_unsigned(), old_pid);
+
+    let mut client = pending_control(&daemon);
+    client.set_read_timeout(Some(Duration::from_millis(250))).unwrap();
+    let error = client.read(&mut [0]).unwrap_err();
+    assert!(matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut), "{error}");
+
+    // SAFETY: this pid is the successor this test's daemon started and paused.
+    assert_eq!(unsafe { libc::kill(successor, libc::SIGKILL) }, 0);
+    let refused = daemon.finish_replacing(replacement);
+    assert_eq!(refused.outcome(), Outcome::Refused, "{refused:?}");
+
+    client.set_read_timeout(Some(muster_harness::PATIENCE)).unwrap();
+    let welcomed: proto::HelloAnswer = proto::connection::receive(&mut client).unwrap().unwrap();
+    let Some(proto::hello_answer::Answer::Welcome(welcome)) = welcomed.answer else {
+        panic!("expected a welcome on the held connection: {welcomed:?}");
+    };
+    assert_eq!(welcome.pid, old_pid);
+    assert_eq!(read(&mut predecessor, "paper").revision, 1);
+    let written = expect(&mut predecessor, writing("paper", markdown("", "next")), Outcome::Done);
+    assert_eq!(revision(&written.answer), 2);
+    assert_eq!(read(&mut predecessor, "paper").document.unwrap().body, b"next");
+}
+
+fn pending_control(daemon: &Daemon) -> std::os::unix::net::UnixStream {
+    let mut client = std::os::unix::net::UnixStream::connect(daemon.socket_path()).unwrap();
+    client.set_read_timeout(Some(muster_harness::PATIENCE)).unwrap();
+    proto::connection::send(
+        &mut client,
+        &proto::Hello {
+            protocol: Some(proto::version::PROTOCOL),
+            kind: proto::ConnectionKind::Control.into(),
+            client: "canvas handoff test".into(),
+        },
+    )
+    .unwrap();
+    client
+}
+
+#[test]
+fn a_stop_queued_at_handoff_keeps_a_canvas_the_predecessor_never_saved() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-serving")]);
+    let state_path = crate::persistence::state_file(&daemon);
+    let temporary = state_path.with_extension("json.tmp");
+    std::fs::create_dir(&temporary).unwrap();
+    let mut predecessor = daemon.connect();
+    open(&mut predecessor, "paper", "keep this");
+    let replace = session_request::Replace { program: None, data: Some(DAEMON_DATA.into()) };
+    let replacing = predecessor.send(session(session_request::Request::Replace(replace)));
+    let successor = daemon.paused();
+    assert!(!state_path.exists());
+    std::fs::remove_dir(temporary).unwrap();
+
+    let mut client = pending_control(&daemon);
+    let stop = proto::Request {
+        id: 1,
+        service: Some(session(session_request::Request::Stop(session_request::Stop {}))),
+    };
+    proto::connection::send(&mut client, &stop).unwrap();
+    daemon.resume();
+
+    let welcomed: proto::HelloAnswer = proto::connection::receive(&mut client).unwrap().unwrap();
+    let Some(proto::hello_answer::Answer::Welcome(welcome)) = welcomed.answer else {
+        panic!("expected a welcome: {welcomed:?}");
+    };
+    assert_eq!(welcome.pid, successor.cast_unsigned());
+    let stopped: proto::ControlMessage = proto::connection::receive(&mut client).unwrap().unwrap();
+    assert!(
+        matches!(stopped.message, Some(proto::control_message::Message::Answer(answer)) if answer.outcome() == Outcome::Done)
+    );
+    assert_eq!(answer(&mut predecessor, replacing).outcome(), Outcome::Done);
+    daemon.wait_for_exit();
+    daemon.served_by(successor);
+    daemon.wait_for_exit();
+    let state = saved_state(&daemon);
+    assert_eq!(state["version"], 3);
+    assert_eq!(state["panes"][0]["pane"], "paper");
+    assert!(file(&daemon, "paper").is_file());
+    daemon.restart();
+    let mut control = daemon.connect();
+    crate::persistence::until_restored(&mut control, 1);
+    assert_eq!(read(&mut control, "paper").document.unwrap().body, b"keep this");
+}

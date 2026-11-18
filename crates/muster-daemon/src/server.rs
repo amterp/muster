@@ -45,9 +45,14 @@ pub(crate) struct Socket {
 impl Socket {
     /// Non-blocking, because a daemon handing over and the daemon taking over share one
     /// listener: a connection one of them was woken for may be accepted by the other first.
-    pub(crate) fn new(path: PathBuf, listener: UnixListener, lock: File) -> io::Result<Socket> {
+    pub(crate) fn new(
+        path: PathBuf,
+        listener: UnixListener,
+        lock: File,
+        accepting_held: bool,
+    ) -> io::Result<Socket> {
         listener.set_nonblocking(true)?;
-        Ok(Socket { path, listener, lock, accepting: Hold::new(false)? })
+        Ok(Socket { path, listener, lock, accepting: Hold::new(accepting_held)? })
     }
 }
 

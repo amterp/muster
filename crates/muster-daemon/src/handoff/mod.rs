@@ -1,10 +1,10 @@
 //! Replacing a running daemon without ending a pane (MIP-3 section 10).
 //!
 //! The daemon being replaced starts its successor with one end of a socket pair and hands it,
-//! in order, the socket, the session, and every pane: its PTY master, its record and a replay
-//! of its terminal. Until the successor says it serves, the old daemon keeps its own copy of
-//! every descriptor and has only paused - its accept loop, its persister, each pane's reader -
-//! so a successor that fails at any step takes nothing with it, and the old daemon goes on.
+//! in order, the socket, the session, the terminals and the canvases. Each terminal sends its
+//! PTY master, its record and a replay. Each canvas sends its record and the successor reads
+//! its document from disk. Until the successor says it serves, the old daemon keeps every
+//! descriptor and holds its accept loop, its persister and the terminal readers.
 //!
 //! Connections are not carried over. Each one ends when the old daemon exits, and its client
 //! connects again to the same socket, where the new daemon serves.
@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_daemon_proto::version::{PROTOCOL, compatible};
+use muster_daemon_proto::version::{CANVASES, PROTOCOL, compatible};
 use muster_daemon_proto::{self as proto, connection, handoff};
 
 use crate::daemon_log::DaemonLog;
@@ -166,12 +166,17 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
         );
         return Reply::refused(why);
     }
+    if !shared.canvases.drain_for_handoff(STEP) {
+        let reply = failed(replacement, "the daemon's canvas requests did not finish in time");
+        resume_after_failure(shared);
+        return reply;
+    }
     let mut handing = shared.lock().handing();
     log::info(
         "daemon.handoff.started",
         fields! {
             "program" => replacement.program.display(),
-            "panes" => handing.panes.len(),
+            "panes" => handing.panes.len() + handing.canvases.len(),
         },
     );
     let mut successor = None;
@@ -241,13 +246,16 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
                     log::info("daemon.handoff.successor_log", fields! { "records" => records });
                 }
             }
-            let stop_deferred = shared.lock().not_replaced();
             let reply = failed(replacement, &why);
-            if stop_deferred {
-                let _ = shared.stopping.send(Stop::Asked);
-            }
+            resume_after_failure(shared);
             reply
         }
+    }
+}
+
+fn resume_after_failure(shared: &Shared) {
+    if shared.lock().not_replaced() {
+        let _ = shared.stopping.send(Stop::Asked);
     }
 }
 
@@ -288,13 +296,22 @@ fn handed(
         protocol: Some(PROTOCOL),
         daemon_version: env!("CARGO_PKG_VERSION").to_string(),
         pid: std::process::id(),
-        panes: u32::try_from(handing.panes.len()).map_err(|error| error.to_string())?,
+        panes: u32::try_from(handing.panes.len() + handing.canvases.len())
+            .map_err(|error| error.to_string())?,
     };
     send(&mut link, handoff::Message::Offer(offer))?;
     let accepted = match receive(&mut link, "an accept")? {
         handoff::Message::Accept(accept) => accept,
         other => return Err(unexpected("an accept", &other)),
     };
+
+    let protocol = accepted.protocol.unwrap_or_default();
+    if !compatible(&PROTOCOL, &protocol) {
+        return Err(format!(
+            "this daemon speaks protocol {PROTOCOL}, and the successor {protocol}"
+        ));
+    }
+    check_canvas_protocol(&handing.state, protocol)?;
 
     Faults::read().pause("before-hold", &shared.socket.path);
     // Every reader held first, and what they reported applied, before anything is captured:
@@ -313,6 +330,10 @@ fn handed(
         return Err("what the panes reported was not applied in time".to_string());
     }
     shared.lock().recapture(handing)?;
+    check_canvas_protocol(&handing.state, protocol)?;
+    if let Some(canvas) = handing.canvases.iter().find(|pane| pane.canvas.recovering()) {
+        return Err(format!("canvas {} must be read back before handoff", canvas.record.pane));
+    }
 
     let state = serde_json::to_vec(&handing.state).map_err(|error| error.to_string())?;
     let socket = &shared.socket;
@@ -332,6 +353,15 @@ fn handed(
     for pane in &handing.panes {
         send_pane(&mut link, pane)?;
     }
+    for canvas in &handing.canvases {
+        send(
+            &mut link,
+            handoff::Message::Pane(Box::new(handoff::Pane {
+                record: Some(canvas.record.clone()),
+                ..Default::default()
+            })),
+        )?;
+    }
 
     match receive(&mut link, "ready")? {
         handoff::Message::Ready(_) => {}
@@ -347,9 +377,23 @@ fn handed(
     }
     send(&mut link, handoff::Message::Commit(handoff::Commit {}))?;
     match receive(&mut link, "serving")? {
-        handoff::Message::Serving(_) => Ok(accepted),
+        handoff::Message::Serving(_) => {
+            if protocol.minor >= CANVASES {
+                send(&mut link, handoff::Message::Serving(handoff::Serving {}))?;
+            }
+            Ok(accepted)
+        }
         other => Err(unexpected("serving", &other)),
     }
+}
+
+fn check_canvas_protocol(state: &persist::State, protocol: proto::Version) -> Result<(), String> {
+    if protocol.minor < CANVASES && state.canvas_names().next().is_some() {
+        return Err(format!(
+            "a live or remembered canvas requires handoff protocol 1.{CANVASES}; the successor speaks {protocol}"
+        ));
+    }
+    Ok(())
 }
 
 /// Runs the successor once with `--version`, before anything is paused, so a program that
@@ -508,8 +552,12 @@ pub(crate) fn take_over(
     if faults.has("refuse") {
         return refuse(&mut link, format!("{FAULT}=refuse"));
     }
+    let mut protocol = PROTOCOL;
+    if faults.has("accept-1.16") {
+        protocol.minor = CANVASES - 1;
+    }
     let accept = handoff::Accept {
-        protocol: Some(PROTOCOL),
+        protocol: Some(protocol),
         daemon_version: env!("CARGO_PKG_VERSION").to_string(),
     };
     send(&mut link, handoff::Message::Accept(accept))?;
@@ -543,18 +591,15 @@ pub(crate) fn take_over(
     }
     shared.lock().release_readers();
     shared.point_link();
-    // Not before the commit: until then the daemon handing over may yet keep its panes, and ring.
-    shared.start_doorbell();
     crate::serve(&shared, signals, stopping)?;
-    persister.arm();
-    persister.changed();
     faults.pause("before-serving", socket);
     if faults.has("exit-after-commit") {
         std::process::exit(1);
     }
     // This daemon holds every pane from the commit on, so a daemon handing over that has gone
     // since is no reason to stop: exiting now would hang up every pane with nobody to take them.
-    if let Err(why) = send(&mut link, handoff::Message::Serving(handoff::Serving {})) {
+    let confirmation = protocol.minor >= CANVASES && theirs.minor >= CANVASES;
+    if let Err(why) = confirm_serving(&mut link, offer.pid, confirmation) {
         log::warn(
             "daemon.handoff.unconfirmed",
             fields! {
@@ -567,6 +612,12 @@ pub(crate) fn take_over(
             },
         );
     }
+    // Before Serving the predecessor can resume. A successor must not accept a write that
+    // would change a shared document while the predecessor could still keep its old record.
+    persister.arm();
+    persister.changed();
+    shared.start_doorbell();
+    shared.socket.accepting.release();
     log::info(
         "daemon.handoff.serving",
         fields! {
@@ -579,6 +630,40 @@ pub(crate) fn take_over(
     Ok(TakenOver { shared, stop, persister })
 }
 
+fn confirm_serving(
+    link: &mut UnixStream,
+    predecessor: u32,
+    confirmation: bool,
+) -> Result<(), String> {
+    let served = send(link, handoff::Message::Serving(handoff::Serving {})).and_then(|()| {
+        if !confirmation {
+            return Ok(false);
+        }
+        match receive(link, "confirmation of Serving")? {
+            handoff::Message::Serving(_) => Ok(true),
+            other => Err(unexpected("confirmation of Serving", &other)),
+        }
+    });
+    if matches!(served, Ok(true)) {
+        return Ok(());
+    }
+    // A predecessor that cannot confirm still decides whether to roll back. It either kills
+    // this process or retires. After a commit, a successor whose parent died can serve alone.
+    let deadline = Instant::now() + STEP;
+    // SAFETY: getppid takes no arguments. An exited parent is replaced before it is reaped.
+    while unsafe { libc::getppid() }.cast_unsigned() == predecessor {
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "{}the predecessor did not exit within {} s",
+                served.err().map_or_else(String::new, |why| format!("{why}. ")),
+                STEP.as_secs(),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    served.map(|_| ())
+}
+
 /// The daemon this one becomes, built from the socket and the session handed over, with no pane
 /// yet and nothing served.
 struct Built {
@@ -589,7 +674,7 @@ struct Built {
     tabs: Vec<persist::Tab>,
     /// Each pane as the state handed over keeps it, by name: what starts its agent's session
     /// again, and what the protocol's pane does not carry.
-    saved: HashMap<String, persist::Pane>,
+    saved: Vec<persist::Pane>,
     app_manifests: Vec<proto::Manifest>,
 }
 
@@ -623,7 +708,7 @@ fn build(
         Ok(data) => data,
         Err(problem) => return refuse(link, problem),
     };
-    let socket = match Socket::new(socket.to_path_buf(), listener.into(), lock.into()) {
+    let socket = match Socket::new(socket.to_path_buf(), listener.into(), lock.into(), true) {
         Ok(socket) => socket,
         Err(error) => return refuse(link, format!("could not take the socket: {error}")),
     };
@@ -650,6 +735,14 @@ fn build(
     let (stopping, stop) = mpsc::channel();
     let inherited: Vec<_> = std::env::vars_os().collect();
     let shared = Shared::new(crate::instance(), stopping.clone(), inherited, places, saved, socket);
+    let path = persister.path();
+    let loaded = (!session.saving_stopped).then(|| persist::load(path));
+    let known = matches!(loaded, Some(persist::Loaded::Nothing | persist::Loaded::State(_)));
+    let state_on_disk = match &loaded {
+        Some(persist::Loaded::State(state)) => Some(state.as_ref()),
+        _ => None,
+    };
+    shared.canvases.initialize_saved(path, known, state_on_disk);
 
     Ok(Built {
         shared,
@@ -657,7 +750,7 @@ fn build(
         stop,
         persister,
         tabs: state.tabs,
-        saved: state.panes.into_iter().map(|pane| (pane.name.clone(), pane)).collect(),
+        saved: state.panes,
         app_manifests: session.app_manifests,
     })
 }
@@ -667,97 +760,155 @@ fn adopt_panes(
     link: &mut UnixStream,
     shared: &Shared,
     panes: u32,
-    saved: &HashMap<String, persist::Pane>,
+    saved: &[persist::Pane],
 ) -> Result<(), String> {
-    for _ in 0..panes {
-        let master = fds::receive(link, 1)
-            .map_err(|error| format!("a pane's terminal did not arrive: {error}"))?
-            .remove(0);
-        let pane = match receive(link, "a pane")? {
-            handoff::Message::Pane(pane) => pane,
-            other => return Err(unexpected("a pane", &other)),
-        };
-        let mut replay = Vec::with_capacity(usize::try_from(pane.replay_length).unwrap_or(0));
-        while (replay.len() as u64) < pane.replay_length {
-            match receive(link, "a piece of replay")? {
-                handoff::Message::ReplayPiece(piece) => replay.extend_from_slice(&piece),
-                other => return Err(unexpected("a piece of replay", &other)),
-            }
-        }
-        let grid = pane.grid.unwrap_or_default();
-        let grid = Grid {
-            cols: u16::try_from(grid.cols).unwrap_or(u16::MAX),
-            rows: u16::try_from(grid.rows).unwrap_or(u16::MAX),
-            width_px: u16::try_from(grid.width_px).unwrap_or(u16::MAX),
-            height_px: u16::try_from(grid.height_px).unwrap_or(u16::MAX),
-        };
-        let maker_told = need(pane.maker_told());
-        let stalls_told: Vec<StallTold> = pane
-            .stalls_told
-            .iter()
-            .map(|told| StallTold {
-                name: told.name.clone(),
-                group: told.group.clone(),
-                first: told.first,
-                escalated: told.escalated,
-            })
-            .collect();
-        let block = pane
-            .block
-            .map(|block| Block { since_ms: block.since_ms, person_told: block.person_told });
-        let turn = (
-            typed(pane.turn_typed_by()),
-            pane.turn_ms_ago
-                .and_then(|ms| Instant::now().checked_sub(Duration::from_millis(ms.into()))),
+    if panes as usize != saved.len() {
+        return refuse(
+            link,
+            format!("the offer named {panes} panes, and the session held {}", saved.len()),
         );
-        let record = pane.record.unwrap_or_default();
-        let wait_started_ms = pane.wait_started_ms.or_else(|| {
-            record
-                .facts
-                .as_ref()
-                .and_then(|facts| facts.waiting.as_ref())
-                .map(|_| crate::messages::now_ms())
-        });
-        let saved = saved.get(&record.pane);
-        let resume = saved.and_then(|saved| saved.resume.as_ref());
-        let quiet_before_orphaned = saved.and_then(|saved| saved.quiet_before_orphaned);
-        let kept_after_maker_closed = saved.is_some_and(|saved| saved.kept_after_maker_closed);
-        let hidden_from = saved.and_then(|saved| saved.hidden_from.as_ref());
-        let adopted = shared.lock().adopt(
-            record,
-            grid,
-            master,
-            pane.process,
-            &replay,
-            Resuming {
-                detection: pane.detection.as_ref(),
-                turns: Turns {
-                    wait_declared: pane.wait_declared.unwrap_or(Turns::default().wait_declared),
-                    reports_turns: pane.reports_turns,
-                    wait_on_screen: false,
-                    wait_carried: pane.wait_carried.unwrap_or(false),
-                    wait_serial: 0,
-                    wait_started_ms,
-                    wait_noticed: pane.wait_noticed,
-                    wait_process_started: None,
-                },
-                session_id: pane.session_id.as_deref(),
-                resume,
-                oldest_row: pane.oldest_row,
-                maker_told,
-                stalls_told: &stalls_told,
-                block,
-                turn,
-                quiet_before_orphaned,
-                nudged: pane.nudged,
-                kept_after_maker_closed,
-                hidden_from,
-            },
-        );
-        if let Err(problem) = adopted {
-            return refuse(link, problem);
+    }
+    let mut remaining: HashMap<&str, &persist::Pane> =
+        saved.iter().map(|pane| (pane.name.as_str(), pane)).collect();
+    let canvas_count = saved.iter().filter(|pane| pane.canvas.is_some()).count();
+    for _ in 0..(saved.len() - canvas_count) {
+        adopt_terminal(link, shared, &mut remaining)?;
+    }
+    for _ in 0..canvas_count {
+        adopt_canvas(link, shared, &mut remaining)?;
+    }
+    if canvas_count > 0 {
+        shared.lock().order_handed_panes(saved);
+    }
+    Ok(())
+}
+
+fn adopt_terminal(
+    link: &mut UnixStream,
+    shared: &Shared,
+    remaining: &mut HashMap<&str, &persist::Pane>,
+) -> Result<(), String> {
+    let master = fds::receive(link, 1)
+        .map_err(|error| format!("a pane's terminal did not arrive: {error}"))?
+        .remove(0);
+    let pane = match receive(link, "a pane")? {
+        handoff::Message::Pane(pane) => pane,
+        other => return Err(unexpected("a pane", &other)),
+    };
+    let mut replay = Vec::with_capacity(usize::try_from(pane.replay_length).unwrap_or(0));
+    while (replay.len() as u64) < pane.replay_length {
+        match receive(link, "a piece of replay")? {
+            handoff::Message::ReplayPiece(piece) => replay.extend_from_slice(&piece),
+            other => return Err(unexpected("a piece of replay", &other)),
         }
     }
+    let grid = pane.grid.unwrap_or_default();
+    let grid = Grid {
+        cols: u16::try_from(grid.cols).unwrap_or(u16::MAX),
+        rows: u16::try_from(grid.rows).unwrap_or(u16::MAX),
+        width_px: u16::try_from(grid.width_px).unwrap_or(u16::MAX),
+        height_px: u16::try_from(grid.height_px).unwrap_or(u16::MAX),
+    };
+    let maker_told = need(pane.maker_told());
+    let stalls_told: Vec<StallTold> = pane
+        .stalls_told
+        .iter()
+        .map(|told| StallTold {
+            name: told.name.clone(),
+            group: told.group.clone(),
+            first: told.first,
+            escalated: told.escalated,
+        })
+        .collect();
+    let block =
+        pane.block.map(|block| Block { since_ms: block.since_ms, person_told: block.person_told });
+    let turn = (
+        typed(pane.turn_typed_by()),
+        pane.turn_ms_ago
+            .and_then(|ms| Instant::now().checked_sub(Duration::from_millis(ms.into()))),
+    );
+    let record = pane.record.unwrap_or_default();
+    let wait_started_ms = pane.wait_started_ms.or_else(|| {
+        record
+            .facts
+            .as_ref()
+            .and_then(|facts| facts.waiting.as_ref())
+            .map(|_| crate::messages::now_ms())
+    });
+    let Some(saved) = remaining
+        .remove(record.pane.as_str())
+        .filter(|saved| saved.canvas.is_none() && record.canvas.is_none())
+    else {
+        return refuse(link, format!("terminal {} does not match the handed session", record.pane));
+    };
+    let resume = saved.resume.as_ref();
+    let quiet_before_orphaned = saved.quiet_before_orphaned;
+    let kept_after_maker_closed = saved.kept_after_maker_closed;
+    let hidden_from = saved.hidden_from.as_ref();
+    let adopted = shared.lock().adopt(
+        record,
+        grid,
+        master,
+        pane.process,
+        &replay,
+        Resuming {
+            detection: pane.detection.as_ref(),
+            turns: Turns {
+                wait_declared: pane.wait_declared.unwrap_or(Turns::default().wait_declared),
+                reports_turns: pane.reports_turns,
+                wait_on_screen: false,
+                wait_carried: pane.wait_carried.unwrap_or(false),
+                wait_serial: 0,
+                wait_started_ms,
+                wait_noticed: pane.wait_noticed,
+                wait_process_started: None,
+            },
+            session_id: pane.session_id.as_deref(),
+            resume,
+            oldest_row: pane.oldest_row,
+            maker_told,
+            stalls_told: &stalls_told,
+            block,
+            turn,
+            quiet_before_orphaned,
+            nudged: pane.nudged,
+            kept_after_maker_closed,
+            hidden_from,
+        },
+    );
+    adopted.or_else(|problem| refuse(link, problem))
+}
+
+fn adopt_canvas(
+    link: &mut UnixStream,
+    shared: &Shared,
+    remaining: &mut HashMap<&str, &persist::Pane>,
+) -> Result<(), String> {
+    let mut pane = match receive(link, "a canvas record")? {
+        handoff::Message::Pane(pane) => pane,
+        other => return Err(unexpected("a canvas record", &other)),
+    };
+    let Some(record) = pane.record.take() else {
+        return refuse(link, "the canvas record is missing".to_string());
+    };
+    let name = &record.pane;
+    if *pane != handoff::Pane::default() {
+        return refuse(link, format!("canvas {name} carries terminal state"));
+    }
+    let Some(saved) = remaining.remove(name.as_str()) else {
+        return refuse(link, format!("canvas {name} does not match the handed session"));
+    };
+    let Some(canvas) = &saved.canvas else {
+        return refuse(link, format!("canvas {name} was a terminal in the handed session"));
+    };
+    let document = match shared.canvases.read(name) {
+        Ok(document) => document,
+        Err(error) => return refuse(link, format!("could not read canvas {name}: {error}")),
+    };
+    if record.canvas.as_ref() != Some(&document.metadata(canvas.opened_by.clone())) {
+        return refuse(link, format!("canvas {name}'s file does not match its handed record"));
+    }
+    shared.lock().adopt_canvas(record, saved.hidden_from.clone());
     Ok(())
 }
 

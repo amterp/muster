@@ -8,6 +8,7 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsE
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
+use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -49,6 +50,12 @@ pub(crate) struct Canvas {
 pub(crate) struct Document {
     pub(crate) revision: u64,
     pub(crate) content: proto::CanvasDocument,
+}
+
+impl Canvas {
+    pub(crate) fn recovering(&self) -> bool {
+        *poison::lock(&self.recovering, "daemon.canvas")
+    }
 }
 
 impl Document {
@@ -217,6 +224,21 @@ impl Store {
             Err(TryLockError::Poisoned(_)) => {}
         }
         poison::write(&self.lifetime, "daemon.canvas.lifetime")
+    }
+
+    pub(crate) fn drain_for_handoff(&self, within: Duration) -> bool {
+        let deadline = Instant::now() + within;
+        if !matches!(self.lifetime.try_write(), Err(TryLockError::WouldBlock)) {
+            return true;
+        }
+        log::debug("daemon.handoff.canvas_wait", fields! {});
+        while Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+            if !matches!(self.lifetime.try_write(), Err(TryLockError::WouldBlock)) {
+                return true;
+            }
+        }
+        false
     }
 
     pub(crate) fn path(&self, pane: &str) -> PathBuf {

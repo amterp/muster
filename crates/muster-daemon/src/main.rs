@@ -210,7 +210,7 @@ fn run(
     // Logged as daemon.failed on the way out, with the message saying what is missing.
     let data = data::Data::locate(data).map_err(Failure::Other)?;
     let listener = listen(socket)?;
-    let socket = Socket::new(socket.to_path_buf(), listener, claim).map_err(|error| {
+    let socket = Socket::new(socket.to_path_buf(), listener, claim, false).map_err(|error| {
         Failure::Other(format!("could not set up {}: {error}", socket.display()))
     })?;
 
