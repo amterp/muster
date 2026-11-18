@@ -8,6 +8,8 @@
 mod api;
 mod attention;
 mod attribution;
+#[cfg(test)]
+mod canvas;
 mod compaction;
 mod control;
 mod daemon_log;
