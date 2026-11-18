@@ -185,7 +185,8 @@ fn handled(
     request: pane_request::Request,
 ) -> Result<Handled, Box<api::Answer>> {
     let service = proto::request::Service::Pane(proto::PaneRequest { request: Some(request) });
-    let mut session = shared.lock();
+    let (_canvas, mut session) =
+        shared.lock_canvas_change(|| shared.lock(), |session| session.changes_canvas(&service));
     if let Some(why) = session.unavailable() {
         let reason = format!("{why}; nothing was done, and asking again shortly is safe");
         return Err(Box::new(refused(correlation.to_string(), api::Refusal::Unavailable, reason)));

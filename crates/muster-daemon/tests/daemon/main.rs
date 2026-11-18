@@ -12,6 +12,7 @@ mod api_read;
 mod arranging;
 mod attention;
 mod attribution;
+mod canvas;
 mod claude_code;
 mod claude_code_council;
 mod claude_code_doorbell;

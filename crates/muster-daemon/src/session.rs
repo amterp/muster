@@ -26,7 +26,7 @@ use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, RwLockWriteGuard, Weak};
 
 use muster_core::compaction::{Placed, Rules, Setting, Thresholds, Withheld};
 use muster_core::diagnostics::{log, poison};
@@ -43,6 +43,7 @@ use proto::{Outcome, pane_request, session_request, tab_request};
 
 use crate::api::{Api, Cause};
 use crate::attention::{self, Attention};
+use crate::canvas::{Canvas, Document, Store};
 use crate::compaction::{Compaction, Pending};
 use crate::control::Outbox;
 use crate::daemon_log::DaemonLog;
@@ -54,7 +55,7 @@ use crate::messages::{
     Block, Declared, Doorbell, Messages, Need, Over, Peers, StallTold, agent_to_come,
 };
 use crate::operations::{Operations, Record};
-use crate::pane::{Ended, Pane, PaneIo, Process, TerminalPane, Turns, TypedBy, Watching};
+use crate::pane::{Ended, Pane, PaneBody, PaneIo, Process, TerminalPane, Turns, TypedBy, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
@@ -112,6 +113,7 @@ pub(crate) enum Stop {
 pub(crate) struct Shared {
     pub(crate) session: Mutex<Session>,
     pub(crate) images: crate::images::Images,
+    pub(crate) canvases: Store,
     /// Messages between agents, under a lock of their own (see [`crate::messages`]).
     pub(crate) messages: Mutex<Messages>,
     /// Rings agents in panes once they can be rung.
@@ -180,6 +182,7 @@ impl Shared {
             let joined = messages.joined();
             Shared {
                 images: crate::images::Images::beside(&socket.path),
+                canvases: Store::beside(&socket.path),
                 messages: Mutex::new(messages),
                 doorbell: Doorbell::default(),
                 peers: Peers::beside(&socket.path),
@@ -270,6 +273,20 @@ impl Shared {
             session: Some(poison::lock(&self.session, "daemon.session")),
             doorbell: &self.doorbell,
         }
+    }
+
+    pub(crate) fn lock_canvas_change<'a>(
+        &'a self,
+        mut lock: impl FnMut() -> Locked<'a>,
+        affects_canvas: impl FnOnce(&Session) -> bool,
+    ) -> (Option<RwLockWriteGuard<'a, ()>>, Locked<'a>) {
+        let session = lock();
+        if !affects_canvas(&session) {
+            return (None, session);
+        }
+        drop(session);
+        let exclusive = self.canvases.exclusive();
+        (Some(exclusive), lock())
     }
 
     pub(crate) fn messages(&self) -> MutexGuard<'_, Messages> {
@@ -1320,6 +1337,19 @@ impl Starting {
     }
 }
 
+pub(crate) struct StartingCanvas {
+    record: proto::Pane,
+    target: Target,
+    opened_by: Option<String>,
+    pub(crate) document: Document,
+}
+
+impl StartingCanvas {
+    pub(crate) fn name(&self) -> &str {
+        &self.record.pane
+    }
+}
+
 /// Where a create or a move puts a pane, once checked against what is here.
 #[derive(Debug)]
 enum Target {
@@ -1449,9 +1479,6 @@ impl Session {
                 P::Compact(compact) => self.compact(&compact),
                 P::Clear(clear) => self.clear(&clear),
                 P::Unseen(unseen) => self.unseen(&unseen.pane),
-                P::CreateCanvas(_) | P::WriteCanvas(_) | P::ReadCanvas(_) => {
-                    Reply::refused("this daemon does not hold canvases yet")
-                }
                 P::Quiet(quiet) => self.quiet(&quiet),
                 P::SetCompaction(set) => self.set_compaction(&set),
                 P::MakerClosed(closed) => self.maker_closed(&closed),
@@ -1463,7 +1490,11 @@ impl Session {
                     Ok(reading) => return Handled::Read(Box::new(reading)),
                     Err(refused) => refused,
                 },
-                P::StoreImage(_) | P::Send(_) => Reply::unsupported(),
+                P::CreateCanvas(_)
+                | P::WriteCanvas(_)
+                | P::ReadCanvas(_)
+                | P::StoreImage(_)
+                | P::Send(_) => Reply::unsupported(),
             },
             _ => Reply::unsupported(),
         };
@@ -1854,28 +1885,11 @@ impl Session {
     }
 
     fn prepare(&mut self, create: pane_request::Create) -> Result<Starting, Reply> {
-        valid_name("pane", &create.pane).map_err(Reply::refused)?;
-        if self.pane_index(&create.pane).is_some() {
-            return Err(Reply::already());
-        }
-        if self.reserved.contains(&create.pane) {
-            return Err(Reply::refused(format!(
-                "a pane {} is being started by another request",
-                create.pane
-            )));
-        }
-        if self.stopping {
-            return Err(Reply::refused("the daemon is stopping"));
-        }
+        self.check_new_pane(&create.pane)?;
         if create.command.as_deref() == Some("") {
             return Err(Reply::refused("the command is empty; leave it out to start a shell"));
         }
-        let given = given_name(create.label.as_deref()).map(str::to_string);
-        if let Some(given) = &given
-            && let Some(taken) = self.name_taken(given, &create.pane)
-        {
-            return Err(taken);
-        }
+        let given = self.check_label(&create.pane, create.label.as_deref())?;
         let maker = create.maker.filter(|maker| !maker.is_empty());
         if let Some(maker) = &maker {
             valid_name("maker", maker).map_err(Reply::refused)?;
@@ -1904,17 +1918,12 @@ impl Session {
             }
         };
 
-        let callsign =
-            self.draw_callsign(given.as_deref(), Some(&cwd), &create.callsigns_elsewhere);
-        let name = given.clone().unwrap_or_else(|| callsign.clone());
-        let which = spawn::Which { pane: &create.pane, name: &name, callsign: &callsign };
+        let callsign = self.draw_callsign(given, Some(&cwd), &create.callsigns_elsewhere);
+        let name = given.unwrap_or(&callsign);
+        let which = spawn::Which { pane: &create.pane, name, callsign: &callsign };
         let (argv, environment) = self.launch(which, create.command.as_deref(), &create.env);
 
-        self.reserved.insert(create.pane.clone());
-        if let Some(name) = target.new_tab() {
-            self.reserved.insert(name.to_string());
-        }
-        self.naming.insert(callsign.clone(), create.pane.clone());
+        self.reserve_pane(&create.pane, &target, &callsign);
         Ok(Starting {
             pane: create.pane,
             label: create.label,
@@ -1931,6 +1940,138 @@ impl Session {
             environment,
             reopening: None,
         })
+    }
+
+    pub(crate) fn prepare_canvas(
+        &mut self,
+        create: pane_request::CreateCanvas,
+    ) -> Result<StartingCanvas, Reply> {
+        self.check_new_pane(&create.pane)?;
+        if let Some(why) = self.unavailable() {
+            return Err(Reply::refused(why));
+        }
+        let given = self.check_label(&create.pane, create.label.as_deref())?;
+        let target = self.target(create.placement, &create.pane, None)?;
+        if let Some(opened_by) = &create.opened_by {
+            valid_name("opening pane", opened_by).map_err(Reply::refused)?;
+        }
+        let content = create
+            .document
+            .ok_or_else(|| Reply::refused("the request carries no canvas document"))?;
+        let callsign = self.draw_callsign(given, None, &create.callsigns_elsewhere);
+        self.reserve_pane(&create.pane, &target, &callsign);
+        let document = Document { revision: 1, content };
+        let record = proto::Pane {
+            pane: create.pane,
+            label: create.label,
+            callsign: Some(callsign),
+            quiet: create.quiet,
+            ..proto::Pane::default()
+        };
+        Ok(StartingCanvas { record, target, opened_by: create.opened_by, document })
+    }
+
+    pub(crate) fn canvas_started(
+        &mut self,
+        starting: StartingCanvas,
+        stored: Result<(), Reply>,
+    ) -> Reply {
+        let StartingCanvas { mut record, target, opened_by, document } = starting;
+        let name = record.pane.clone();
+        self.release_pane(&name, &target);
+        if let Err(refused) = stored {
+            return refused;
+        }
+        if let Some(refused) = self.starting_refusal(&name, &target) {
+            return refused;
+        }
+        record.canvas = Some(document.metadata(opened_by));
+        let created = proto::Created { callsign: record.callsign.clone().unwrap_or_default() };
+        self.open_canvas(record, None);
+        self.place(&name, target);
+        Reply { detail: Some(Box::new(Detail::Created(created))), ..Reply::done() }
+    }
+
+    fn open_canvas(&mut self, record: proto::Pane, hidden_from: Option<persist::ClosedTab>) {
+        self.next_serial += 1;
+        self.emit(Payload::PaneOpened(proto::PaneOpened { pane: Some(record.clone()) }));
+        self.panes.push(Pane {
+            record,
+            serial: self.next_serial,
+            body: PaneBody::Canvas(Arc::new(Canvas::default())),
+            quiet_before_orphaned: None,
+            kept_after_maker_closed: false,
+            hidden_from,
+        });
+    }
+
+    fn check_new_pane(&self, pane: &str) -> Result<(), Reply> {
+        valid_name("pane", pane).map_err(Reply::refused)?;
+        if self.pane_index(pane).is_some() {
+            return Err(Reply::already());
+        }
+        if self.reserved.contains(pane) {
+            return Err(Reply::refused(format!(
+                "a pane {pane} is being started by another request"
+            )));
+        }
+        if self.stopping {
+            return Err(Reply::refused("the daemon is stopping"));
+        }
+        Ok(())
+    }
+
+    fn check_label<'a>(
+        &self,
+        pane: &str,
+        label: Option<&'a str>,
+    ) -> Result<Option<&'a str>, Reply> {
+        let given = given_name(label);
+        if let Some(given) = given
+            && let Some(taken) = self.name_taken(given, pane)
+        {
+            return Err(taken);
+        }
+        Ok(given)
+    }
+
+    fn reserve_pane(&mut self, pane: &str, target: &Target, callsign: &str) {
+        self.reserved.insert(pane.to_string());
+        if let Some(name) = target.new_tab() {
+            self.reserved.insert(name.to_string());
+        }
+        self.naming.insert(callsign.to_string(), pane.to_string());
+    }
+
+    fn release_pane(&mut self, pane: &str, target: &Target) {
+        self.reserved.remove(pane);
+        if let Some(name) = target.new_tab() {
+            self.reserved.remove(name);
+        }
+        self.naming.retain(|_, reserved| reserved != pane);
+    }
+
+    fn starting_refusal(&self, pane: &str, target: &Target) -> Option<Reply> {
+        match target {
+            _ if self.stopping => Some(Reply::refused("the daemon stopped while the pane started")),
+            _ if self.replacing != Replacing::No => Some(Reply::refused(
+                "the daemon began handing its panes to a new one while the pane started; ask again",
+            )),
+            Target::Beside { pane, .. } if self.tab_of(pane).is_none() => Some(Reply::not_there(
+                format!("{pane} closed while the pane beside it was starting"),
+            )),
+            Target::InTree { tab, root, generation, based_on, .. } => self
+                .check_tree(tab, root, *generation, *based_on, Some(pane))
+                .err()
+                .map(|refused| {
+                    Reply::refused(format!(
+                        "the tab changed while the pane was starting, and the tree it was to go \
+                         in no longer fits: {}",
+                        refused.reason
+                    ))
+                }),
+            _ => None,
+        }
     }
 
     /// Checks a reopen and reserves its names, as [`Session::prepare`] does a create's. The pane
@@ -2104,11 +2245,7 @@ impl Session {
         mut starting: Starting,
         started: std::io::Result<(OwnedFd, Child)>,
     ) -> Reply {
-        self.reserved.remove(&starting.pane);
-        if let Some(name) = starting.target.new_tab() {
-            self.reserved.remove(name);
-        }
-        self.naming.retain(|_, pane| *pane != starting.pane);
+        self.release_pane(&starting.pane, &starting.target);
         let reopening = starting.reopening.take();
         // A reopen that does not come to a pane leaves the pane to be reopened again.
         let unopened = |session: &mut Session, reply: Reply| {
@@ -2125,27 +2262,7 @@ impl Session {
                 return unopened(self, reply);
             }
         };
-        let gone = match &starting.target {
-            _ if self.stopping => Some(Reply::refused("the daemon stopped while the pane started")),
-            _ if self.replacing != Replacing::No => Some(Reply::refused(
-                "the daemon began handing its panes to a new one while the pane started; ask again",
-            )),
-            Target::Beside { pane, .. } if self.tab_of(pane).is_none() => Some(Reply::not_there(
-                format!("{pane} closed while the pane beside it was starting"),
-            )),
-            Target::InTree { tab, root, generation, based_on, .. } => self
-                .check_tree(tab, root, *generation, *based_on, Some(&starting.pane))
-                .err()
-                .map(|refused| {
-                    Reply::refused(format!(
-                        "the tab changed while the pane was starting, and the tree it was to go \
-                         in no longer fits: {}",
-                        refused.reason
-                    ))
-                }),
-            _ => None,
-        };
-        if let Some(reply) = gone {
+        if let Some(reply) = self.starting_refusal(&starting.pane, &starting.target) {
             drop(master);
             pty::abandon(child.id().cast_signed());
             return unopened(self, reply);
@@ -5095,7 +5212,7 @@ impl Session {
             Some("the daemon is still bringing back its saved tabs; ask again once it has")
         } else if self.replacing != Replacing::No {
             Some("the daemon is already being replaced")
-        } else if self.panes.iter().any(|pane| pane.body.terminal().is_none()) {
+        } else if self.has_live_canvas() {
             Some("this daemon cannot hand over a canvas yet")
         } else {
             None
@@ -5322,6 +5439,71 @@ impl Session {
     // -----------------------------------------------------------------------------------------
     // Lookups
 
+    pub(crate) fn has_live_canvas(&self) -> bool {
+        self.panes.iter().any(|pane| pane.body.canvas().is_some())
+    }
+
+    pub(crate) fn changes_canvas(&self, service: &Service) -> bool {
+        match service {
+            Service::Pane(proto::PaneRequest {
+                request: Some(pane_request::Request::Close(close)),
+            }) => self.find_pane(&close.pane).is_ok_and(|pane| pane.body.canvas().is_some()),
+            Service::Tab(proto::TabRequest {
+                request: Some(tab_request::Request::Close(close)),
+            }) => {
+                self.tab_index(&close.tab).is_some_and(|index| {
+                    self.tabs[index].root.panes().into_iter().any(|pane| {
+                        self.find_pane(pane).is_ok_and(|pane| pane.body.canvas().is_some())
+                    })
+                })
+            }
+            Service::Session(proto::SessionRequest {
+                request: Some(session_request::Request::Stop(_)),
+            }) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn canvas_target(&self, name: &str) -> Result<(u64, Arc<Canvas>), Reply> {
+        if let Some(why) = self.unavailable() {
+            return Err(Reply::refused(why));
+        }
+        let pane = self.find_pane(name)?;
+        let canvas = pane
+            .body
+            .canvas()
+            .ok_or_else(|| Reply::refused(format!("pane {name} is a terminal, not a canvas")))?;
+        Ok((pane.serial, Arc::clone(canvas)))
+    }
+
+    pub(crate) fn canvas_record(&self, name: &str, serial: u64) -> Result<&proto::Canvas, Reply> {
+        self.find_pane(name)
+            .ok()
+            .filter(|pane| pane.serial == serial)
+            .and_then(|pane| pane.record.canvas.as_ref())
+            .ok_or_else(|| {
+                Reply::not_there(format!("canvas {name} closed while the request waited"))
+            })
+    }
+
+    pub(crate) fn canvas_changed(
+        &mut self,
+        name: &str,
+        serial: u64,
+        document: &Document,
+    ) -> Result<(), Reply> {
+        let before = self.canvas_record(name, serial)?;
+        let metadata = document.metadata(before.opened_by.clone());
+        if *before != metadata {
+            let index = self.pane_index(name).expect("found this canvas");
+            let pane = &mut self.panes[index];
+            pane.record.canvas = Some(metadata);
+            let record = pane.record.clone();
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        }
+        Ok(())
+    }
+
     fn find_pane(&self, name: &str) -> Result<&Pane, Reply> {
         let index = self
             .pane_index(name)
@@ -5395,7 +5577,10 @@ impl Session {
     /// What reads the page `read` asks for, outside the lock.
     pub(crate) fn reading(&self, read: &pane_request::Read) -> Result<Reading, Reply> {
         let pane = self.find_pane(&read.pane)?;
-        let terminal = Self::need_terminal(pane)?;
+        let terminal = Self::need_terminal(pane).map_err(|mut refused| {
+            refused.reason.push_str(". Use `muster canvas read`.");
+            refused
+        })?;
         Ok(Reading {
             io: Arc::clone(&terminal.io),
             first_row: read.first_row,
@@ -6353,7 +6538,7 @@ mod tests {
                 ..Default::default()
             },
             serial,
-            body: crate::pane::PaneBody::Canvas,
+            body: PaneBody::Canvas(Arc::new(Canvas::default())),
             quiet_before_orphaned: None,
             kept_after_maker_closed: false,
             hidden_from: None,

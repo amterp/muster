@@ -945,22 +945,28 @@ pub(crate) struct Pane {
 #[derive(Debug)]
 pub(crate) enum PaneBody {
     Terminal(Box<TerminalPane>),
-    #[cfg_attr(not(test), expect(dead_code, reason = "canvas creation follows the pane split"))]
-    Canvas,
+    Canvas(Arc<crate::canvas::Canvas>),
 }
 
 impl PaneBody {
     pub(crate) fn terminal(&self) -> Option<&TerminalPane> {
         match self {
             Self::Terminal(terminal) => Some(terminal),
-            Self::Canvas => None,
+            Self::Canvas(_) => None,
+        }
+    }
+
+    pub(crate) fn canvas(&self) -> Option<&Arc<crate::canvas::Canvas>> {
+        match self {
+            Self::Canvas(canvas) => Some(canvas),
+            Self::Terminal(_) => None,
         }
     }
 
     pub(crate) fn terminal_mut(&mut self) -> Option<&mut TerminalPane> {
         match self {
             Self::Terminal(terminal) => Some(terminal),
-            Self::Canvas => None,
+            Self::Canvas(_) => None,
         }
     }
 }

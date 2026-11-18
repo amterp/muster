@@ -8,7 +8,6 @@
 mod api;
 mod attention;
 mod attribution;
-#[cfg(test)]
 mod canvas;
 mod compaction;
 mod control;
@@ -314,7 +313,10 @@ fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
             Ok(Stop::HandedOff) => return handed_off(),
             Ok(Stop::Asked) => {
                 // Bound first: the lock must not be held while waiting below.
-                let stopping = shared.lock().stop_unless_replacing();
+                let stopping = {
+                    let _canvas = shared.canvases.exclusive();
+                    shared.lock().stop_unless_replacing()
+                };
                 match stopping {
                     Stopping::Now => break,
                     Stopping::Deferred => {}
@@ -327,6 +329,7 @@ fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
                 }
             }
             Err(_) => {
+                let _canvas = shared.canvases.exclusive();
                 shared.lock().close_everything();
                 break;
             }

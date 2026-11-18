@@ -50,7 +50,8 @@ pub(crate) struct Budget {
 impl Budget {
     /// A control connection's, which counts messages alone: what it carries is small and the
     /// app reads it.
-    pub(crate) const CONTROL: Budget = Budget { messages: QUEUE_DEPTH, bytes: usize::MAX };
+    pub(crate) const CONTROL: Budget =
+        Budget { messages: QUEUE_DEPTH, bytes: 2 * connection::LARGEST_MESSAGE as usize };
 }
 
 impl std::fmt::Display for Budget {
@@ -394,6 +395,26 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             Some(Service::Pane(proto::PaneRequest {
                 request: Some(pane_request::Request::Send(send)),
             })) => Handled::Reply(sent(shared, &send)),
+            Some(Service::Pane(proto::PaneRequest {
+                request:
+                    Some(
+                        canvas @ (pane_request::Request::CreateCanvas(_)
+                        | pane_request::Request::WriteCanvas(_)
+                        | pane_request::Request::ReadCanvas(_)),
+                    ),
+            })) => {
+                crate::canvas::serve(shared, canvas, |reply| {
+                    let before_lock = Instant::now();
+                    let session = shared.lock();
+                    answer(
+                        &session,
+                        &outbox,
+                        reply,
+                        Answered::after(request.id, name, received, before_lock.elapsed()),
+                    );
+                });
+                continue;
+            }
             // Outside the session's lock: messages have their own (crate::messages).
             Some(Service::Msg(message)) => {
                 let handled = match &sender {
@@ -433,7 +454,8 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                     );
                     continue;
                 }
-                let mut session = locked();
+                let (_canvas, mut session) = shared
+                    .lock_canvas_change(&mut locked, |session| session.changes_canvas(&service));
                 match handle(&mut session, service, sender.as_ref(), &outbox, shared) {
                     Handled::Snapshot(reply) => {
                         let timing = Answered::after(request.id, name, received, lock);

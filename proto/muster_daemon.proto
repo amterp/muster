@@ -346,8 +346,8 @@ message PaneRequest {
     CanvasDocument document = 4;
     // Starts it quiet (`Pane.quiet`).
     bool quiet = 5;
-    // The pane that asked for it, by id, when a pane did (`Canvas.opened_by`). Need not be on
-    // this daemon.
+    // The pane that asked for it, by id, when a pane did (`Canvas.opened_by`). Uses the same
+    // pane ID grammar as pane. The opening pane need not be on this daemon.
     optional string opened_by = 6;
     // As Create's: the callsigns the asker's other machines hold.
     repeated string callsigns_elsewhere = 7;
@@ -1597,7 +1597,8 @@ message CanvasDocument {
   // For CANVAS_KIND_IMAGE, its media type: image/png, image/jpeg, image/gif, image/webp or
   // image/svg+xml. Empty otherwise.
   string image_type = 3;
-  // Shown in the pane's header. May be empty.
+  // Shown in the pane's header. REFUSED if it exceeds 256 UTF-8 bytes or contains a control
+  // character. May be empty.
   string title = 4;
 }
 
