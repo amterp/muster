@@ -138,7 +138,7 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
     controller.addUserScript(
       WKUserScript(
         source: Self.documentScript(token: document.token), injectionTime: .atDocumentStart,
-        forMainFrameOnly: true, in: world))
+        forMainFrameOnly: false, in: world))
     displayed = nil
     try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<Void, any Error>) in
@@ -176,7 +176,7 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
 
     window.addEventListener("click", interceptLink, true);
     window.addEventListener("auxclick", interceptLink, true);
-    for (const type of ["contextmenu", "beforeinput", "drop", "dragover"]) {
+    for (const type of ["contextmenu", "beforeinput", "drop", "dragover", "submit"]) {
       window.addEventListener(type, event => event.preventDefault(), true);
     }
     window.addEventListener("DOMContentLoaded", () => {
