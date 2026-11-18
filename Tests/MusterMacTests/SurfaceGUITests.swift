@@ -462,7 +462,7 @@ extension SurfaceGUITests {
       backing: .buffered, defer: true)
     let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
     view.attach(RecordingSurface(), typeable: true)
-    let pane = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view)
+    let pane = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), content: view)
     pane.attach(paneID: "p1w3r07bsd")
     window.contentView?.addSubview(pane)
     window.makeFirstResponder(view)
@@ -756,7 +756,7 @@ extension SurfaceGUITests {
     let pane = PaneKey(daemon: "local", pane: "p1")
     let tree = PaneTree.pane(.init(daemon: "local", paneID: "p1", linkSocketPath: nil))
     tab.apply(WindowContents(tab: "t1", tree: tree, keyboard: pane))
-    let surface = try #require(tab.chrome(for: pane)?.surface)
+    let surface = try #require(tab.chrome(for: pane)?.terminal)
     #expect(window.firstResponder === surface)
 
     let review = ConversationGroup(daemon: "local", group: "review")

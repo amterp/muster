@@ -92,13 +92,13 @@ struct PaneDragTests {
     let chrome = chrome(width: 400, height: 300)
     #expect(chrome.hitTest(NSPoint(x: 200, y: 290)) === chrome.header)
     #expect(chrome.hitTest(NSPoint(x: 20, y: 290)) === chrome.header, "a label is still the header")
-    #expect(chrome.hitTest(NSPoint(x: 200, y: 200)) === chrome.surface)
+    #expect(chrome.hitTest(NSPoint(x: 200, y: 200)) === chrome.content.view)
   }
 
   @Test("a pane with nothing behind it has no header to grab")
   func noPaneNoHeader() {
     let frame = NSRect(x: 0, y: 0, width: 400, height: 300)
-    let bare = PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
+    let bare = PaneChrome(frame: frame, content: SurfaceView(frame: frame))
     bare.layoutSubtreeIfNeeded()
     #expect(bare.header.isHidden)
   }
@@ -107,7 +107,7 @@ struct PaneDragTests {
   func tooShortForAGrip() {
     let short = chrome(width: 400, height: PaneHeaderModel.minimumPaneHeight - 1)
     #expect(short.header.isHidden)
-    #expect(short.hitTest(NSPoint(x: 200, y: 30)) === short.surface)
+    #expect(short.hitTest(NSPoint(x: 200, y: 30)) === short.content.view)
   }
 
   @Test("the grip shows while the pointer is over the header and not otherwise")
@@ -194,7 +194,7 @@ struct PaneDragTests {
 @MainActor
 private func chrome(width: CGFloat, height: CGFloat) -> PaneChrome {
   let frame = NSRect(x: 0, y: 0, width: width, height: height)
-  let chrome = PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
+  let chrome = PaneChrome(frame: frame, content: SurfaceView(frame: frame))
   chrome.attach(paneID: neighbor.pane)
   chrome.key = neighbor
   chrome.layoutSubtreeIfNeeded()

@@ -56,15 +56,16 @@ struct LinkHoverTests {
     _ = recorder()
     let recording = RecordingSurface()
     let frame = NSRect(x: 0, y: 0, width: 400, height: 300)
-    let chrome = PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
-    chrome.surface.attach(recording, typeable: true)
+    let terminal = SurfaceView(frame: frame)
+    let chrome = PaneChrome(frame: frame, content: terminal)
+    terminal.attach(recording, typeable: true)
     #expect(chrome.shownLink == nil)
 
     recording.onHoverLink?("https://example.com/a")
     chrome.layoutSubtreeIfNeeded()
     #expect(chrome.shownLink == "https://example.com/a")
     // Over the terminal, and never in the way of a click on it.
-    #expect(chrome.hitTest(NSPoint(x: 12, y: 10)) === chrome.surface)
+    #expect(chrome.hitTest(NSPoint(x: 12, y: 10)) === terminal)
 
     recording.onHoverLink?(nil)
     #expect(chrome.shownLink == nil)

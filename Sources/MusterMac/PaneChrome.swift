@@ -219,7 +219,7 @@ public enum PaneAppearance {
   }
 }
 
-/// Holds one surface under its header, and says whether it has the keyboard.
+/// Holds a pane's content under its header and draws its focus ring.
 ///
 /// A container rather than the surface itself, because libghostty attaches its own Metal
 /// layer to the view it is handed and a border on that layer is a fight over ownership -
@@ -240,7 +240,8 @@ public final class PaneChrome: NSView {
   /// The row the header draws, or nil before the window has joined the roster with the agents.
   public private(set) var headerRow: SidebarModel.Row?
 
-  public let surface: SurfaceView
+  public let content: any PaneContent
+  var terminal: SurfaceView? { content as? SurfaceView }
 
   /// Called when somebody clicks this pane, meaning they want the keyboard here.
   public var onFocusRequested: ((String) -> Void)?
@@ -266,12 +267,11 @@ public final class PaneChrome: NSView {
   /// What lights the side a dragged pane would land on.
   private let dropOverlay = PaneDropOverlay(frame: .zero)
 
-  /// A view drawn over the terminal and kept to its frame, which is the find bar: laid out against
-  /// the surface rather than the pane, so it stays out of the header.
+  /// A view laid out over the pane's content, below the header.
   var overlay: NSView? {
     didSet {
       oldValue?.removeFromSuperview()
-      if let overlay { addSubview(overlay, positioned: .above, relativeTo: surface) }
+      if let overlay { addSubview(overlay, positioned: .above, relativeTo: content.view) }
       needsLayout = true
     }
   }
@@ -284,8 +284,8 @@ public final class PaneChrome: NSView {
   private let linkBanner = LinkBanner(frame: .zero)
   private let imagePasteLabel = NSTextField(labelWithString: "Pasting image…")
 
-  public init(frame: NSRect, surface: SurfaceView) {
-    self.surface = surface
+  public init(frame: NSRect, content: any PaneContent) {
+    self.content = content
     super.init(frame: frame)
     wantsLayer = true
     // Never animated. A ring recolored from a focus change would otherwise fade over a quarter
@@ -293,16 +293,16 @@ public final class PaneChrome: NSView {
     // arrangement while the daemon has already moved on.
     layer?.actions = ["borderColor": NSNull(), "borderWidth": NSNull()]
     addSubview(header)
-    addSubview(surface)
-    surface.onClick = { [weak self] in
+    addSubview(content.view)
+    content.onClick = { [weak self] in
       guard let self, let paneID = self.paneID else { return }
       self.onFocusRequested?(paneID)
     }
-    surface.onPointer = { [weak self] pointer in
+    terminal?.onPointer = { [weak self] pointer in
       guard let self, let paneID = self.paneID else { return }
       self.onPointerRequested?(paneID, pointer)
     }
-    surface.onHoverLink = { [weak self] url in
+    terminal?.onHoverLink = { [weak self] url in
       self?.showLink(url)
     }
     // After the surface, so it composites over libghostty's own layer rather than under it.
@@ -469,15 +469,16 @@ public final class PaneChrome: NSView {
     header.frame = CGRect(
       x: area.minX, y: area.maxY - PaneHeaderModel.height, width: area.width,
       height: PaneHeaderModel.height)
-    surface.frame = CGRect(
+    let view = content.view
+    view.frame = CGRect(
       x: area.minX, y: area.minY, width: area.width, height: max(0, area.height - headerHeight))
-    overlay?.frame = surface.frame
-    badge.frame = surface.frame
-    linkBanner.frame = linkBanner.frame(in: surface.frame)
+    overlay?.frame = view.frame
+    badge.frame = view.frame
+    linkBanner.frame = linkBanner.frame(in: view.frame)
     imagePasteLabel.sizeToFit()
     imagePasteLabel.setFrameOrigin(
       NSPoint(
-        x: surface.frame.maxX - imagePasteLabel.frame.width - 8, y: surface.frame.minY + 8))
+        x: view.frame.maxX - imagePasteLabel.frame.width - 8, y: view.frame.minY + 8))
     window?.invalidateCursorRects(for: header)
   }
 

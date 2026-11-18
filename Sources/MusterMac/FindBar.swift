@@ -247,6 +247,7 @@ public final class FindBar {
   /// A bar over some other pane is not "asking again" - the keyboard has moved, and the bar
   /// follows it.
   public func toggle(over chrome: PaneChrome) {
+    guard chrome.terminal != nil else { return }
     if self.chrome === chrome {
       close()
       return
@@ -261,14 +262,14 @@ public final class FindBar {
   /// the keyboard to a second pane is being asked the same question about a different pane -
   /// and a counter left over from the first would be a count of matches that are not there.
   public func show(over chrome: PaneChrome) {
-    guard self.chrome !== chrome else { return }
+    guard self.chrome !== chrome, let terminal = chrome.terminal else { return }
     self.chrome?.overlay = nil
     // The pane being left keeps its marks otherwise, which would be two panes looking searched
     // and one of them counted.
     leave()
     chrome.overlay = hosting
     self.chrome = chrome
-    chrome.surface.onSearch = { [weak self] report in self?.apply(report) }
+    terminal.onSearch = { [weak self] report in self?.apply(report) }
     if !state.needle.isEmpty {
       search(state.needle)
     }
@@ -298,8 +299,7 @@ public final class FindBar {
   /// Nothing with no bar up: the chords work with the keyboard back in the pane, which means
   /// they can be pressed with no bar at all.
   public func step(forward: Bool) {
-    guard let chrome else { return }
-    chrome.surface.navigateSearch(next: forward)
+    chrome?.terminal?.navigateSearch(next: forward)
   }
 
   /// Takes the bar down, and ends the search with it.
@@ -308,8 +308,8 @@ public final class FindBar {
   /// leaves it with the window itself, where typing goes nowhere until somebody clicks. If it is
   /// somewhere else - another pane, clicked into before the bar was closed - it stays there.
   public func close() {
-    if holdsKeyboard, let surface = chrome?.surface {
-      surface.window?.makeFirstResponder(surface)
+    if holdsKeyboard, let content = chrome?.content, let window = content.view.window {
+      content.focus(in: window)
     }
     chrome?.overlay = nil
     leave()
@@ -358,8 +358,8 @@ public final class FindBar {
   public var isShown: Bool { chrome != nil }
 
   private func search(_ needle: String) {
-    guard let chrome else { return }
-    let refused = chrome.surface.search(needle)
+    guard let terminal = chrome?.terminal else { return }
+    let refused = terminal.search(needle)
     if !refused.isEmpty { onRefused?(refused) }
   }
 
@@ -374,8 +374,8 @@ public final class FindBar {
   private func leave() {
     waiting?.cancel()
     waiting = nil
-    chrome?.surface.onSearch = nil
-    chrome?.surface.search(nil)
+    chrome?.terminal?.onSearch = nil
+    chrome?.terminal?.search(nil)
     chrome = nil
     state.total = nil
     state.selected = nil

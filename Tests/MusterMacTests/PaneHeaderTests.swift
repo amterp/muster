@@ -36,7 +36,7 @@ private func header(
   width: CGFloat = 480, row: SidebarModel.Row
 ) -> PaneChrome {
   let frame = NSRect(x: 0, y: 0, width: width, height: 300)
-  let chrome = PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
+  let chrome = PaneChrome(frame: frame, content: SurfaceView(frame: frame))
   chrome.attach(paneID: row.pane?.pane)
   chrome.key = row.pane
   chrome.apply(header: row)
@@ -193,7 +193,7 @@ struct PaneHeaderTests {
       for pane in panes {
         let chrome = PaneChrome(
           frame: NSRect(x: 0, y: 0, width: 400, height: 200),
-          surface: SurfaceView(frame: .zero))
+          content: SurfaceView(frame: .zero))
         chrome.attach(paneID: pane.key.pane)
         chromes[pane.key] = chrome
       }

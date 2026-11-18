@@ -12,8 +12,10 @@ import MusterRenderer
 /// with no app, window or run loop behind it, so what happens when you type is assertable
 /// here - which is how the bug that sent every key twice would have been caught.
 @MainActor
-public final class SurfaceView: NSView, NSMenuItemValidation {
+public final class SurfaceView: NSView, NSMenuItemValidation, PaneContent {
   private var surface: (any PaneSurface)?
+
+  public var view: NSView { self }
 
   /// Where copy and paste meet the rest of the machine. Settable so a test can hand the view
   /// a pasteboard of its own rather than reaching into whatever the developer last copied.
@@ -224,10 +226,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// does not scale what libghostty already drew at the right one, then the content scale, then
   /// the size. Without the content scale a surface made on a 2x display and moved to a 1x one
   /// counted 1x pixels in 2x cells, and its pane's program ran at half the grid it had room for.
-  ///
-  /// Internal rather than private, because a window that changes screen asks every pane it
-  /// holds, parked ones included - AppKit does not always report a scale change on its own.
-  func matchBackingScale() {
+  public func matchBackingScale() {
     if let window {
       CATransaction.begin()
       // Otherwise Core Animation animates the layer from one scale to the other.
@@ -297,6 +296,11 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     isTypeable = typeable
   }
 
+  public func tearDown() {
+    isTypeable = false
+    surface = nil
+  }
+
   /// What this view does about its own bridge having exited.
   ///
   /// It stops typing into it. This surface is now a picture - libghostty paints its own
@@ -360,12 +364,8 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // would be the shell deciding what a keystroke means, and choosing *both* - the
     // committed text and the encoded key - is the bug that made `hello` arrive as
     // `hheelllloo`.
-    let toPane = Core.send(
-      keyDown: event.musterKeyEvent(
-        action: event.isARepeat ? "repeated" : "press", isComposing: hasMarkedText()),
-      wasComposing: wasComposing,
-      committed: committedText,
-      stillComposing: hasMarkedText())
+    let toPane = routeKeyDown(
+      event, wasComposing: wasComposing, committed: committedText, stillComposing: hasMarkedText())
     // Only keys the program got (SurfaceKeys.swift says why the surface gets them at all), so
     // a chord Muster kept moves nothing in the pane.
     guard toPane else { return }
@@ -414,9 +414,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // the mode profile. Sending it unconditionally is how a program that never asked ends
     // up with every keystroke twice.
     guard isTypeable else { return }
-    Core.send(
-      keyUp: event.musterKeyEvent(
-        action: event.isARepeat ? "repeated" : "release", isComposing: hasMarkedText()))
+    routeKeyUp(event, isComposing: hasMarkedText())
     surface?.releaseKey(event)
   }
 

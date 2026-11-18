@@ -14,7 +14,7 @@ import Testing
 private func chrome(_ surface: RecordingSurface) -> PaneChrome {
   let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
   view.attach(surface, typeable: true)
-  let chrome = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view)
+  let chrome = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), content: view)
   chrome.attach(paneID: "p1w3r07bsd")
   return chrome
 }
@@ -27,7 +27,7 @@ private func windowed(_ surface: RecordingSurface) -> (NSWindow, PaneChrome) {
     backing: .buffered, defer: true)
   let pane = chrome(surface)
   window.contentView?.addSubview(pane)
-  window.makeFirstResponder(pane.surface)
+  window.makeFirstResponder(pane.content.view)
   return (window, pane)
 }
 
@@ -311,7 +311,7 @@ struct FindTests {
     bar.toggle(over: pane)
 
     #expect(!bar.isShown)
-    #expect(window.firstResponder === pane.surface)
+    #expect(window.firstResponder === pane.content.view)
     #expect(surface.searches.last == .some(nil), "the pane's search outlived the bar")
   }
 
@@ -326,7 +326,7 @@ struct FindTests {
 
     bar.close()
 
-    #expect(window.firstResponder === pane.surface)
+    #expect(window.firstResponder === pane.content.view)
   }
 
   @MainActor
@@ -338,11 +338,11 @@ struct FindTests {
     window.contentView?.addSubview(other)
     let (bar, _) = keyboardTaking()
     bar.toggle(over: pane)
-    window.makeFirstResponder(other.surface)
+    window.makeFirstResponder(other.content.view)
 
     bar.close()
 
-    #expect(window.firstResponder === other.surface)
+    #expect(window.firstResponder === other.content.view)
   }
 
   @MainActor
@@ -370,7 +370,7 @@ struct FindTests {
     window.contentView?.addSubview(second)
     let (bar, asked) = keyboardTaking()
     bar.toggle(over: first)
-    window.makeFirstResponder(second.surface)
+    window.makeFirstResponder(second.content.view)
 
     bar.toggle(over: second)
 
@@ -387,7 +387,7 @@ struct FindTests {
     // The bar listens to the view, and the view is handed its surface when the bridge starts,
     // which can be after somebody pressed the chord.
     let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
-    let chrome = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view)
+    let chrome = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), content: view)
     chrome.attach(paneID: "p1w3r07bsd")
     let bar = FindBar()
     bar.show(over: chrome)

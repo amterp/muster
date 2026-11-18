@@ -124,7 +124,7 @@ public final class MusterWindow: NSObject {
   /// not been sized yet has no measurement at all.
   private var keyboardSurface: SurfaceView? {
     guard let keyboardKey else { return nil }
-    return tabView.chrome(for: keyboardKey)?.surface
+    return tabView.chrome(for: keyboardKey)?.terminal
   }
 
   /// How big the tab on screen is, or nil before it has been laid out.
@@ -235,8 +235,8 @@ public final class MusterWindow: NSObject {
     // After the content view, because a parked pane waits inside the window rather than
     // outside every hierarchy - a surface is handed to libghostty as a view, and keeping that
     // view in a window for its whole life is the only state this has ever run in.
-    surfaces = PaneSurfaces(parkedIn: split) { [weak self] machine, chrome, pane in
-      self?.start(chrome, on: machine, pane: pane)
+    surfaces = PaneSurfaces(parkedIn: split) { [weak self] machine, terminal, pane in
+      self?.startTerminal(terminal, on: machine, pane: pane)
     }
     tabView = TabView(frame: NSRect(x: 0, y: 0, width: 960, height: 600), surfaces: surfaces)
     split.attach(sidebar: sidebar, strip: tabView)
@@ -256,8 +256,8 @@ public final class MusterWindow: NSObject {
       return OneToOne.name(daemon: daemon, group: group, groups: sidebar.groups, roster: roster)
     }
     banners.onLeave = { [weak self] in
-      guard let self, let surface = keyboardChrome()?.surface else { return }
-      window.makeFirstResponder(surface)
+      guard let self else { return }
+      keyboardChrome()?.content.focus(in: window)
     }
     BannerBoard.shared.take(bindings: bindings)
     conversation.take(bindings: bindings)
@@ -436,7 +436,7 @@ public final class MusterWindow: NSObject {
     // of this function is - and the surface itself skips a number it already has, which is what
     // stops a publish per agent transition from reflowing the window.
     for leaf in contents.tree?.leaves ?? [] {
-      report(tabView.chrome(for: leaf.key)?.surface.setFontSizeOffset(leaf.fontSizeOffset) ?? [])
+      report(tabView.chrome(for: leaf.key)?.content.setFontSizeOffset(leaf.fontSizeOffset) ?? [])
     }
     // A pane this view just made has no header yet; one that has its row ignores it.
     headers.refreshAll()
@@ -689,11 +689,14 @@ public final class MusterWindow: NSObject {
   /// ignores you and does not explain itself is the worst thing this app could ship.
   public func showRendererCheck() {
     rendererCheck = true
-    let chrome = PaneChrome(frame: tabView.bounds, surface: SurfaceView(frame: tabView.bounds))
+    let terminal = SurfaceView(frame: tabView.bounds)
+    let chrome = PaneChrome(frame: tabView.bounds, content: terminal)
     tabView.addSubview(chrome)
     chrome.autoresizingMask = [.width, .height]
     tabView.layoutSubtreeIfNeeded()
-    start(chrome, command: ProcessInfo.processInfo.environment["SHELL"], typeable: false)
+    attachSurface(
+      to: terminal, paneID: nil, command: ProcessInfo.processInfo.environment["SHELL"],
+      typeable: false)
     applyTitle()
   }
 
@@ -744,13 +747,13 @@ public final class MusterWindow: NSObject {
     }
   }
 
-  /// Gives a pane's chrome a surface, and starts the bridge that paints it.
-  private func start(
-    _ chrome: PaneChrome, on machine: WindowContents.Machine?, pane: PaneTree.Leaf
+  /// Gives a terminal its surface and starts the bridge that paints it.
+  private func startTerminal(
+    _ terminal: SurfaceView, on machine: WindowContents.Machine?, pane: PaneTree.Leaf
   ) {
-    guard let paneID = chrome.paneID else { return }
+    let paneID = pane.paneID
     let daemonID = pane.daemon
-    headers.refresh(PaneKey(daemon: daemonID, pane: paneID))
+    headers.refresh(pane.key)
     guard let linkSocketPath = pane.linkSocketPath else {
       // No link is bound for this pane yet, and a bridge the window cannot hear from is one
       // whose death nobody notices. The core binds one and republishes, and the surface is
@@ -780,15 +783,15 @@ public final class MusterWindow: NSObject {
     }
     // Reported rather than acted on here: the core is what can find out whether a bridge
     // ending means the daemon has dropped the pane, which is the commonest reason.
-    chrome.surface.onProcessExited = { processAlive in
+    terminal.onProcessExited = { processAlive in
       Core.bridgeExited(daemonID: daemonID, paneID: paneID, processAlive: processAlive)
     }
     let onThisMachine = !machine.remote
-    chrome.surface.onOpenLink = { [weak self] link in
+    terminal.onOpenLink = { [weak self] link in
       self?.open(link, onThisMachine: onThisMachine, daemon: daemonID)
     }
-    start(
-      chrome,
+    attachSurface(
+      to: terminal, paneID: paneID,
       command: PaneCommand.bridge(
         executable: executable, paneID: paneID, daemonSocket: daemonSocket,
         linkSocketPath: linkSocketPath, remote: machine.remote,
@@ -797,20 +800,21 @@ public final class MusterWindow: NSObject {
     Core.bridgeStarted(daemonID: daemonID, paneID: paneID, bridgeRestarts: pane.bridgeRestarts)
   }
 
-  private func start(_ chrome: PaneChrome, command: String?, typeable: Bool) {
+  private func attachSurface(
+    to terminal: SurfaceView, paneID: String?, command: String?, typeable: Bool
+  ) {
     Core.info(
       "surface.create",
-      ["pane": chrome.paneID ?? "(none)", "command": command ?? "(none)"])
+      ["pane": paneID ?? "(none)", "command": command ?? "(none)"])
     do {
-      chrome.surface.attach(
-        try renderer.makeSurface(in: chrome.surface, command: command), typeable: typeable)
+      terminal.attach(try renderer.makeSurface(in: terminal, command: command), typeable: typeable)
     } catch {
       // One pane, not the window: the rest keep rendering, and a bug report needs to say
       // which one went missing rather than that something failed.
       Core.error(
         "pane.surface.failed",
         [
-          "pane": chrome.paneID ?? "(none)",
+          "pane": paneID ?? "(none)",
           "error": "\(error)",
           "impact": "this pane renders nothing; every other pane in the window is unaffected",
         ])
@@ -1329,6 +1333,7 @@ extension MusterWindow {
         ])
       return
     }
+    guard chrome.terminal != nil else { return }
     (findBar ?? makeFindBar()).toggle(over: chrome)
   }
 
@@ -1349,10 +1354,12 @@ extension MusterWindow {
   }
 
   @objc public func findNext(_ sender: Any?) {
+    if let chrome = keyboardChrome(), chrome.terminal == nil { return }
     findBar?.step(forward: true)
   }
 
   @objc public func findPrevious(_ sender: Any?) {
+    if let chrome = keyboardChrome(), chrome.terminal == nil { return }
     findBar?.step(forward: false)
   }
 
@@ -1418,7 +1425,7 @@ extension MusterWindow {
   /// right-click and the next.
   func menu(forPane pane: PaneKey) -> NSMenu? {
     let menu = ContextMenus.pane(
-      pane, surface: surfaces.chrome(for: pane)?.surface,
+      pane, surface: surfaces.chrome(for: pane)?.terminal,
       machines: speaking { Core.machines() }.map(\.daemon),
       canCompact: namedPane(pane)?.compactable ?? false,
       canClear: namedPane(pane)?.clearable ?? false,
@@ -1664,7 +1671,7 @@ extension MusterWindow {
   }
 
   private func performOnSurface(_ action: SurfaceAction) {
-    keyboardChrome()?.surface.perform(action)
+    keyboardChrome()?.terminal?.perform(action)
   }
 
   @objc public func increaseFontSize(_ sender: Any?) {

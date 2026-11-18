@@ -109,9 +109,10 @@ struct ModifierRoutingTests {
       contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
       styleMask: [.titled], backing: .buffered, defer: false)
     let frame = NSRect(x: 0, y: 0, width: 200, height: 200)
-    let chrome = PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
+    let terminal = SurfaceView(frame: frame)
+    let chrome = PaneChrome(frame: frame, content: terminal)
     let recording = RecordingSurface()
-    chrome.surface.attach(recording, typeable: true)
+    terminal.attach(recording, typeable: true)
     window.contentView?.addSubview(chrome)
 
     var held: [NSEvent.ModifierFlags] = []
@@ -119,8 +120,8 @@ struct ModifierRoutingTests {
 
     // Sent to the surface, which is where AppKit would send it: a pane is what has the
     // keyboard almost all the time.
-    chrome.surface.flagsChanged(with: modifiers([.command]))
-    chrome.surface.flagsChanged(with: modifiers([]))
+    terminal.flagsChanged(with: modifiers([.command]))
+    terminal.flagsChanged(with: modifiers([]))
 
     #expect(held == [[.command], []])
     #expect(recording.modifierChanges.count == 2)

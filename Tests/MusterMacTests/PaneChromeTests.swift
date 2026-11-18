@@ -106,17 +106,17 @@ struct PaneChromeTests {
       height: 300 - 2 * inset - PaneHeaderModel.height)
 
     chrome.layoutSubtreeIfNeeded()
-    #expect(chrome.surface.frame == expected)
+    #expect(chrome.content.view.frame == expected)
     #expect(
       chrome.header.frame
         == CGRect(
           x: inset, y: 300 - inset - PaneHeaderModel.height, width: 400 - 2 * inset,
           height: PaneHeaderModel.height))
-    #expect(chrome.header.frame.minY == chrome.surface.frame.maxY, "flush: nothing between")
+    #expect(chrome.header.frame.minY == chrome.content.view.frame.maxY, "flush: nothing between")
 
     chrome.apply(focused: true)
     chrome.layoutSubtreeIfNeeded()
-    #expect(chrome.surface.frame == expected)
+    #expect(chrome.content.view.frame == expected)
   }
 
   @MainActor
@@ -128,19 +128,19 @@ struct PaneChromeTests {
     short.attach(paneID: "w1:p1")
     short.layoutSubtreeIfNeeded()
     #expect(short.header.isHidden)
-    #expect(short.surface.frame.height == 59 - 2 * inset, "a pane too short to carry a header")
+    #expect(short.content.view.frame.height == 59 - 2 * inset, "a pane too short to carry a header")
 
     let enough = pane(width: 400, height: 60)
     enough.attach(paneID: "w1:p1")
     enough.layoutSubtreeIfNeeded()
     #expect(!enough.header.isHidden)
-    #expect(enough.surface.frame.height == 60 - 2 * inset - PaneHeaderModel.height)
+    #expect(enough.content.view.frame.height == 60 - 2 * inset - PaneHeaderModel.height)
 
     // `PaneTree.minimumPaneSize`: a pane this small must not be given a header it has no room for.
     let smallest = pane(width: 400, height: 8)
     smallest.attach(paneID: "w1:p1")
     smallest.layoutSubtreeIfNeeded()
-    #expect(smallest.surface.frame.height >= 0)
+    #expect(smallest.content.view.frame.height >= 0)
   }
 
   @MainActor
@@ -152,12 +152,12 @@ struct PaneChromeTests {
     let chrome = pane(width: 400, height: 300)
     chrome.attach(paneID: "w1:p1")
     chrome.layoutSubtreeIfNeeded()
-    chrome.surface.attach(typeable: true)
+    try #require(chrome.terminal).attach(typeable: true)
     var reported: [Core.Mouse] = []
     chrome.onPointerRequested = { _, pointer in
       if case .mouse(let mouse) = pointer { reported.append(mouse) }
     }
-    let surface = chrome.surface.frame
+    let surface = chrome.content.view.frame
     // Five points in and three down, in the pane's own coordinates: an event in a view with no
     // window is positioned in its ancestors' coordinates.
     let event = try #require(
@@ -166,7 +166,7 @@ struct PaneChromeTests {
         modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0,
         clickCount: 1, pressure: 1))
 
-    chrome.surface.mouseDown(with: event)
+    chrome.content.view.mouseDown(with: event)
 
     let landed = try #require(reported.first)
     // Pixels are points times the backing scale, whatever that is here, so the two are in the
@@ -285,7 +285,7 @@ struct PaneChromeTests {
     var asked: [String] = []
     chrome.onFocusRequested = { asked.append($0) }
 
-    chrome.surface.mouseDown(
+    chrome.content.view.mouseDown(
       with: NSEvent.mouseEvent(
         with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
         context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
@@ -295,7 +295,7 @@ struct PaneChromeTests {
 
   @MainActor
   @Test("a wheel names the pane it moved over, and asks for no keyboard")
-  func aWheelCarriesThePane() {
+  func aWheelCarriesThePane() throws {
     let chrome = pane()
     chrome.attach(paneID: "w1:p3")
     var scrolled: [String] = []
@@ -304,10 +304,10 @@ struct PaneChromeTests {
     chrome.onFocusRequested = { focused.append($0) }
     // A view with no pane behind it reports nothing at all, which is a separate rule and one
     // the renderer check relies on.
-    chrome.surface.attach(typeable: true)
+    try #require(chrome.terminal).attach(typeable: true)
     guard let event = wheel(deltaY: 3) else { return }
 
-    chrome.surface.scrollWheel(with: event)
+    chrome.content.view.scrollWheel(with: event)
 
     #expect(scrolled == ["w1:p3"])
     // Two edges mean two things in this window, and so do two gestures: a click asks for the
@@ -384,5 +384,5 @@ struct PaneChromeTests {
 @MainActor
 private func pane(width: CGFloat = 100, height: CGFloat = 100) -> PaneChrome {
   let frame = NSRect(x: 0, y: 0, width: width, height: height)
-  return PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
+  return PaneChrome(frame: frame, content: SurfaceView(frame: frame))
 }

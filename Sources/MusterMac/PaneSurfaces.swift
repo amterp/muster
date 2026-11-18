@@ -1,9 +1,8 @@
 import AppKit
 
-/// Every pane's surface, for as long as its daemon holds the pane.
+/// Holds each pane's content while its daemon holds the pane.
 ///
-/// One surface per pane per window, which is a stronger rule than the one it replaces and
-/// answers three separate failures with it.
+/// One terminal surface per pane per window keeps its bridge and pane chrome when tabs switch.
 ///
 /// **A surface used to belong to the region showing it**, so switching a region to another tab
 /// destroyed the old tab's surfaces and the bridges they spawned, and switching back built
@@ -26,7 +25,9 @@ import AppKit
 /// the pane, so the cost scales with panes rather than with switches.
 @MainActor
 public final class PaneSurfaces {
-  /// Gives a pane's chrome a surface, and the bridge that feeds it.
+  public typealias MakeContent = @MainActor (PaneTree.Leaf) -> any PaneContent
+
+  /// Gives a terminal its surface and starts the bridge that feeds it.
   ///
   /// Injected because the real one needs a GPU, a libghostty runtime and a subprocess, and
   /// what this class decides - which panes have surfaces, which are on screen, when one is let
@@ -34,7 +35,7 @@ public final class PaneSurfaces {
   /// reached, nil while the view names no such machine.
   public typealias StartPane =
     @MainActor (
-      _ machine: WindowContents.Machine?, _ chrome: PaneChrome, _ pane: PaneTree.Leaf
+      _ machine: WindowContents.Machine?, _ terminal: SurfaceView, _ pane: PaneTree.Leaf
     ) -> Void
 
   private struct Held {
@@ -57,6 +58,7 @@ public final class PaneSurfaces {
     let bridgeRestarts: UInt32
   }
 
+  private let makeContent: MakeContent
   private let startPane: StartPane
 
   /// Where a chrome waits while no region is showing its pane.
@@ -73,13 +75,18 @@ public final class PaneSurfaces {
   private var windowIsVisible = true
   private var windowIsKey = false
 
-  /// Builds a pane's context menu, handed to each surface with the pane it shows.
+  /// Builds a pane's context menu for both its content and its header.
   public var menu: (@MainActor (PaneKey) -> NSMenu?)?
 
   /// Shows a pane dropped on another whose move the core refused.
   public var refused: ContextMenus.Refused?
 
-  public init(parkedIn container: NSView, startPane: @escaping StartPane) {
+  public init(
+    parkedIn container: NSView,
+    makeContent: @escaping MakeContent = { _ in SurfaceView(frame: .zero) },
+    startPane: @escaping StartPane
+  ) {
+    self.makeContent = makeContent
     self.startPane = startPane
     parking.isHidden = true
     container.addSubview(parking)
@@ -92,13 +99,13 @@ public final class PaneSurfaces {
   /// nothing else slows them.
   public func window(visible: Bool) {
     windowIsVisible = visible
-    for chrome in chromes { chrome.surface.apply(windowIsVisible: visible) }
+    for chrome in chromes { chrome.content.apply(windowIsVisible: visible) }
   }
 
   /// Tells every surface whether the window is key, so that only a key window's pane is focused.
   public func window(key: Bool) {
     windowIsKey = key
-    for chrome in chromes { chrome.surface.apply(windowIsKey: key) }
+    for chrome in chromes { chrome.content.apply(windowIsKey: key) }
   }
 
   /// Tells every surface the scale of the screen the window is on now, parked ones included.
@@ -107,7 +114,7 @@ public final class PaneSurfaces {
   /// but Ghostty found that it does not always (ghostty-org/ghostty#2731), and a surface left at
   /// the old scale runs its pane at half or twice the grid it has room for until a relaunch.
   public func matchBackingScale() {
-    for chrome in chromes { chrome.surface.matchBackingScale() }
+    for chrome in chromes { chrome.content.matchBackingScale() }
   }
 
   /// Every pane this window is holding, on screen or parked. For a repaint that is about the
@@ -115,7 +122,7 @@ public final class PaneSurfaces {
   /// else would ever tell a parked pane its border moved.
   public var chromes: [PaneChrome] { held.values.map(\.chrome) }
 
-  /// The chrome for a pane a region is about to show, and whether it needs a surface.
+  /// The chrome for a pane a region is about to show, and whether it was just created.
   ///
   /// The caller adds it to the region, lays the region out, and only then starts what this
   /// said was new - because libghostty is handed a view and sizes its surface from it, so a
@@ -131,10 +138,11 @@ public final class PaneSurfaces {
     let key = PaneKey(daemon: daemonID, pane: leaf.paneID)
     if let existing = held[key] {
       let neverDialed = existing.daemonSocket == nil && daemonSocket != nil
-      if existing.linkSocketPath == leaf.linkSocketPath,
-        existing.bridgeRestarts == leaf.bridgeRestarts, !neverDialed
+      if existing.chrome.terminal == nil
+        || (existing.linkSocketPath == leaf.linkSocketPath
+          && existing.bridgeRestarts == leaf.bridgeRestarts && !neverDialed)
       {
-        existing.chrome.surface.apply(parked: false)
+        existing.chrome.content.apply(parked: false)
         return (existing.chrome, false)
       }
       let reason =
@@ -151,14 +159,15 @@ public final class PaneSurfaces {
       release(key)
     }
 
-    let chrome = PaneChrome(frame: .zero, surface: SurfaceView(frame: .zero))
-    chrome.surface.apply(windowIsVisible: windowIsVisible)
-    chrome.surface.apply(windowIsKey: windowIsKey)
+    let content = makeContent(leaf)
+    let chrome = PaneChrome(frame: .zero, content: content)
+    content.apply(windowIsVisible: windowIsVisible)
+    content.apply(windowIsKey: windowIsKey)
     chrome.attach(paneID: leaf.paneID)
     chrome.onFocusRequested = focus
     chrome.onPointerRequested = pointer
     let menu: @MainActor () -> NSMenu? = { [weak self] in self?.menu?(key) }
-    chrome.surface.onMenu = menu
+    content.onMenu = menu
     chrome.header.onMenu = menu
     chrome.key = key
     chrome.onPaneDropped = { [weak self] dragged, side in
@@ -174,7 +183,8 @@ public final class PaneSurfaces {
 
   /// Starts the bridge for a pane that has just been given a chrome and laid out.
   public func start(on machine: WindowContents.Machine?, chrome: PaneChrome, leaf: PaneTree.Leaf) {
-    startPane(machine, chrome, leaf)
+    guard let terminal = chrome.terminal else { return }
+    startPane(machine, terminal, leaf)
   }
 
   /// Takes back every chrome no region is showing, and keeps it alive off screen.
@@ -191,7 +201,7 @@ public final class PaneSurfaces {
     for (key, entry) in held where !onScreen.contains(key) {
       guard entry.chrome.superview !== parking else { continue }
       parking.addSubview(entry.chrome)
-      entry.chrome.surface.apply(parked: true)
+      entry.chrome.content.apply(parked: true)
     }
     if let alive { release(everythingBut: alive) }
   }
@@ -224,7 +234,7 @@ public final class PaneSurfaces {
     }
   }
 
-  /// How many panes have a surface, for a test to price what this holds.
+  /// How many panes have content, including parked panes.
   public var count: Int { held.count }
 
   /// Which panes are parked, for a test to say what is being held off screen.
@@ -232,10 +242,9 @@ public final class PaneSurfaces {
     Set(held.filter { $0.value.chrome.superview === parking }.keys)
   }
 
-  /// Drops one pane's chrome, which drops its surface, which ends the bridge that surface
-  /// spawned - so the pane's bridge exits here rather than being left dialing a window that
-  /// has forgotten it.
   private func release(_ key: PaneKey) {
-    held.removeValue(forKey: key)?.chrome.removeFromSuperview()
+    guard let chrome = held.removeValue(forKey: key)?.chrome else { return }
+    chrome.removeFromSuperview()
+    chrome.content.tearDown()
   }
 }

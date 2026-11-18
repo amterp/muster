@@ -94,7 +94,7 @@ public final class TabView: NSView {
     // Before a tree that is not described yet returns early, so a tab covered meanwhile stops
     // drawing at once.
     for key in showing {
-      chrome(for: key)?.surface.apply(covered: covered)
+      chrome(for: key)?.content.apply(covered: covered)
     }
     guard let tree = contents.tree else {
       if !sameTab {
@@ -177,12 +177,10 @@ public final class TabView: NSView {
   private func apply(keyboard: PaneKey?) {
     for key in showing {
       chrome(for: key)?.apply(focused: key == keyboard)
-      chrome(for: key)?.surface.apply(covered: covered)
+      chrome(for: key)?.content.apply(covered: covered)
     }
     guard !covered, let keyboard, let chrome = chrome(for: keyboard), let window else { return }
-    if window.firstResponder !== chrome.surface {
-      window.makeFirstResponder(chrome.surface)
-    }
+    chrome.content.focus(in: window)
   }
 
   public override func layout() {

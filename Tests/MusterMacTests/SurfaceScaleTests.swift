@@ -34,7 +34,7 @@ struct SurfaceScaleTests {
 
   @MainActor
   @Test("a window changing screen reaches every pane it holds, parked ones included")
-  func aScreenChangeReachesParkedPanes() {
+  func aScreenChangeReachesParkedPanes() throws {
     let window = ScaledWindow(scale: 2)
     let store = PaneSurfaces(parkedIn: window.contentView!, startPane: { _, _, _ in })
     let (chrome, _) = store.borrow(
@@ -42,7 +42,7 @@ struct SurfaceScaleTests {
       leaf: .init(paneID: "p1", linkSocketPath: "/tmp/link.sock", bridgeRestarts: 0),
       focus: { _ in }, pointer: { _, _ in })
     let surface = RecordingSurface()
-    chrome.surface.attach(surface, typeable: true)
+    try #require(chrome.terminal).attach(surface, typeable: true)
     store.park(everythingBut: [])
 
     window.scale = 1

@@ -349,8 +349,7 @@ public enum ContextMenus {
   /// A menu item that silently changed nothing would leave its reason only on stderr.
   public typealias Refused = @MainActor (_ heading: String, _ reason: String) -> Void
 
-  /// A pane's menu. `surface` is the one that was right-clicked, for Copy and Paste, and is nil
-  /// only in a test that has none.
+  /// A pane's menu. Its terminal surface, when present, provides Copy and Paste.
   public static func pane(
     _ pane: PaneKey, surface: SurfaceView?, machines: [String], canCompact: Bool = false,
     canClear: Bool = false, canRestart: Bool = false, quiet: Bool = false, window: String = "",

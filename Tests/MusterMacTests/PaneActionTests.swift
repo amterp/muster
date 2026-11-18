@@ -142,7 +142,7 @@ struct PaneActionTests {
         keyboard: key))
     let before = recorder.requests.count
 
-    started.chrome(for: key)?.surface.mouseDown(with: click())
+    started.chrome(for: key)?.content.view.mouseDown(with: click())
 
     let sent = recorder.sent(since: before) {
       if case .focusPane = $0.payload { true } else { false }

@@ -24,9 +24,9 @@ private final class Started {
 /// A window's worth of surfaces, recorded rather than allocated.
 @MainActor
 private func surfaces(_ started: Started) -> PaneSurfaces {
-  paneSurfaces { machine, chrome, pane in
+  paneSurfaces { machine, _, pane in
     started.panes.append(
-      "\(pane.daemon):\(chrome.paneID ?? "")@\(pane.linkSocketPath ?? "-")")
+      "\(pane.daemon):\(pane.paneID)@\(pane.linkSocketPath ?? "-")")
     started.daemonSockets.append(machine?.socket)
     started.remote.append(machine?.remote ?? false)
   }
@@ -78,6 +78,49 @@ private func contents(
 
 @Suite("a tab view renders a tree", .ownsTheSeam)
 struct TabViewTests {
+  @MainActor
+  @Test("a pane without a terminal can take focus, park, and close without starting a bridge")
+  func aPaneCanHoldOtherContent() throws {
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    let container = try #require(window.contentView)
+    let content = RecordingPaneContent(frame: .zero)
+    var starts = 0
+    let store = PaneSurfaces(
+      parkedIn: container, makeContent: { _ in content }, startPane: { _, _, _ in starts += 1 })
+    let view = TabView(frame: container.bounds, surfaces: store)
+    container.addSubview(view)
+    let pane = local("w1:p1")
+
+    show(view, contents(leaf(pane.pane, socket: nil), keyboard: pane.pane), in: store)
+
+    let chrome = try #require(store.chrome(for: pane))
+    #expect(chrome.content.view === content)
+    #expect(content.superview === chrome)
+    #expect(window.firstResponder === content)
+
+    store.park(everythingBut: [])
+    view.apply(WindowContents(tab: nil, tree: nil, keyboard: nil))
+    #expect(store.parked == [pane])
+    #expect(content.parked)
+    #expect(content.teardowns == 0)
+
+    show(
+      view, contents(leaf(pane.pane, socket: nil, restarts: 1), keyboard: pane.pane), in: store)
+    #expect(store.chrome(for: pane) === chrome)
+    #expect(!content.parked)
+    #expect(window.firstResponder === content)
+
+    store.park(everythingBut: [])
+    view.apply(WindowContents(tab: nil, tree: nil, keyboard: nil))
+    store.release(everythingBut: [])
+    #expect(store.chrome(for: pane) == nil)
+    #expect(content.window == nil)
+    #expect(content.teardowns == 1)
+    #expect(starts == 0)
+  }
+
   @MainActor
   @Test("a pane that survives a change keeps its surface")
   func survivingPanesAreNotRebuilt() {
@@ -367,7 +410,7 @@ struct TabViewTests {
 
   @MainActor
   @Test("the wheel moves the pane it is over, not the one with the keyboard")
-  func aWheelMovesThePaneUnderIt() {
+  func aWheelMovesThePaneUnderIt() throws {
     // The card's whole case: reading one agent's output while typing into another is the
     // ordinary thing to do in a window of fifteen, and a wheel that moved the focused pane
     // made it impossible without clicking away from what you were typing in first.
@@ -378,12 +421,12 @@ struct TabViewTests {
     view.apply(contents(tree, keyboard: "w1:p1"))
     // The real path does this when the pane's bridge starts; here the surface factory only
     // records, so nothing else would make the view willing to report input.
-    guard let scrolled = view.chrome(for: local("w1:p2")) else { return }
-    scrolled.surface.attach(typeable: true)
+    let scrolled = try #require(view.chrome(for: local("w1:p2"))?.terminal)
+    scrolled.attach(typeable: true)
     let mark = recorder.requests.count
     guard let event = wheel(deltaY: 3) else { return }
 
-    scrolled.surface.scrollWheel(with: event)
+    scrolled.scrollWheel(with: event)
 
     let wheels = recorder.sent(since: mark) {
       if case .wheel = $0.payload { true } else { false }
@@ -400,7 +443,7 @@ struct TabViewTests {
 
   @MainActor
   @Test("a click reaches the daemon of the pane it landed on")
-  func aClickReachesThePaneUnderIt() {
+  func aClickReachesThePaneUnderIt() throws {
     // The same path the wheel takes, so a program that asked for the mouse in a pane without
     // the keyboard is told about a click in it - which is also the click that moves the
     // keyboard there.
@@ -409,11 +452,11 @@ struct TabViewTests {
     let tree = PaneTree.split(
       axis: .columns, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))
     view.apply(contents(tree, keyboard: "w1:p1"))
-    guard let clicked = view.chrome(for: local("w1:p2")) else { return }
-    clicked.surface.attach(typeable: true)
+    let clicked = try #require(view.chrome(for: local("w1:p2"))?.terminal)
+    clicked.attach(typeable: true)
     let mark = recorder.requests.count
 
-    clicked.surface.mouseDown(
+    clicked.mouseDown(
       with: NSEvent.mouseEvent(
         with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
         context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
@@ -425,6 +468,26 @@ struct TabViewTests {
     #expect(mice.map { $0.mouse.daemonID } == ["local"])
     #expect(mice.map { $0.mouse.action } == ["press"])
   }
+}
+
+@MainActor
+private final class RecordingPaneContent: NSView, PaneContent {
+  var view: NSView { self }
+  var onClick: (@MainActor () -> Void)?
+  var onMenu: (@MainActor () -> NSMenu?)?
+  var parked = false
+  var teardowns = 0
+
+  override var acceptsFirstResponder: Bool { true }
+
+  func apply(windowIsKey: Bool) {}
+  func apply(windowIsVisible: Bool) {}
+  func apply(covered: Bool) {}
+  func matchBackingScale() {}
+  func setFontSizeOffset(_ points: Int32) -> [String] { [] }
+
+  func apply(parked: Bool) { self.parked = parked }
+  func tearDown() { teardowns += 1 }
 }
 
 @Suite("a tab view says which daemon its panes come from")

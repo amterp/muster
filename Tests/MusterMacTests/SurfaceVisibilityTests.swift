@@ -11,13 +11,13 @@ import Testing
 struct SurfaceVisibilityTests {
   @MainActor
   @Test("every surface hears that its window cannot be seen, including one made while it could not")
-  func occlusionReachesEverySurface() {
+  func occlusionReachesEverySurface() throws {
     let store = paneSurfaces()
-    let first = borrowed("p1", from: store).surface
+    let first = try borrowed("p1", from: store).surface
     store.window(visible: false)
     #expect(first.occlusions == [false])
 
-    let later = borrowed("p2", from: store).surface
+    let later = try borrowed("p2", from: store).surface
     #expect(later.occlusions == [false], "a pane made in a hidden window would draw unseen")
 
     store.window(visible: true)
@@ -30,18 +30,18 @@ struct SurfaceVisibilityTests {
   /// shown again stays hidden until the window is seen.
   @MainActor
   @Test("a parked pane stops drawing, and draws again once a region shows it")
-  func parkingOccludes() {
+  func parkingOccludes() throws {
     let store = paneSurfaces()
-    let (_, surface) = borrowed("p1", from: store)
+    let (_, surface) = try borrowed("p1", from: store)
     store.park(everythingBut: [])
     #expect(surface.occlusions == [false], "a parked pane went on drawing in a visible window")
 
-    _ = borrowed("p1", from: store, recording: false)
+    _ = try borrowed("p1", from: store, recording: false)
     #expect(surface.occlusions == [false, true], "a pane shown again stayed hidden")
 
     store.window(visible: false)
     store.park(everythingBut: [])
-    _ = borrowed("p1", from: store, recording: false)
+    _ = try borrowed("p1", from: store, recording: false)
     #expect(
       surface.occlusions == [false, true, false],
       "a pane parked and shown again in a hidden window was told it could be seen")
@@ -49,14 +49,14 @@ struct SurfaceVisibilityTests {
 
   @MainActor
   @Test("the pane with the keyboard loses focus while its window is not key, and gets it back")
-  func focusFollowsTheWindow() {
+  func focusFollowsTheWindow() throws {
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled],
       backing: .buffered, defer: true)
     let store = paneSurfaces()
-    let (chrome, surface) = borrowed("p1", from: store)
+    let (chrome, surface) = try borrowed("p1", from: store)
     window.contentView?.addSubview(chrome)
-    window.makeFirstResponder(chrome.surface)
+    window.makeFirstResponder(chrome.content.view)
 
     store.window(key: true)
     #expect(surface.focuses.last == true)
@@ -73,12 +73,12 @@ struct SurfaceVisibilityTests {
 @discardableResult
 private func borrowed(
   _ pane: String, from store: PaneSurfaces, recording: Bool = true
-) -> (chrome: PaneChrome, surface: RecordingSurface) {
+) throws -> (chrome: PaneChrome, surface: RecordingSurface) {
   let (chrome, _) = store.borrow(
     daemonID: "local", daemonSocket: "/tmp/local.sock",
     leaf: .init(paneID: pane, linkSocketPath: "/tmp/link.sock", bridgeRestarts: 0),
     focus: { _ in }, pointer: { _, _ in })
   let surface = RecordingSurface()
-  if recording { chrome.surface.attach(surface, typeable: true) }
+  if recording { try #require(chrome.terminal).attach(surface, typeable: true) }
   return (chrome, surface)
 }
