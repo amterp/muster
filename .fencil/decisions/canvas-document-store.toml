@@ -1,0 +1,18 @@
+id = "canvas-document-store"
+question = "Where does a canvas's document live, and what survives?"
+tags = ["canvas", "daemon", "persistence"]
+paths = ["crates/muster-daemon/src/canvas.rs", "crates/muster-daemon/src/persist.rs"]
+
+[[revisions]]
+id = "eivj2lut"
+date = 2026-11-18
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+One file per canvas in a directory beside the daemon's socket, <socket>.canvases, holding a header (revision, kind, media type, title, length) and the original bytes, written to a temporary file, synced, and renamed into place. The pane's record carries only metadata. A write replaces the whole document and the last writer wins. The daemon's saved state moves to format 3 only when it names a live or remembered canvas, so a terminal-only session is still readable by an older daemon. A file is deleted only when no live pane, remembered closed pane, last durable save or readable recovery copy names it, and collection is off while a corrupt state file moved aside remains.
+'''
+why = '''
+The document can be 4 MiB, which is too large to carry in every snapshot and event, so panes carry a revision and readers fetch. One file per canvas makes a write atomic without rewriting the session state. Bumping the state format only when a canvas exists keeps a downgrade working for everyone who never opened one. Collection is conservative because a person can still recover from a state file moved aside, and a deleted document cannot be recovered at all.
+'''

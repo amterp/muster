@@ -1,0 +1,19 @@
+id = "canvas-handoff-confirmation"
+question = "When does a replacement daemon start accepting connections?"
+tags = ["daemon", "handoff", "canvas"]
+paths = ["crates/muster-daemon/src/handoff/mod.rs"]
+
+[[revisions]]
+id = "dwtxphdg"
+date = 2026-11-18
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+After the daemon it replaces can no longer take the session back. Two daemons that both speak protocol 1.17 or later confirm with a second Serving frame, from the old daemon to the new. A new daemon replacing an older one waits for its parent to exit, for at most 10 seconds, then logs why and serves. A session holding a live or remembered canvas is handed only to a daemon that speaks 1.17 or later.
+'''
+why = '''
+Before this, a new daemon accepted connections as soon as it sent Serving. If it then died, the old daemon resumed with what it had, and a canvas write the new daemon had already acknowledged was gone. A terminal's bytes do not have that problem because the old daemon keeps the PTY; a document on disk does. Measured: terminal-only handovers between two new daemons went from a median of 95.0 ms to 95.6 ms, and a real 0.27 daemon handed a live terminal over with its pid unchanged in 571 ms. The wait is bounded so an old daemon that never exits cannot leave every pane dark.
+'''
+review = "This changes the order of every daemon handover, terminal-only ones included, and adds about a second to an update from 0.27."

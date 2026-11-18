@@ -1,0 +1,19 @@
+id = "canvas-scripts-off"
+question = "Do a canvas page's scripts run?"
+tags = ["canvas", "shell", "security"]
+paths = ["crates/muster-core/src/canvas.rs", "Sources/MusterMac/WKCanvasBrowser.swift"]
+
+[[revisions]]
+id = "nkuwfpu2"
+date = 2026-11-18
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+No. The core's policy states that scripts are off, and the shell turns page JavaScript off for the page and its frames.
+'''
+why = '''
+Measured on macOS 26.4.1 with scripts on: the content rule list blocked fetch, XHR, WebSocket, EventSource, beacons and workers, and WebRTC still sent UDP to a STUN listener, from the page and from a srcdoc frame. A Content-Security-Policy did not stop it. The one public control that did, WKWebpagePreferences.securityRestrictionMode = .lockdown, starts at macOS 26.4, and Muster supports macOS 14. Turning scripts on would mean a macOS 26.4 floor for that feature or a private API. docs/observations/webkit-21624.1.16.11.4.md has the runs.
+'''
+review = "The owner's ruling canvas-web-view left scripts off until a test showed isolation; the test showed it fails, so this keeps them off. Turning them on is his call and has a cost he should see."

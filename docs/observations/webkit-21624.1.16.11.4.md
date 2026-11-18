@@ -62,3 +62,41 @@ Each view had a separate WebContent process. Median WebContent footprint was 11.
 one view and 53.63 MiB summed across five views. The footprint totals exclude the app, GPU,
 and networking processes. Evidence comes from the same three raw benchmark runs and their
 computed summary.
+
+## 5. What a page can start without a click
+
+Measured the same day, after the canvas view was built, with the shipped `WKCanvasBrowser`
+compiled unchanged into a scratch host and the policy the core ships: loads from `data`, `blob`
+and `about`, scripts off, links to `http`, `https` and `mailto`. Each row was one page, a fresh
+listener on 127.0.0.1 and a fresh port, observed for 3 seconds (5 for the delayed refresh). A TCP
+accept counted as a connection whether or not a request followed. The control column is the same
+page in a web view with no rule list and a delegate that allows everything, to show the fixture
+could reach the listener. The screen was locked, so clicks were `HTMLElement.click()` run from the
+host and Return was a key event sent through the window.
+
+| Page construct | Shipped view | Control |
+|---|---|---|
+| `<meta http-equiv="refresh">`, at 0 s and at 2 s | 0, 0 | 1, 1 |
+| A form submitted by its button, by Return, and through `formaction` | 0, 0, 0 | 1, 1, 1 |
+| `<link rel>`: preconnect, preload, modulepreload, stylesheet | 0 each | 1 each |
+| `<link rel>`: dns-prefetch, prefetch, prerender, icon | 0 each | 0 each |
+| A clicked link with `ping`, a relative link under `<base href>`, an `<area>` | 0, 0, 0 | 3, 1, 2 |
+| `iframe`, `object`, `embed`, video poster, `audio`, `img srcset`, image input, `@import`, CSS background, `@font-face`, SVG `image` | 0 each | 1 each |
+| SVG `use` | 0 | 0 |
+
+A refresh, a form submission and a frame each reached the navigation delegate and were canceled,
+and none opened a connection. A canceled link click is the one navigation that did: with the rule
+list and the canceling delegate but without the document-start click handler, each of the three
+link rows opened one TCP connection and sent no request, as section 1 found. A control row that
+reads 0 shows nothing either way; dns-prefetch in particular cannot be seen from a loopback listener.
+
+Two alternatives were measured and not built. A `Content-Security-Policy` meta element first in the
+head (`default-src data: blob:`, `form-action 'none'`, `base-uri 'none'`), in the control view,
+stopped forms, `ping`, `base` and every subresource, and did not stop a refresh, a link navigation
+or a preconnect hint. A sandboxed `srcdoc` frame holding the document cannot be used with scripts
+off: WebKit never loaded a `srcdoc` document while `allowsContentJavaScript` was false, with or
+without the `sandbox` attribute.
+
+Not measured: scrolling by arrow keys and Space, and what Copy puts on the pasteboard, with the
+window key. The window cannot become key while the screen is locked. The transcripts were not
+checked in.
