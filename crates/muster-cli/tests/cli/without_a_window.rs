@@ -1195,6 +1195,48 @@ fn next_json(lines: &Receiver<String>, what: &str) -> Value {
 }
 
 #[test]
+fn a_windowless_wait_refuses_a_named_canvas() {
+    let here = Here::new(Daemon::start_built());
+    let canvas = ok(&here.muster(&["canvas", "open"]));
+    let waited = here.muster(&[
+        "pane",
+        "wait",
+        "--pane",
+        &canvas,
+        "--until",
+        "idle",
+        "--timeout",
+        "1",
+        "--no-window",
+    ]);
+    assert_eq!(refused_with(&waited, 1), format!("muster: pane {canvas} is a canvas"));
+}
+
+#[test]
+fn a_windowless_state_watch_leaves_out_canvases() {
+    let here = Here::new(Daemon::start_built());
+    let mut control = here.daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let existing = ok(&here.muster(&["canvas", "open"]));
+    let mut watch = here.spawned(&["window", "--watch", "--no-window", "--json"]);
+    let lines = lines_of(&mut watch);
+    let mut seen = vec![next_json(&lines, "the first watch row")];
+
+    let added = ok(&here.muster(&["canvas", "open"]));
+    ok(&here.muster(&["pane", "close", "--pane", &existing]));
+    ok(&here.muster(&["pane", "close", "--pane", &added]));
+    make(&mut control, create("p2", beside("p1", proto::Side::Right)));
+    while !seen.last().is_some_and(|row| row["pane"] == "p2") {
+        seen.push(next_json(&lines, "the new terminal pane"));
+    }
+    let _ = watch.kill();
+    let _ = watch.wait();
+
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert_eq!(seen[0]["pane"], "p1", "{seen:?}");
+}
+
+#[test]
 fn canvases_open_write_and_read_without_a_window() {
     let here = Here::new(Daemon::start_built());
     let source = here.home.join("report.md");

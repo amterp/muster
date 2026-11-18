@@ -1803,8 +1803,12 @@ pub fn follow(
         None
     } else {
         for named in &pane_ids {
-            if !snapshot.panes.iter().any(|pane| &pane.pane == named) {
+            let Some(pane) = snapshot.panes.iter().find(|pane| &pane.pane == named) else {
                 return Err(Trouble::Refused(not_held_said(&socket, named, "watched")));
+            };
+            if pane.canvas.is_some() {
+                let name = pane.callsign.as_deref().or(pane.label.as_deref()).unwrap_or(named);
+                return Err(Trouble::Refused(canvas::terminal_refusal(name)));
             }
         }
         Some(pane_ids.into_iter().collect())
@@ -1829,7 +1833,7 @@ impl Watching {
     /// panes already there and the end, if any are.
     fn begin(&mut self, panes: &[daemon_proto::Pane]) {
         let watched: Vec<&daemon_proto::Pane> =
-            panes.iter().filter(|pane| self.watches(&pane.pane)).collect();
+            panes.iter().filter(|pane| self.watches(pane)).collect();
         for pane in &watched {
             self.sent.insert(pane.pane.clone(), (state_of(pane), pane.prompt_covered_by.clone()));
         }
@@ -1881,8 +1885,8 @@ impl Watching {
         self.ended = true;
     }
 
-    fn watches(&self, pane: &str) -> bool {
-        self.panes.as_ref().is_none_or(|panes| panes.contains(pane))
+    fn watches(&self, pane: &daemon_proto::Pane) -> bool {
+        pane.canvas.is_none() && self.panes.as_ref().is_none_or(|panes| panes.contains(&pane.pane))
     }
 
     fn arrived(&self, pane: &daemon_proto::Pane) -> bool {
@@ -1891,7 +1895,7 @@ impl Watching {
     }
 
     fn changed(&mut self, pane: &daemon_proto::Pane) {
-        if self.ended || !self.watches(&pane.pane) {
+        if self.ended || !self.watches(pane) {
             return;
         }
         let state = state_of(pane);

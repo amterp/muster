@@ -488,8 +488,7 @@ impl Mirror {
     }
 }
 
-/// Whether what a list of panes says of a pane has moved: the things it names it by, whose helper
-/// it is, and whether its agent can be compacted or it is quiet, which the list's menus offer on.
+/// A new daemon run can reuse a revision for a different document.
 fn canvas_changed(before: &Pane, now: &Pane, new_run: bool) -> Option<Change> {
     let revision = now.canvas.as_ref()?.info.revision;
     let previous = before.canvas.as_ref().map(|canvas| canvas.info.revision);
@@ -501,6 +500,7 @@ fn canvas_changed(before: &Pane, now: &Pane, new_run: bool) -> Option<Change> {
     })
 }
 
+/// Whether a change affects a pane's labels in the roster or its menu actions.
 fn relabelled(before: &Pane, now: &Pane) -> bool {
     fn canvas_caption(pane: &Pane) -> Option<(crate::canvas::CanvasKind, &str)> {
         pane.canvas.as_ref().map(|canvas| (canvas.info.kind, canvas.info.title.as_str()))

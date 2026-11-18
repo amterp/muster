@@ -12,6 +12,10 @@ use crate::mirror::PaneId;
 pub const MAX_BODY: usize = 4 << 20;
 const MAX_TITLE: usize = 256;
 
+pub fn terminal_refusal(name: &str) -> String {
+    format!("pane {name} is a canvas")
+}
+
 pub fn validate_title(title: &str) -> Result<(), &'static str> {
     if title.len() > MAX_TITLE || title.chars().any(char::is_control) {
         Err("a canvas title is at most 256 bytes and contains no control characters")

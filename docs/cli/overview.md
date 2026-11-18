@@ -218,10 +218,12 @@ permitted to open. `--no-window` asks the daemon even with a window open.
 `muster window` says when the daemon answered: its first line names the daemon, and `--json`
 carries `"answered_by": "daemon"`, which a window's answer never does. The daemon has no places,
 no keyboard and nothing on screen, so those are left out rather than made up; a tab has no label
-unless somebody gave it one, and the machine is called by its host name. The other commands print
-what they print through a window.
-With no window there is no keyboard, so a pane is named with `--pane` or `$MUSTER_PANE`, and a
-pane's name is read among the panes of this machine, called by its host name.
+unless somebody gave it one, and the machine is called by its host name. The other commands use
+the same output format as a window. The state watch reports terminal panes. A regular
+`muster window` also lists canvases.
+
+With no window there is no keyboard. Name a pane with `--pane` or `$MUSTER_PANE`. Muster looks up
+that name among the panes of this machine.
 
 `pane new` with no window splits the pane named, in its tab, and a window that comes back shows the
 new pane there. `--hidden` puts it in a hidden tab of its own, starting in the named pane's

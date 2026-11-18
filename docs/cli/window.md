@@ -210,7 +210,8 @@ One entry per pane every followed daemon holds, on screen or not.
 - `canvas` - a canvas pane's document metadata, with `kind`, `title`, and `revision`. The row
   reads `state: "canvas"`. Use `muster canvas read` to get its document.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
-- `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done`, `unknown` or `unreachable`.
+- `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done`, `unknown`, `canvas`, or
+  `unreachable`.
 - `last_state` - what the pane read before its machine stopped answering, while `state` is
   `unreachable`; `null` otherwise. Such a pane leaves out `subtitle`, `facts`, `progress`,
   `unread_input`, `rang` and `reported`, which would read as the present, and the fields it keeps

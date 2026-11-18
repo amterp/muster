@@ -203,7 +203,7 @@ impl Pane {
     pub fn require_terminal(&self) -> Result<(), String> {
         if self.canvas.is_some() {
             let name = self.called().unwrap_or_else(|| self.id.to_string());
-            return Err(format!("pane {name} is a canvas"));
+            return Err(crate::canvas::terminal_refusal(&name));
         }
         Ok(())
     }
