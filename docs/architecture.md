@@ -32,15 +32,14 @@ terms; decisions are recorded with Fencil in `.fencil/`, and the large ones made
 
 Three layers, two seams.
 
-**Native shell** (per-OS; macOS first). Windows, split chrome, key capture, sidebar, notifications, and one renderer
-surface per visible pane. Deliberately thin: it wires OS events into the core and renders what the core says,
-nothing more. Its failure modes should be wiring failures - that is what makes it testable by a small smoke layer
-(see `testing.md`).
+**Native shell** (per-OS; macOS first). Windows, split chrome, key capture, sidebar, notifications,
+and a terminal surface or canvas web view for each visible pane. The shell wires OS events into the
+core and renders what the core says. Its failure modes should be wiring failures, which a small
+smoke layer can test (see `testing.md`).
 
-The macOS shell is AppKit, and SwiftUI draws the three views that are not terminals or lists: the find bar, which was
-ported from Ghostty's rather than rebuilt, Muster's banners, and a group's conversation. **Either toolkit is a fair
-choice for a given piece of the window** - this layer exists to feel like the platform, and both of them are the
-platform. A second toolkit in one window does cost integration work, and the find bar is the record of what it cost:
+The macOS shell is AppKit. SwiftUI draws the find bar ported from Ghostty, Muster's banners, and
+a group's conversation. **Either toolkit is a fair choice for a given piece of the window.** This
+layer exists to feel like the platform, and both toolkits are native. A second toolkit in one window does cost integration work, and the find bar is the record of what it cost:
 its layer background is forced clear because a GPU surface sits underneath it, and it puts the keyboard in its own text
 field through AppKit, by finding the field among the hosting view's subviews, because `@FocusState` did not reliably
 take the keyboard from a pane's surface. The banners and the conversation pay the same, and the conversation's message
@@ -114,7 +113,7 @@ inherited and one half supplied is the split the allowlist already refuses to cr
 variables as a third list beside carried and dropped, so "where did this come from" has an answer.
 
 `TERM` is not one of them, and its absence is the more useful fact. The daemon sets `TERM`, `COLORTERM` and
-`TERM_PROGRAM` on every pane itself, because a pane is a Ghostty terminal whatever launched the app, so no pane has
+`TERM_PROGRAM` on every terminal pane itself, because it uses Ghostty whatever launched the app, so no pane has
 ever seen the daemon's. Dropping it also gives the daemon the same environment whether Muster was started from a
 terminal or from the Dock, which never hands it one. When Muster ran herdr, the daemon's `TERM` also fed herdr's
 host-terminal detection, and a Muster launched from Ghostty had its daemon posting notifications as Ghostty, to a
@@ -415,14 +414,14 @@ reaching for the first time a tripwire fails to fire.
 Two kinds of traffic, opposite needs, different paths. The split is between *output* and *everything else* - not
 between "bytes" and "control":
 
-- **Output rides the data plane.** Each pane has its own stream from the daemon to its surface, bypassing the
-  core: the bridge attaches, receives a replay of the pane's whole history composed from the daemon's terminal,
-  and then gets every chunk the program writes, unchanged. The surface keeps its own scrollback, built from that replay.
+- **Terminal output rides the data plane.** Each terminal pane reads its stream straight from the
+  daemon. The bridge attaches, receives a replay of the pane's history, and then gets every chunk
+  the program writes. The surface builds its own scrollback from that replay.
   Hidden panes stay attached, which costs the daemon a socket write per chunk and the surface a parse, the same as
   a background tab in Ghostty (`mip/0003-own-daemon.md` section 4). The core never sits in this path; per-byte
   work in the core is a defect (desiderata: fast is a feature).
 - **Everything else rides the control plane, through the core** - daemon events (structure, agent states,
-  titles, a program's clipboard write), intents, configuration, and *input*. The daemon holds each pane's
+  titles, a program's clipboard write), intents, configuration, and *input*. The daemon holds each terminal pane's
   terminal, so it knows the program's modes (kitty keyboard, bracketed paste, application cursor keys, mouse
   tracking) and encodes against them. The shell reports key, mouse, wheel and text events with full fidelity, the
   core's keymap takes what is Muster's, and the rest goes to the pane's daemon to be encoded with libghostty-vt.
@@ -1333,6 +1332,30 @@ renderer", which is the first question when a colour does not take.
 The backend seam needs no such file, because muster-daemon takes its settings as requests on its control connection
 (the shape, above).
 
+## Canvas panes
+
+A pane has a terminal body or a canvas body. Both belong to a daemon and take a place in the same
+tab tree. A terminal has a PTY, program, and output stream. A canvas holds one Markdown, HTML, or
+image document, with a title and revision. A canvas stays open when the pane that opened it
+closes. The daemon remembers the opener so that pane can update the canvas without naming it.
+The person can select and copy from the page. The CLI replaces the document.
+See the [canvas lifetime](../.fencil/decisions/canvas-lifetime.toml) and
+[editing](../.fencil/decisions/canvas-person-editing.toml) decisions.
+
+When a canvas revision changes, the daemon announces its metadata on the control connection.
+The shell asks the core for a page, and one daemon read returns the original bytes and their
+revision together. The core releases the session lock before that read. It renders the document
+as HTML and returns the page, revision, and policy. A web view handles the diagrams and tables an
+agent can express in HTML. Each platform's shell enforces the core's policy with its own web
+view. See the [canvas web view decision](../.fencil/decisions/canvas-web-view.toml).
+
+The policy permits embedded resources under `about:`, `blob:`, and `data:` and keeps page
+scripts off. The macOS shell installs the resource rules before loading, cancels page
+navigation, and hands a permitted link clicked by the person to the system. It keeps
+a web view for the life of its pane, including time off screen. The shell keeps one read in
+flight per view and drops replies older than the latest known revision. The
+[WebKit observations](observations/webkit-21624.1.16.11.4.md) explain the policy's constraints.
+
 ## Degradation
 
 Health is per-connection *and* per-channel, and it is state, not an error path:
@@ -1496,13 +1519,21 @@ Two things follow.
 **Persist intent, never observation.** The mirror is an observation - these panes exist, this agent is blocked,
 focus is here - and it is explicitly disposable. A restore description is an intent: make a right-split with these
 two directories. Writing down observations would tempt a restore to reinstate things that are meaningless after a
-restart (agent status, scroll offsets, revisions), so the mirror is deliberately **not** serializable and gains no
+restart (agent status and scroll offsets), so the mirror is deliberately **not** serializable and gains no
 persistence hooks. What gets written down is what someone would ask for again.
 
 This also resolves an apparent gap in "view = f(daemon state)": restoring looks like it needs an inverse, and does
 not. The daemon writes down what someone would ask for again - tabs, trees, names, directories, settings - and never
 an observation such as a title or an agent's state, then rebuilds from that file when it starts (MIP-3, section 2). A
 window reads the result the way it reads any other daemon state.
+
+A canvas document is saved in one file per pane. For a daemon listening at `daemon.sock`, the
+files live in the neighboring `daemon.sock.canvases` directory. A replacement writes the title,
+kind, revision, and original bytes together by renaming the new file into place. The daemon saves the canvas pane in its layout and reads the document file to
+restore it after a daemon restart or reopen it within the close history's one-hour window. A
+live handoff also transfers canvas panes and uses the same document files. Each of these paths
+keeps the revision the file holds. If a document cannot be read, the daemon reports that
+failure. Reopening it does not start a terminal.
 
 **A request a program asks again after losing its answer is carried out once.** A request through the API that makes
 something carries an operation id the program chooses (MIP-10, section 5), and the daemon that carries it out keeps a

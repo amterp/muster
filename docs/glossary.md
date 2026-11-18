@@ -20,6 +20,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   at the start of its row in the agent list, first on its line in `muster window`, taken wherever a pane id is, and
   kept through a rename. Unique among one daemon's open panes; `otter@devenv` when two machines both have one. A
   pane reads its own from `MUSTER_CALLSIGN`. The code calls it the pane's `word`.
+- **canvas** - a pane body that holds one document for the shell to display in a web view. Its daemon owns the
+  document and remembers which pane opened it.
 - **capability** - one thing Muster can use from a harness: its state read off its screen, its own report of it,
   a prompt the doorbell can read, hooks that fetch its messages (MIP-5, section 2). Muster checks a capability,
   never a harness's name.
@@ -40,6 +42,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **data plane** - output only: pane channels, adapter to surface, bypassing the core.
 - **devenv container** - the repo's Linux container, running sshd and no daemon until a remote test or an attach
   installs this build's; dev sandbox and remote-path test fixture in one.
+- **document** - the Markdown, HTML, or image bytes a canvas holds, with a title and, for an image, a media type.
+  A canvas write replaces the whole document.
 - **doorbell** - a wake typed into the pane an agent runs in, one line and a Return, only into a prompt it has
   just read as empty, and only for a harness whose manifest can read its prompt (MIP-4, section 6). The prompt is
   an idle agent's, or for an urgent post a working one's too.
@@ -82,7 +86,7 @@ One name per concept; docs and code use these terms. Alphabetical.
   means to draw.
 - **off screen** - a pane in a tab this window holds and is not showing, or behind a zoom. Ordinary, and one click
   away.
-- **pane** - one terminal inside a tab's tree; owned by a daemon.
+- **pane** - a terminal or canvas inside a tab's tree, owned by a daemon.
 - **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
 - **pane id** - what Muster calls a pane for good: `p1w3r07bsd`, minted by Muster rather than borrowed from the
   backend, unique across every attached machine, and never reused. What every message and log means by a pane. A pane
@@ -101,6 +105,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **region** - the window's record of one machine's part of a Muster tab: which machine, and which of its panes the
   keyboard was last on there. Where the panes sit is the tab's one tree, which its machines keep (MIP-8); a region's
   width arranges only a tab whose machines all run a daemon too old to keep that tree.
+- **revision** - the number of a canvas document's version, starting at 1. The daemon stores it in the document
+  file and announces it when the document changes.
 - **roster** - every tab the window holds with its panes under it, ordered and labelled by the core, each row saying
   whether the window is showing it. Beside them, the machines - because a machine holding no panes contributes no
   tabs and would otherwise vanish - and, apart, the hidden tabs no window holds. What the view is to the screen,

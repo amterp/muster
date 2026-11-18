@@ -35,8 +35,10 @@ where Tab reaches them and no digit picks one, a group's conversation drawn in p
 standing out, what each member is doing and why it has not read, and a message box that posts as you and is left with
 Esc, a conversation with one agent on that agent's row, every group you are in opened, left or deleted from a
 Conversations menu on an agent's right-click and in the Window menu, compacting an agent's context when asked or once it is full enough, and telling it to compact itself before that, at thresholds set by harness, directory or pane, restarting an agent in its session from its
-notice, its menus or the CLI, upgrading Muster through Homebrew from its own menu or `muster upgrade`, and installing a
-harness's adapter through the harness's own plugin command, with `muster window` saying whose adapter is not reporting.
+notice, its menus or the CLI, upgrading Muster through Homebrew from its own menu or `muster upgrade`, installing a
+harness's adapter through the harness's own plugin command, with `muster window` saying whose adapter is not reporting,
+and a canvas: a pane that draws a Markdown, HTML or image document an agent wrote, beside its terminal, replaced
+whole with `muster canvas write` and kept through a restart, a reopen and a daemon replacement.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.
@@ -131,6 +133,7 @@ core and this is the other door into it.
     muster window
     muster pane new --down --run claude
     muster msg post --to otter --file brief.md
+    muster canvas open report.md --title "Test results"
     muster pane wait --pane otter --until idle,blocked
     muster tab focus t1w3r07bsd
     muster window --json

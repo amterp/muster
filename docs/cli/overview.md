@@ -196,11 +196,10 @@ pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to 
 
 ## With no window
 
-Thirteen verbs work with no window at all: `muster window` (and `window --watch`), `pane new`, `pane
-rename`, `pane read`, `pane send`, `pane wait`, `pane compact`, `pane compaction`, `pane restart`, `pane hide`, `pane
-show`, `pane quiet` and `pane close`. What agents are doing and what a pane printed are the
-daemon's to know, a compaction and a restart are the daemon's to type, and where a pane is, what it is called and whether it is
-hidden or quiet are the daemon's to keep, so a window only relays them. A pane shown or made with no window open joins the
+`muster window` (including `--watch`), the canvas commands, and the pane verbs below work with
+no window open. The pane verbs are `new`, `rename`, `read`, `send`, `wait`, `compact`,
+`compaction`, `restart`, `hide`, `show`, `quiet`, and `close`. The daemon owns the panes and
+their contents. A pane shown or made with no window open joins the
 next window that opens. When no window answers, these ask the
 daemon holding the panes: the one `$MUSTER_DAEMON_SOCKET` names, which
 every pane has, and otherwise this install's. That is what makes them work on an SSH devenv nothing
@@ -219,8 +218,8 @@ permitted to open. `--no-window` asks the daemon even with a window open.
 `muster window` says when the daemon answered: its first line names the daemon, and `--json`
 carries `"answered_by": "daemon"`, which a window's answer never does. The daemon has no places,
 no keyboard and nothing on screen, so those are left out rather than made up; a tab has no label
-unless somebody gave it one, and the machine is called by its host name. The other three print
-exactly what they print through a window, since their answer means the same thing either way.
+unless somebody gave it one, and the machine is called by its host name. The other commands print
+what they print through a window.
 With no window there is no keyboard, so a pane is named with `--pane` or `$MUSTER_PANE`, and a
 pane's name is read among the panes of this machine, called by its host name.
 
@@ -231,6 +230,10 @@ agents`, "An agent's helpers"). With no pane named at all, as from a plain termi
 of its own. It is told the `$MUSTER_SOCKET` of the command that made it, so it drives that window
 once the window is back. `--focus` moves nothing, since there is no keyboard, and a pane on another
 machine (`--daemon`) needs a window, which is what knows the machine by that name.
+
+`canvas open` beside a named pane splits it on the local daemon. From a plain terminal it opens
+a tab. Use `--tab` to choose a new tab from inside a pane. `--focus` and `--daemon` require a
+window. See `muster docs canvas`.
 
 Every other verb needs a window, and says so, except `muster msg`, which asks the daemon (`muster
 docs msg`), and `harness install`, `docs` and `completions`, which ask neither. Arranging,

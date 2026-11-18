@@ -30,7 +30,7 @@ only what goes wrong when you skip them.
 Every pane Muster makes has `muster` on its `PATH` and `$MUSTER_SOCKET` naming the window it is
 drawn in, on this machine and on an SSH devenv alike, so every verb works from either. With no
 window to talk to - a terminal outside Muster, or a pane whose window has since quit - `muster
-window`, `muster msg`, and `pane new`, `rename`, `read`, `send`, `wait`, `compact`, `restart`,
+window`, `muster msg`, the canvas commands, and `pane new`, `rename`, `read`, `send`, `wait`, `compact`, `restart`,
 `hide`, `show`, `quiet` and `close` still answer, from the machine's own daemon, and every other verb says
 it needs a window. `muster docs overview`, under "With no window", has the rest.
 
@@ -39,10 +39,11 @@ asked for may already have happened, and sending it again is how an agent gets y
 twice. Only 3 is safe to repeat. After a 4, inspect the destination with `muster pane read --pane X`
 or `muster canvas read --pane X`.
 
-Use `muster canvas open FILE --title TITLE` to show a Markdown report, HTML preview, or image
-beside your pane without taking the keyboard. Save the callsign it prints to name it later.
-`muster canvas write FILE` updates the one canvas your pane opened. With several canvases, pass
-`--pane CALLSIGN`. Read `muster docs canvas` for placement and reading the original document.
+Use a canvas to show a plan, diff summary, diagram, or table beside your pane while the person
+reads it and you keep working. `muster canvas open FILE --title TITLE` shows the document and
+prints its callsign. `muster canvas write FILE` replaces the one canvas your pane opened. Save
+the callsign and pass `--pane CALLSIGN` when you have several. Use `muster canvas read --pane
+CALLSIGN` for the original document, or `--output FILE` to save it. See `muster docs canvas`.
 
 ## Rules the reference states once and agents still break
 

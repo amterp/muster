@@ -6,13 +6,23 @@
 quit and the same Muster is running again - relaunched - `muster` asks the new app instead, on
 this machine and on an SSH machine alike, and the app answers from whichever window holds the
 pane. With no app running at all, the pane's own daemon answers what it can in the window's
-place: `muster window` and `pane new`, `rename`, `read`, `send`, `wait`, `compact`, `compaction`, `hide`,
+place: `muster window`, the canvas commands, and `pane new`, `rename`, `read`, `send`, `wait`, `compact`, `compaction`, `hide`,
 `show`, `quiet` and `close` work on that machine's own panes (`muster docs overview`, "With no
 window"), and everything else waits for a window.
 
 On an SSH machine, a pane made by Muster 0.10.1 cannot tell one Muster's windows there from
 another's, so with two installs forwarding to that machine its `muster` may reach the other's
 window. A pane made since carries the install in the name it is told.
+
+## What a canvas page can do
+
+A canvas holds up to 4 MiB of Markdown, HTML, or image data. The view blocks remote resource
+loads, cancels navigation, and keeps page scripts off. A person can select and copy its
+contents and open permitted links through the system. The canvas has no editing controls or
+Find. Use `muster canvas write` to replace its document and `muster canvas read` to get the
+original bytes. See the [WebKit observations](../observations/webkit-21624.1.16.11.4.md) for
+the network behavior measured on macOS 26.4.1.
+
 
 ## A window that never answers costs two seconds a command
 
