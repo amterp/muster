@@ -1194,6 +1194,125 @@ fn next_json(lines: &Receiver<String>, what: &str) -> Value {
         .unwrap_or_else(|error| panic!("a watch line under --json is not JSON ({error}): {line:?}"))
 }
 
+#[test]
+fn canvases_open_write_and_read_without_a_window() {
+    let here = Here::new(Daemon::start_built());
+    let source = here.home.join("report.md");
+    std::fs::write(&source, b"# First\n\n").unwrap();
+    let source = source.to_str().unwrap();
+    let mut control = here.daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let terminal = snapshot(&mut control).panes[0].callsign.clone().unwrap();
+
+    let plain =
+        here.command(&["canvas", "open", source]).env_remove("MUSTER_SOCKET").output().unwrap();
+    let plain = ok(&plain);
+    let listed = snapshot(&mut control);
+    let separate =
+        listed.panes.iter().find(|pane| pane.callsign.as_deref() == Some(&plain)).unwrap();
+    assert!(listed.tabs.iter().any(|tab| {
+        tab.tab != "t1"
+            && tab
+                .root
+                .as_ref()
+                .is_some_and(|root| muster_harness::requests::shape(root) == separate.pane)
+    }));
+    assert_eq!(separate.canvas.as_ref().unwrap().opened_by, None);
+
+    let from_pane =
+        |arguments: &[&str]| here.command(arguments).env("MUSTER_PANE", "p1").output().unwrap();
+    let split =
+        from_pane(&["canvas", "open", source, "--pane", &terminal, "--left", "--no-window"]);
+    let canvas = ok(&split);
+    let listed = snapshot(&mut control);
+    let split = listed.panes.iter().find(|pane| pane.callsign.as_deref() == Some(&canvas)).unwrap();
+    assert_eq!(
+        muster_harness::requests::tab_shape(&mut control, "t1"),
+        format!("[{}|p1 0.50]", split.pane),
+    );
+    assert_eq!(split.canvas.as_ref().unwrap().opened_by.as_deref(), Some("p1"));
+
+    std::fs::write(source, b"# Replacement\n\n").unwrap();
+    let revision = from_pane(&["canvas", "write", source, "--title", "Report"]);
+    assert_eq!(ok(&revision), "2");
+    for read in
+        [from_pane(&["canvas", "read"]), here.muster(&["canvas", "read", "--pane", &canvas])]
+    {
+        ok(&read);
+        assert_eq!(read.stdout, b"# Replacement\n\n");
+    }
+    let shown = here.muster(&["window", "--json", "--no-window"]);
+    let shown: Value = serde_json::from_str(&ok(&shown)).unwrap();
+    let row =
+        shown["panes"].as_array().unwrap().iter().find(|row| row["callsign"] == canvas).unwrap();
+    assert_eq!(row["state"], "canvas");
+    assert_eq!(row["canvas"], json!({ "title": "Report", "kind": "markdown", "revision": 2 }));
+
+    let another = ok(&from_pane(&["canvas", "open", source, "--tab"]));
+    let ambiguous = refused_with(&from_pane(&["canvas", "write", source]), 1);
+    assert!(ambiguous.contains("multiple canvases"), "{ambiguous}");
+    assert!(ambiguous.contains(&canvas) && ambiguous.contains(&another), "{ambiguous}");
+    let no_opener = refused_with(&here.muster(&["canvas", "read"]), 1);
+    assert!(no_opener.contains("no opening pane") && no_opener.contains(&plain), "{no_opener}");
+}
+
+#[test]
+fn windowless_canvas_open_refuses_placement_that_needs_a_window() {
+    let here = Here::new(Daemon::start_built());
+    for (arguments, expected) in [
+        (&["canvas", "open", "--focus"][..], "--focus needs a window"),
+        (&["canvas", "open", "--pane", "p1", "--daemon", "devenv"], "--daemon needs a window"),
+        (&["canvas", "open", "--tab", "--pane", "pcanvas"], "pcanvas"),
+    ] {
+        let reason = refused_with(&here.muster(arguments), 1);
+        assert!(reason.contains(expected), "{reason}");
+    }
+    assert!(snapshot(&mut here.daemon.connect()).panes.is_empty());
+}
+
+#[test]
+fn windowless_canvas_commands_gate_on_the_daemon_protocol() {
+    let here = Here::new(Daemon::start_built());
+    make(&mut here.daemon.connect(), create("p1", in_new_tab("t1")));
+    let relay = here.daemon.saying_protocol_minor(16);
+    for arguments in [
+        &["canvas", "open", "--tab"][..],
+        &["canvas", "write", "--pane", "p1"],
+        &["canvas", "read", "--pane", "p1", "--json"],
+    ] {
+        let run = here
+            .command(arguments)
+            .env("MUSTER_DAEMON_SOCKET", relay.socket_path())
+            .output()
+            .unwrap();
+        let reason = refused_with(&run, 1);
+        assert!(reason.contains("speaks protocol 1.16"), "{reason}");
+    }
+}
+
+#[test]
+fn a_windowless_canvas_write_with_no_answer_lands_once() {
+    let here = Here::new(Daemon::start_built());
+    let canvas = ok(&here.muster(&["canvas", "open"]));
+    let relay = here.daemon.hanging_up_before_answers_where(|request| {
+        matches!(
+            request.service,
+            Some(proto::request::Service::Pane(proto::PaneRequest {
+                request: Some(proto::pane_request::Request::WriteCanvas(_)),
+            }))
+        )
+    });
+    let write = here
+        .command(&["canvas", "write", "--pane", &canvas, "--title", "Once"])
+        .env("MUSTER_DAEMON_SOCKET", relay.socket_path())
+        .output()
+        .unwrap();
+    refused_with(&write, 4);
+    let read = here.muster(&["canvas", "read", "--pane", &canvas, "--json"]);
+    let read: Value = serde_json::from_str(&ok(&read)).unwrap();
+    assert_eq!(read, json!({ "kind": "markdown", "title": "Once", "revision": 2 }));
+}
+
 /// A daemon that takes a request to make a pane and hangs up may have made it, under the id the
 /// CLI minted and sent: the CLI says which, as a window does, rather than invite a second one.
 #[test]

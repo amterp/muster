@@ -18,7 +18,7 @@ use muster_core::AgentState;
 use muster_core::attention::{
     Alert, Asker, Attend, Attention, GroupKey, HumanNotice, Note, Noticed, Notifications,
 };
-use muster_core::canvas::{CanvasDocument, CanvasRead};
+use muster_core::canvas::{self, CanvasDocument, CanvasRead};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
@@ -7851,41 +7851,23 @@ pub(crate) fn send_to_pane(
 
 pub(crate) fn canvas_opened_by(from: &str, daemon: &str) -> Result<PaneKey, String> {
     let session = poison::lock(&SESSION, "session");
-    let mut canvases = Vec::new();
-    let mut matches = Vec::new();
+    let mut candidates = Vec::new();
     for (id, backend) in &session.backends {
         if !daemon.is_empty() && id.as_str() != daemon {
             continue;
         }
         let mirror = poison::lock(&backend.mirror, "mirror");
-        for pane in mirror.panes() {
-            let Some(canvas) = &pane.canvas else { continue };
+        candidates.extend(mirror.panes().filter_map(|pane| {
+            let canvas = pane.canvas.as_ref()?;
             let name = pane.callsign.as_deref().unwrap_or(pane.id.as_str()).to_string();
-            if !from.is_empty()
-                && canvas.opened_by.as_ref().is_some_and(|pane| pane.as_str() == from)
-            {
-                matches.push((PaneKey::new(id, &pane.id), name.clone()));
-            }
-            canvases.push(name);
-        }
+            Some((
+                PaneKey::new(id, &pane.id),
+                name,
+                canvas.opened_by.as_ref().map(ToString::to_string),
+            ))
+        }));
     }
-    let reason = match matches.as_slice() {
-        [(key, _)] => return Ok(key.clone()),
-        [] if from.is_empty() => "this command has no opening pane".to_string(),
-        [] => format!("pane {from} has no open canvas"),
-        _ => format!("pane {from} opened multiple canvases"),
-    };
-    let mut names = if matches.is_empty() {
-        canvases
-    } else {
-        matches.into_iter().map(|(_, name)| name).collect()
-    };
-    names.sort_unstable();
-    if names.is_empty() {
-        Err(format!("{reason}. Use --pane to name a canvas"))
-    } else {
-        Err(format!("{reason}. Use --pane with one of: {}", names.join(", ")))
-    }
+    canvas::opened_by(from, candidates)
 }
 
 pub(crate) fn read_canvas(daemon: &DaemonId, pane: &PaneId) -> Result<CanvasRead, Refusal> {

@@ -1431,9 +1431,6 @@ pub fn parse(
             Asking::CloseWindow(closing(name.as_deref(), cli.window.as_deref())?)
         }
         What::Pane { doing } => pane(doing, environment, here)?,
-        What::Canvas { .. } if cli.no_window => {
-            return Err(Failure::Refused("canvas commands require a running Muster window".into()));
-        }
         What::Canvas { doing } => canvas(doing, environment, here)?,
         What::Tab { doing } => tab(doing, environment, here, cli.window.as_deref())?,
         What::Focus { asking: true, .. } => send(request::Payload::FocusAsking(FocusAsking {})),

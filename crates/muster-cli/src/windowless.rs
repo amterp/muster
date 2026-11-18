@@ -16,6 +16,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use muster_core::canvas::{self, CanvasDocument, CanvasKind};
 use muster_core::composition::{DaemonId, Rect, ViewPane, ViewTree, places_in};
 use muster_core::daemons::{Census, Dial, Holding};
 use muster_core::harnesses;
@@ -26,7 +27,7 @@ use muster_core::pane_text::{self, PaneText, Scope};
 use muster_core::{AgentState, Until};
 use muster_daemon_launch::records::read_directory;
 use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection, making};
-use muster_proto::{Request, Response, request, response};
+use muster_proto::{Request, Response, open_canvas, request, response};
 
 use crate::dial::Ended;
 use crate::{Trouble, daemon, environment};
@@ -43,11 +44,14 @@ pub fn can_answer(request: &Request) -> bool {
         Some(request::Payload::SplitPane(split)) => {
             split.daemon_id.is_empty() && split.new_pane_daemon_id.is_empty()
         }
+        Some(request::Payload::OpenCanvas(_)) => canvas_needs_window(request).is_none(),
         payload => matches!(
             payload,
             Some(
                 request::Payload::ReadWindow(_)
                     | request::Payload::ReadPane(_)
+                    | request::Payload::WriteCanvas(_)
+                    | request::Payload::ReadCanvas(_)
                     | request::Payload::SendToPane(_)
                     | request::Payload::WatchPanes(_)
                     | request::Payload::CompactPane(_)
@@ -81,17 +85,29 @@ pub enum Answered {
 }
 
 /// Answers `request` from this machine's daemon.
+#[expect(clippy::too_many_lines, reason = "one arm per windowless command")]
 pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<Answered, Trouble> {
     // About the machine rather than any one daemon, so it needs no socket of this machine's own.
     if let Some(request::Payload::ReadDaemons(_)) = &request.payload {
         return Ok(Answered::Response(Box::new(read_daemons(environment))));
     }
+    if let Some(reason) = canvas_needs_window(request) {
+        return Err(Trouble::Refused(reason.into()));
+    }
     let socket = daemon::socket_or_refusal(environment)?;
+    let needs_source = matches!(
+        &request.payload,
+        Some(request::Payload::OpenCanvas(open))
+            if matches!(open.placement, Some(open_canvas::Placement::NewTab(_)))
+    );
     let mut request = request.clone();
+    let mut held = None;
     if let Some(payload) = request.payload.as_mut() {
         let mut typed = muster_proto::typed_panes(payload);
         if typed.iter().any(|pane| !pane.is_empty()) {
-            addressed(&mut typed, &snapshot(&socket)?)?;
+            let current = snapshot(&socket)?;
+            addressed(&mut typed, &current)?;
+            held = needs_source.then_some(current);
         }
     }
     let respond = |response| Ok(Answered::Response(Box::new(response)));
@@ -179,6 +195,20 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         Some(request::Payload::ClosePane(close)) => {
             let pane = named(&close.pane_id, "closed")?;
             respond(close_pane(&socket, pane, &request.from_pane)?)
+        }
+        Some(request::Payload::OpenCanvas(open)) => {
+            let from = caller(&request, environment);
+            respond(open_canvas(&socket, open, from, held.as_ref())?)
+        }
+        Some(request::Payload::WriteCanvas(write)) => {
+            let from = caller(&request, environment);
+            let pane = canvas_pane(&socket, &write.pane_id, from)?;
+            respond(write_canvas(&socket, pane, write.document.clone())?)
+        }
+        Some(request::Payload::ReadCanvas(read)) => {
+            let from = caller(&request, environment);
+            let pane = canvas_pane(&socket, &read.pane_id, from)?;
+            respond(read_canvas(&socket, pane)?)
         }
         Some(request::Payload::SplitPane(split)) => {
             respond(make_pane(&socket, split, environment)?)
@@ -963,18 +993,12 @@ fn make_pane(
     environment: &BTreeMap<String, String>,
 ) -> Result<Response, Trouble> {
     let said = |text: &str| (!text.is_empty()).then(|| text.to_string());
-    let side = match split.side.as_str() {
-        "left" => daemon_proto::Side::Left,
-        "right" => daemon_proto::Side::Right,
-        "up" => daemon_proto::Side::Up,
-        "down" => daemon_proto::Side::Down,
-        _ => {
-            return Ok(failure(format!(
-                "there is no side called {:?}, so nothing was made. They are left, right, up \
-                 and down, and the CLI only sends those, so this is a bug in muster.",
-                split.side
-            )));
-        }
+    let Some(side) = split_side(&split.side) else {
+        return Ok(failure(format!(
+            "there is no side called {:?}, so nothing was made. They are left, right, up \
+             and down, and the CLI only sends those, so this is a bug in muster.",
+            split.side
+        )));
     };
     if split.hidden && split.take_focus {
         return Ok(failure(muster_core::making::HIDDEN_AND_FOCUSED.to_string()));
@@ -1024,30 +1048,217 @@ fn make_pane(
     };
     // The id was minted here and sent with the request, so a daemon that took it and hung up
     // may have made exactly that pane: say which, as the window does, rather than invite a retry.
-    let answer = answer.map_err(|trouble| match trouble {
-        Trouble::Unanswered(detail) => Trouble::MayHaveMade {
-            reason: muster_core::making::may_have_made(&made, detail.trim_end_matches('.')),
-            pane: made.clone(),
-        },
-        trouble => trouble,
-    })?;
+    let answer = answer.map_err(|trouble| uncertain_create(&made, trouble))?;
     Ok(match answer.outcome() {
-        daemon_proto::Outcome::Done => {
-            let callsign = match answer.detail {
-                Some(daemon_proto::answer::Detail::Created(created)) => created.callsign,
-                _ => String::new(),
-            };
-            Response {
-                payload: Some(response::Payload::Made(muster_proto::Made {
-                    pane_id: made,
-                    callsign,
-                })),
-            }
-        }
+        daemon_proto::Outcome::Done => made_pane(made, answer.detail),
         daemon_proto::Outcome::NotThere => {
             not_held(socket, beside.as_deref().unwrap_or_default(), "made")
         }
         _ => failure(answer.reason),
+    })
+}
+
+fn split_side(side: &str) -> Option<daemon_proto::Side> {
+    Some(match side {
+        "left" => daemon_proto::Side::Left,
+        "right" => daemon_proto::Side::Right,
+        "up" => daemon_proto::Side::Up,
+        "down" => daemon_proto::Side::Down,
+        _ => return None,
+    })
+}
+
+fn uncertain_create(pane: &str, trouble: Trouble) -> Trouble {
+    match trouble {
+        Trouble::Unanswered(detail) => Trouble::MayHaveMade {
+            reason: muster_core::making::may_have_made(pane, detail.trim_end_matches('.')),
+            pane: pane.to_string(),
+        },
+        trouble => trouble,
+    }
+}
+
+fn made_pane(pane_id: String, detail: Option<daemon_proto::answer::Detail>) -> Response {
+    let callsign = match detail {
+        Some(daemon_proto::answer::Detail::Created(created)) => created.callsign,
+        _ => String::new(),
+    };
+    Response { payload: Some(response::Payload::Made(muster_proto::Made { pane_id, callsign })) }
+}
+
+pub(crate) fn canvas_needs_window(request: &Request) -> Option<&'static str> {
+    use open_canvas::Placement;
+    let Some(request::Payload::OpenCanvas(open)) = &request.payload else { return None };
+    if open.take_focus {
+        return Some("canvas open --focus needs a window to move the keyboard");
+    }
+    let names_daemon = match &open.placement {
+        Some(Placement::Beside(split)) => {
+            !split.daemon_id.is_empty() || !split.new_pane_daemon_id.is_empty()
+        }
+        Some(Placement::NewTab(tab)) => !tab.daemon_id.is_empty(),
+        None => return Some("a canvas needs a split or tab placement"),
+    };
+    names_daemon.then_some("canvas open --daemon needs a window to choose a machine")
+}
+
+fn caller<'a>(request: &'a Request, environment: &'a BTreeMap<String, String>) -> &'a str {
+    if request.from_pane.is_empty() {
+        environment.get(environment::PANE_NAME).map_or("", String::as_str)
+    } else {
+        &request.from_pane
+    }
+}
+
+fn open_canvas(
+    socket: &Path,
+    open: &muster_proto::OpenCanvas,
+    from: &str,
+    held: Option<&daemon_proto::Snapshot>,
+) -> Result<Response, Trouble> {
+    use open_canvas::Placement;
+    let mut drawn = Minter::new(Mint::Drawn);
+    let made = drawn.pane().to_string();
+    let mut new_tab = || making::new_tab(drawn.tab().to_string(), false);
+    let (placement, source) = match open.placement.as_ref() {
+        Some(Placement::Beside(split)) if !split.pane_id.is_empty() => {
+            let side = split_side(&split.side).ok_or_else(|| {
+                Trouble::Refused(format!("unknown canvas split side {:?}", split.side))
+            })?;
+            let ratio = (split.ratio > 0.0).then_some(split.ratio);
+            (making::beside(split.pane_id.clone(), side, ratio), split.pane_id.as_str())
+        }
+        Some(Placement::NewTab(tab)) => {
+            if !tab.pane_id.is_empty()
+                && !held.is_some_and(|held| held.panes.iter().any(|pane| pane.pane == tab.pane_id))
+            {
+                return Ok(not_held(socket, &tab.pane_id, "made"));
+            }
+            (new_tab(), tab.pane_id.as_str())
+        }
+        _ => (new_tab(), ""),
+    };
+    let document = canvas_document(open.document.clone())?;
+    let create = daemon_proto::pane_request::CreateCanvas {
+        pane: made.clone(),
+        placement: Some(daemon_proto::Placement { r#where: Some(placement) }),
+        label: (!open.name.trim().is_empty()).then(|| open.name.trim().to_string()),
+        document: Some(document),
+        quiet: false,
+        opened_by: (!from.is_empty()).then(|| from.to_string()),
+        callsigns_elsewhere: Vec::new(),
+    };
+    let answer = ask_canvas(
+        socket,
+        daemon_proto::pane_request::Request::CreateCanvas(create),
+        "open a canvas",
+    )
+    .map_err(|trouble| uncertain_create(&made, trouble))?;
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::Done => made_pane(made, answer.detail),
+        daemon_proto::Outcome::NotThere => not_held(socket, source, "made"),
+        _ => failure(answer.reason),
+    })
+}
+
+fn canvas_pane(socket: &Path, named: &str, from: &str) -> Result<String, Trouble> {
+    if !named.is_empty() {
+        return Ok(named.to_string());
+    }
+    canvas::opened_by(
+        from,
+        snapshot(socket)?.panes.into_iter().filter_map(|pane| {
+            let canvas = pane.canvas?;
+            let name =
+                pane.callsign.filter(|name| !name.is_empty()).unwrap_or_else(|| pane.pane.clone());
+            Some((pane.pane, name, canvas.opened_by))
+        }),
+    )
+    .map_err(Trouble::Refused)
+}
+
+fn canvas_document(
+    document: Option<muster_proto::CanvasDocument>,
+) -> Result<daemon_proto::CanvasDocument, Trouble> {
+    let document = document.ok_or_else(|| Trouble::Refused("a canvas needs a document".into()))?;
+    let kind = match document.kind() {
+        muster_proto::CanvasKind::Unspecified => CanvasKind::Unknown,
+        muster_proto::CanvasKind::Markdown => CanvasKind::Markdown,
+        muster_proto::CanvasKind::Html => CanvasKind::Html,
+        muster_proto::CanvasKind::Image => CanvasKind::Image,
+    };
+    CanvasDocument::from_parts(kind, document.body, document.title, &document.image_type)
+        .map(daemon_proto::canvas::encode)
+        .map_err(|why| Trouble::Refused(why.into()))
+}
+
+fn ask_canvas(
+    socket: &Path,
+    request: daemon_proto::pane_request::Request,
+    what: &str,
+) -> Result<daemon_proto::Answer, Trouble> {
+    asked_of_one_since(socket, pane_service(request), daemon_proto::version::CANVASES, what)
+}
+
+fn write_canvas(
+    socket: &Path,
+    pane: String,
+    document: Option<muster_proto::CanvasDocument>,
+) -> Result<Response, Trouble> {
+    use daemon_proto::{answer::Detail, pane_request};
+    let write = pane_request::WriteCanvas { pane, document: Some(canvas_document(document)?) };
+    let answer = ask_canvas(socket, pane_request::Request::WriteCanvas(write), "write a canvas")?;
+    if answer.outcome() != daemon_proto::Outcome::Done {
+        return Ok(failure(answer.reason));
+    }
+    let Some(Detail::CanvasWritten(written)) = answer.detail else {
+        return Err(Trouble::Unanswered(
+            "the daemon acknowledged the canvas write without a revision".into(),
+        ));
+    };
+    Ok(Response {
+        payload: Some(response::Payload::CanvasWritten(muster_proto::CanvasWritten {
+            revision: written.revision,
+        })),
+    })
+}
+
+fn roster_canvas_kind(kind: daemon_proto::CanvasKind) -> i32 {
+    match kind {
+        daemon_proto::CanvasKind::Markdown => muster_proto::CanvasKind::Markdown.into(),
+        daemon_proto::CanvasKind::Html => muster_proto::CanvasKind::Html.into(),
+        daemon_proto::CanvasKind::Image => muster_proto::CanvasKind::Image.into(),
+        daemon_proto::CanvasKind::Unspecified => muster_proto::CanvasKind::Unspecified.into(),
+    }
+}
+
+fn read_canvas(socket: &Path, pane: String) -> Result<Response, Trouble> {
+    use daemon_proto::{answer::Detail, pane_request};
+    let read = pane_request::ReadCanvas { pane };
+    let answer = ask_canvas(socket, pane_request::Request::ReadCanvas(read), "read a canvas")?;
+    if answer.outcome() != daemon_proto::Outcome::Done {
+        return Ok(failure(answer.reason));
+    }
+    let Some(Detail::CanvasRead(read)) = answer.detail else {
+        return Err(Trouble::Refused("the daemon did not return a canvas document".into()));
+    };
+    let document = read
+        .document
+        .ok_or_else(|| Trouble::Refused("the daemon returned an empty canvas answer".into()))?;
+    if document.kind() == daemon_proto::CanvasKind::Unspecified {
+        return Err(Trouble::Refused("the daemon returned an unknown canvas kind".into()));
+    }
+    let kind = roster_canvas_kind(document.kind());
+    Ok(Response {
+        payload: Some(response::Payload::CanvasRead(muster_proto::CanvasRead {
+            revision: read.revision,
+            document: Some(muster_proto::CanvasDocument {
+                kind,
+                body: document.body,
+                title: document.title,
+                image_type: document.image_type,
+            }),
+        })),
     })
 }
 
@@ -1266,6 +1477,13 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
                         subtitle: record.map_or_else(String::new, |record| record.title.clone()),
                         quiet: record.is_some_and(|record| record.quiet),
                         maker: record.and_then(|record| record.maker.clone()).unwrap_or_default(),
+                        canvas: record.and_then(|record| record.canvas.as_ref()).map(|canvas| {
+                            muster_proto::CanvasInfo {
+                                revision: canvas.revision,
+                                kind: roster_canvas_kind(canvas.kind()),
+                                title: canvas.title.clone(),
+                            }
+                        }),
                         pane_id: pane,
                         ..muster_proto::RosterPane::default()
                     }
@@ -1284,7 +1502,12 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
             hidden,
             ..muster_proto::RosterChanged::default()
         }),
-        panes: snapshot.panes.iter().map(|pane| pane_state(&machine, pane)).collect(),
+        panes: snapshot
+            .panes
+            .iter()
+            .filter(|pane| pane.canvas.is_none())
+            .map(|pane| pane_state(&machine, pane))
+            .collect(),
         daemons: vec![muster_proto::Machine {
             daemon_id: machine,
             socket: socket.display().to_string(),
@@ -1813,6 +2036,21 @@ mod tests {
             daemon_id: "devenv".into(),
             ..Default::default()
         }));
+    }
+
+    #[test]
+    fn only_a_local_canvas_open_uses_the_short_window_probe() {
+        let asking = |open| can_answer(&Request::new(request::Payload::OpenCanvas(open)));
+        let tab = |daemon: &str| {
+            Some(open_canvas::Placement::NewTab(open_canvas::NewTab {
+                daemon_id: daemon.to_string(),
+                ..Default::default()
+            }))
+        };
+        let local = muster_proto::OpenCanvas { placement: tab(""), ..Default::default() };
+        assert!(asking(local.clone()));
+        assert!(!asking(muster_proto::OpenCanvas { take_focus: true, ..local.clone() }));
+        assert!(!asking(muster_proto::OpenCanvas { placement: tab("devenv"), ..local }));
     }
 
     /// A pane cannot be made hidden and take the keyboard, refused in the window's words before

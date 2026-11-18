@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use muster_core::Key;
-use muster_core::canvas::{CanvasDocument, CanvasDocumentKind, CanvasImageType, CanvasRead};
+use muster_core::canvas::CanvasRead;
 use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::intent::{
     BackendChannel, BackendIntent, Directory, Grid, InTree, MoveDestination, NewPane, NewPaneBody,
@@ -245,7 +245,7 @@ impl DaemonBackend {
                     pane: pane.to_string(),
                     placement,
                     label: name,
-                    document: Some(canvas_document(document)),
+                    document: Some(proto::canvas::encode(document)),
                     quiet,
                     opened_by: opened_by.map(|pane| pane.to_string()),
                     callsigns_elsewhere,
@@ -316,11 +316,7 @@ impl DaemonBackend {
 
 /// A tab here, or this machine's part of a Muster tab, unnamed.
 fn new_tab(tab: &TabId, hidden: bool) -> placement::Where {
-    placement::Where::NewTab(placement::NewTab {
-        tab: tab.to_string(),
-        label: Some(proto::Label::default()),
-        hidden,
-    })
+    proto::making::new_tab(tab.to_string(), hidden)
 }
 
 /// At a pane's leaf of a tab's whole tree. A part this makes starts unnamed, for the reason
@@ -341,39 +337,7 @@ fn beside(pane: &PaneId, side: Side) -> placement::Where {
 }
 
 fn beside_at(pane: &PaneId, side: Side, ratio: Option<f32>) -> placement::Where {
-    placement::Where::Beside(placement::Beside {
-        pane: pane.to_string(),
-        side: convert::side(side).into(),
-        ratio,
-    })
-}
-
-fn canvas_document(document: CanvasDocument) -> proto::CanvasDocument {
-    let CanvasDocument { kind, bytes, title } = document;
-    let (kind, image_type) = match kind {
-        CanvasDocumentKind::Markdown => (proto::CanvasKind::Markdown, ""),
-        CanvasDocumentKind::Html => (proto::CanvasKind::Html, ""),
-        CanvasDocumentKind::Image(image) => (proto::CanvasKind::Image, image.media_type()),
-    };
-    proto::CanvasDocument { kind: kind.into(), body: bytes, image_type: image_type.into(), title }
-}
-
-fn read_canvas_document(document: proto::CanvasDocument) -> Result<CanvasDocument, Refusal> {
-    let kind = match document.kind() {
-        proto::CanvasKind::Markdown => CanvasDocumentKind::Markdown,
-        proto::CanvasKind::Html => CanvasDocumentKind::Html,
-        proto::CanvasKind::Image => {
-            let image =
-                CanvasImageType::from_media_type(&document.image_type).ok_or_else(|| {
-                    Refusal::Declined("the daemon returned an unknown canvas image type".into())
-                })?;
-            CanvasDocumentKind::Image(image)
-        }
-        proto::CanvasKind::Unspecified => {
-            return Err(Refusal::Declined("the daemon returned an unknown canvas kind".into()));
-        }
-    };
-    Ok(CanvasDocument { kind, bytes: document.body, title: document.title })
+    proto::making::beside(pane.to_string(), convert::side(side), ratio)
 }
 
 impl BackendChannel for DaemonBackend {
@@ -387,7 +351,7 @@ impl BackendChannel for DaemonBackend {
                 let answer = self.pane_request(pane_request::Request::WriteCanvas(
                     pane_request::WriteCanvas {
                         pane: pane.to_string(),
-                        document: Some(canvas_document(document)),
+                        document: Some(proto::canvas::encode(document)),
                     },
                 ))?;
                 let Some(answer::Detail::CanvasWritten(written)) = answer.detail else {
@@ -641,7 +605,11 @@ impl BackendChannel for DaemonBackend {
         let document = read.document.ok_or_else(|| {
             Refusal::Declined("the daemon returned an empty canvas answer".into())
         })?;
-        Ok(CanvasRead { revision: read.revision, document: read_canvas_document(document)? })
+        Ok(CanvasRead {
+            revision: read.revision,
+            document: proto::canvas::decode(document)
+                .map_err(|detail| Refusal::Declined(detail.into()))?,
+        })
     }
 
     fn read(&self, pane: &PaneId, scope: Scope) -> Result<PaneText, Refusal> {

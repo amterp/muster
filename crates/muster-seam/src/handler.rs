@@ -11,7 +11,7 @@ use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
 use muster_core::attention::Asker;
-use muster_core::canvas::{self, CanvasDocument, CanvasDocumentKind, CanvasImageType};
+use muster_core::canvas::{self, CanvasDocument, CanvasDocumentKind, CanvasKind};
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, Step, View};
 use muster_core::config::{self, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
@@ -2753,18 +2753,12 @@ fn canvas_document(
 ) -> Result<CanvasDocument, &'static str> {
     let document = document.ok_or("a canvas needs a document")?;
     let kind = match document.kind() {
-        proto::CanvasKind::Markdown => CanvasDocumentKind::Markdown,
-        proto::CanvasKind::Html => CanvasDocumentKind::Html,
-        proto::CanvasKind::Image => CanvasDocumentKind::Image(
-            CanvasImageType::from_media_type(&document.image_type)
-                .ok_or("a canvas image needs a supported media type")?,
-        ),
-        proto::CanvasKind::Unspecified => return Err("a canvas document needs a kind"),
+        proto::CanvasKind::Markdown => CanvasKind::Markdown,
+        proto::CanvasKind::Html => CanvasKind::Html,
+        proto::CanvasKind::Image => CanvasKind::Image,
+        proto::CanvasKind::Unspecified => CanvasKind::Unknown,
     };
-    if !matches!(kind, CanvasDocumentKind::Image(_)) && !document.image_type.is_empty() {
-        return Err("a Markdown or HTML canvas has no image type");
-    }
-    Ok(CanvasDocument { kind, title: document.title, bytes: document.body })
+    CanvasDocument::from_parts(kind, document.body, document.title, &document.image_type)
 }
 
 fn original_canvas(document: CanvasDocument) -> proto::CanvasDocument {

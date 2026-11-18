@@ -73,11 +73,7 @@ pub fn create<E>(
     let mut cwd = new.cwd;
     let mut cwd_inherited = false;
     let placement = match &new.beside {
-        Some(pane) if !new.hidden => placement::Where::Beside(placement::Beside {
-            pane: pane.clone(),
-            side: new.side.into(),
-            ratio: new.ratio,
-        }),
+        Some(pane) if !new.hidden => beside(pane.clone(), new.side, new.ratio),
         _ => {
             if let Some(pane) = &new.beside {
                 let from = lookup(pane)?;
@@ -103,6 +99,14 @@ pub fn create<E>(
     })
 }
 
+pub fn beside(pane: String, side: Side, ratio: Option<f32>) -> placement::Where {
+    placement::Where::Beside(placement::Beside { pane, side: side.into(), ratio })
+}
+
+pub fn new_tab(tab: String, hidden: bool) -> placement::Where {
+    placement::Where::NewTab(placement::NewTab { tab, label: Some(Label::default()), hidden })
+}
+
 /// A new tab of its own, hidden or not, or for a hidden helper the tab its maker's helpers share,
 /// named for the maker by `maker`, when there is one.
 fn in_a_tab(hidden: bool, maker: Option<&str>, tab: String) -> placement::Where {
@@ -114,11 +118,7 @@ fn in_a_tab(hidden: bool, maker: Option<&str>, tab: String) -> placement::Where 
                 generation: muster_core::making::HELPERS_TAB_GENERATION,
             }),
         }),
-        _ => placement::Where::NewTab(placement::NewTab {
-            tab,
-            label: Some(Label::default()),
-            hidden,
-        }),
+        _ => new_tab(tab, hidden),
     }
 }
 

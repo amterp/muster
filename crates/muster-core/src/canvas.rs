@@ -54,6 +54,65 @@ pub struct CanvasDocument {
     pub title: String,
 }
 
+impl CanvasDocument {
+    pub fn from_parts(
+        kind: CanvasKind,
+        bytes: Vec<u8>,
+        title: String,
+        media_type: &str,
+    ) -> Result<Self, &'static str> {
+        let kind = match kind {
+            CanvasKind::Markdown if media_type.is_empty() => CanvasDocumentKind::Markdown,
+            CanvasKind::Html if media_type.is_empty() => CanvasDocumentKind::Html,
+            CanvasKind::Markdown | CanvasKind::Html => {
+                return Err("a Markdown or HTML canvas has no image type");
+            }
+            CanvasKind::Image => CanvasDocumentKind::Image(
+                CanvasImageType::from_media_type(media_type)
+                    .ok_or("a canvas image needs a supported media type")?,
+            ),
+            CanvasKind::Unknown => return Err("a canvas document needs a kind"),
+        };
+        Ok(Self { kind, bytes, title })
+    }
+}
+
+pub fn opened_by<T>(
+    from: &str,
+    candidates: impl IntoIterator<Item = (T, String, Option<String>)>,
+) -> Result<T, String> {
+    let mut matches = Vec::new();
+    let mut others = Vec::new();
+    for (pane, name, opened_by) in candidates {
+        if !from.is_empty() && opened_by.as_deref() == Some(from) {
+            matches.push((pane, name));
+        } else {
+            others.push(name);
+        }
+    }
+    if matches.len() == 1 {
+        return Ok(matches.pop().expect("the only match").0);
+    }
+    let reason = if from.is_empty() {
+        "this command has no opening pane".to_string()
+    } else if matches.is_empty() {
+        format!("pane {from} has no open canvas")
+    } else {
+        format!("pane {from} opened multiple canvases")
+    };
+    let mut names = if matches.is_empty() {
+        others
+    } else {
+        matches.into_iter().map(|(_, name)| name).collect()
+    };
+    names.sort_unstable();
+    if names.is_empty() {
+        Err(format!("{reason}. Use --pane to name a canvas"))
+    } else {
+        Err(format!("{reason}. Use --pane with one of: {}", names.join(", ")))
+    }
+}
+
 impl fmt::Debug for CanvasDocument {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter

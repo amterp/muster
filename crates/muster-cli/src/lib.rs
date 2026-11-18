@@ -279,6 +279,29 @@ fn run_command<W: Write>(
         },
     };
 
+    if matches!(request.payload, Some(muster_proto::request::Payload::ReadCanvas(_))) {
+        let read = canvas_answer(&request, named.as_deref(), environment, no_window).and_then(
+            |(answer, silent)| {
+                let Some(muster_proto::response::Payload::CanvasRead(read)) = &answer.payload
+                else {
+                    render::answer(&answer, json)?;
+                    return Err(Trouble::Refused(
+                        "the request did not return a canvas document".into(),
+                    ));
+                };
+                let document = read.document.as_ref().ok_or_else(|| {
+                    Trouble::Refused("the answer did not contain a canvas document".into())
+                })?;
+                if !json {
+                    print_canvas(out, document)?;
+                }
+                let text = if json { render::answer(&answer, true)? } else { String::new() };
+                Ok(noted_answer(text, &silent, json, errors))
+            },
+        );
+        return finish(read, json, out, errors);
+    }
+
     if no_window {
         return finish(from_the_daemon(&request, environment, json), json, out, errors);
     }
@@ -322,19 +345,6 @@ fn run_command<W: Write>(
         }
     }
 
-    if !json && matches!(request.payload, Some(muster_proto::request::Payload::ReadCanvas(_))) {
-        let read = dial::ask(&request, named.as_deref(), environment).and_then(|answer| {
-            let Some(muster_proto::response::Payload::CanvasRead(read)) = &answer.payload else {
-                render::answer(&answer, false)?;
-                return Err(Trouble::Refused("the window did not return a canvas document".into()));
-            };
-            let document = read.document.as_ref().ok_or_else(|| {
-                Trouble::Refused("the window returned an empty canvas answer".into())
-            })?;
-            print_canvas(out, document)
-        });
-        return read.map_or_else(|trouble| report(&trouble, json, errors), |()| 0);
-    }
     let rendered = ask_a_window(&request, named.as_deref(), environment, json, errors);
     finish(rendered, json, out, errors)
 }
@@ -429,22 +439,65 @@ fn instead_of_a_window(
     json: bool,
     errors: &mut impl Write,
 ) -> Result<String, Trouble> {
+    let answered = after_window_missed(request, reason, environment)
+        .and_then(|answer| render_daemon(answer, environment, json))?;
+    Ok(noted_answer(answered, silent, json, errors))
+}
+
+fn after_window_missed(
+    request: &muster_proto::Request,
+    reason: &str,
+    environment: &BTreeMap<String, String>,
+) -> Result<windowless::Answered, Trouble> {
+    if let Some(reason) = windowless::canvas_needs_window(request) {
+        return Err(Trouble::Refused(reason.into()));
+    }
     if !windowless::can_answer(request) {
         return Err(Trouble::Unreachable(format!("{reason} {WITHOUT_A_WINDOW}")));
     }
-    let answered =
-        from_the_daemon(request, environment, json).map_err(|trouble| neither(reason, trouble))?;
+    windowless::ask(request, environment).map_err(|trouble| neither(reason, trouble))
+}
+
+fn canvas_answer(
+    request: &muster_proto::Request,
+    named: Option<&str>,
+    environment: &BTreeMap<String, String>,
+    no_window: bool,
+) -> Result<(Box<muster_proto::Response>, Vec<String>), Trouble> {
+    let (answer, silent) = if no_window {
+        (windowless::ask(request, environment)?, Vec::new())
+    } else {
+        match dial::ask(request, named, environment) {
+            Ok(answer) => return Ok((Box::new(answer), Vec::new())),
+            Err(Trouble::NoWindow { reason, silent }) if request.window.is_empty() => {
+                (after_window_missed(request, &reason, environment)?, silent)
+            }
+            Err(trouble) => return Err(trouble),
+        }
+    };
+    let windowless::Answered::Response(answer) = answer else {
+        return Err(Trouble::Refused("the daemon did not return a canvas answer".into()));
+    };
+    Ok((answer, silent))
+}
+
+fn noted_answer(
+    answered: String,
+    silent: &[String],
+    json: bool,
+    errors: &mut impl Write,
+) -> String {
     if silent.is_empty() {
-        return Ok(answered);
+        return answered;
     }
     let notes: Vec<String> = silent.iter().map(|path| dial::passed_over(path)).collect();
     if json && let Some(noted) = with_note(&answered, &notes.join(" ")) {
-        return Ok(noted);
+        return noted;
     }
     for note in &notes {
         say_note(note, json, errors);
     }
-    Ok(answered)
+    answered
 }
 
 /// A JSON answer with `note` added, or nothing when the answer is not one JSON object. In the
@@ -476,7 +529,7 @@ pub(crate) fn neither(window: &str, daemon: Trouble) -> Trouble {
 }
 
 /// What a refusal for want of a window adds, so a caller learns what still works.
-const WITHOUT_A_WINDOW: &str = "Without one, `muster window`, `muster daemons` and the pane \
+const WITHOUT_A_WINDOW: &str = "Without one, `muster window`, `muster daemons`, the canvas commands and the pane \
     verbs that make, name, read, type into, wait on, compact, clear, restart, mark unread, hide, \
     show, quiet and close panes on this machine still work, answered by its muster-daemon or the \
     records beside it; the rest is about what only a window holds: its tabs, its keyboard and what \
@@ -489,13 +542,24 @@ fn from_the_daemon(
     environment: &BTreeMap<String, String>,
     json: bool,
 ) -> Result<String, Trouble> {
+    if let Some(reason) = windowless::canvas_needs_window(request) {
+        return Err(Trouble::Refused(reason.into()));
+    }
     if !windowless::can_answer(request) {
         return Err(Trouble::Refused(format!(
             "--no-window asks this machine's muster-daemon, and this needs a window. \
              {WITHOUT_A_WINDOW}"
         )));
     }
-    match windowless::ask(request, environment)? {
+    render_daemon(windowless::ask(request, environment)?, environment, json)
+}
+
+fn render_daemon(
+    answer: windowless::Answered,
+    environment: &BTreeMap<String, String>,
+    json: bool,
+) -> Result<String, Trouble> {
+    match answer {
         windowless::Answered::Response(response) => answer_here(&response, json, environment),
         windowless::Answered::Window { window, socket } => {
             Ok(render::daemon_window(&window, &socket, json, &here(environment)))

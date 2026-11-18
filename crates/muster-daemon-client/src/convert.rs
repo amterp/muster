@@ -230,16 +230,11 @@ pub fn pane(record: proto::Pane) -> Pane {
 }
 
 fn canvas_metadata(record: proto::Canvas) -> muster_core::canvas::CanvasMetadata {
-    use muster_core::canvas::{CanvasInfo, CanvasKind, CanvasMetadata};
+    use muster_core::canvas::{CanvasInfo, CanvasMetadata};
     CanvasMetadata {
         info: CanvasInfo {
             revision: record.revision,
-            kind: match record.kind() {
-                proto::CanvasKind::Unspecified => CanvasKind::Unknown,
-                proto::CanvasKind::Markdown => CanvasKind::Markdown,
-                proto::CanvasKind::Html => CanvasKind::Html,
-                proto::CanvasKind::Image => CanvasKind::Image,
-            },
+            kind: proto::canvas::kind(record.kind()),
             title: record.title,
         },
         bytes: record.bytes,

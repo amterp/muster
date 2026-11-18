@@ -10,6 +10,7 @@
 //! how compaction thresholds are written in a message,
 //! and how many closed panes a daemon remembers.
 
+pub mod canvas;
 pub mod compaction;
 pub mod connection;
 pub mod install;
