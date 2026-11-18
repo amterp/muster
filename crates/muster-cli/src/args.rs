@@ -20,16 +20,18 @@ use std::time::{Duration, SystemTime};
 
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
+use muster_core::canvas::validate_title;
 use muster_core::input::check_sent_keys;
 use muster_core::names::could_be_minted;
 use muster_proto::{
-    AdjustFontSize, ArrangePane, ClearAgent, ClosePane, CloseTab, CompactPane, CreateTab,
-    EqualizePanes, FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab,
-    FocusTabRelative, HideHelpers, HidePane, HideTab, LeaveConversation, MarkUnread, MoveTab,
-    PaneCompaction, QuietPane, ReadClosedPanes, ReadDaemons, ReadPane, ReadWindow, ReattachPane,
-    ReloadConfig, RemoveFromTab, RenamePane, RenameTab, ReopenPane, Request, ResizePane,
-    RestartAgent, SendToPane, ShowConversation, ShowHelpers, ShowPane, SplitPane, ToggleSidebar,
-    UpgradeMuster, WatchPanes, ZoomPane, request,
+    AdjustFontSize, ArrangePane, CanvasDocument, CanvasKind, ClearAgent, ClosePane, CloseTab,
+    CompactPane, CreateTab, EqualizePanes, FocusAsking, FocusHistory, FocusPane, FocusPaneAt,
+    FocusRelative, FocusTab, FocusTabRelative, HideHelpers, HidePane, HideTab, LeaveConversation,
+    MarkUnread, MoveTab, OpenCanvas, PaneCompaction, QuietPane, ReadCanvas, ReadClosedPanes,
+    ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RemoveFromTab, RenamePane,
+    RenameTab, ReopenPane, Request, ResizePane, RestartAgent, SendToPane, ShowConversation,
+    ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes, WriteCanvas,
+    ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -60,6 +62,10 @@ pub enum Asking {
     /// The request goes out with its text empty until then. Reading is kept out of [`parse`],
     /// which is pure, so what a command line means stays pinnable without a filesystem.
     SendFrom {
+        request: Box<Request>,
+        from: TextSource,
+    },
+    CanvasFrom {
         request: Box<Request>,
         from: TextSource,
     },
@@ -107,7 +113,7 @@ pub enum TextSource {
 }
 
 impl TextSource {
-    fn described(&self) -> String {
+    pub(crate) fn described(&self) -> String {
         match self {
             TextSource::File(path) => path.clone(),
             TextSource::Stdin => "stdin".to_string(),
@@ -270,6 +276,12 @@ enum What {
     Pane {
         #[command(subcommand)]
         doing: Doing,
+    },
+
+    /// Open, replace or read a canvas document
+    Canvas {
+        #[command(subcommand)]
+        doing: WithCanvas,
     },
 
     /// Make a tab, go to one, or name one
@@ -1157,6 +1169,107 @@ enum Doing {
 /// one a bridge - those are things you do to the pane inside it. Moving one is between windows,
 /// because a tab belongs to exactly one.
 #[derive(Debug, Subcommand)]
+enum WithCanvas {
+    /// Open a canvas and print its callsign
+    #[command(group(ArgGroup::new("placement").args(["left", "right", "up", "down", "tab"])))]
+    Open {
+        #[command(flatten)]
+        document: CanvasInput,
+        /// Split to the left
+        #[arg(long)]
+        left: bool,
+        /// Split to the right (the default)
+        #[arg(long)]
+        right: bool,
+        /// Split above
+        #[arg(long)]
+        up: bool,
+        /// Split below
+        #[arg(long)]
+        down: bool,
+        /// Open in a new tab
+        #[arg(long)]
+        tab: bool,
+        /// Choose the pane to split, by callsign or ID
+        #[arg(long, value_parser = reference)]
+        pane: Option<String>,
+        /// Put the canvas on this daemon
+        #[arg(long, value_parser = reference)]
+        daemon: Option<String>,
+        /// Move the keyboard to the new canvas
+        #[arg(long)]
+        focus: bool,
+    },
+    /// Replace a canvas's document
+    Write {
+        #[command(flatten)]
+        document: CanvasInput,
+        /// Choose the canvas by callsign or ID. Defaults to the one this pane opened
+        #[arg(long, value_parser = reference)]
+        pane: Option<String>,
+    },
+    /// Print a canvas's original document, or its metadata with --json
+    Read {
+        /// Choose the canvas by callsign or ID. Defaults to the one this pane opened
+        #[arg(long, value_parser = reference)]
+        pane: Option<String>,
+    },
+}
+
+#[derive(Debug, clap::Args)]
+struct CanvasInput {
+    /// Read this file, or stdin if omitted or set to -
+    #[arg(value_name = "FILE")]
+    file: Option<String>,
+    /// Document kind. Defaults to the file extension, then Markdown
+    #[arg(long, value_enum)]
+    kind: Option<CanvasFormat>,
+    /// Title in the pane header, up to 256 UTF-8 bytes
+    #[arg(long, default_value = "")]
+    title: String,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum CanvasFormat {
+    Markdown,
+    Html,
+    Image,
+}
+
+impl CanvasInput {
+    fn read_from(&self, here: Option<&Path>) -> Result<(TextSource, CanvasDocument), Failure> {
+        validate_title(&self.title).map_err(|reason| Failure::Refused(reason.to_string()))?;
+        let file = self.file.as_deref().filter(|file| *file != "-");
+        let from = match file {
+            Some(file) => TextSource::File(input_path(file, here, "FILE")?),
+            None => TextSource::Stdin,
+        };
+        let extension = file
+            .and_then(|file| Path::new(file).extension())
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase);
+        let kind = self.kind.unwrap_or(match extension.as_deref() {
+            Some("html" | "htm") => CanvasFormat::Html,
+            Some("png" | "jpeg" | "jpg" | "gif" | "webp" | "svg") => CanvasFormat::Image,
+            _ => CanvasFormat::Markdown,
+        });
+        let kind = match kind {
+            CanvasFormat::Markdown => CanvasKind::Markdown,
+            CanvasFormat::Html => CanvasKind::Html,
+            CanvasFormat::Image => CanvasKind::Image,
+        };
+        Ok((
+            from,
+            CanvasDocument {
+                kind: kind.into(),
+                title: self.title.clone(),
+                ..CanvasDocument::default()
+            },
+        ))
+    }
+}
+
+#[derive(Debug, Subcommand)]
 enum WithTab {
     /// Make a tab, and print the name of the pane that appears in it
     //
@@ -1318,6 +1431,10 @@ pub fn parse(
             Asking::CloseWindow(closing(name.as_deref(), cli.window.as_deref())?)
         }
         What::Pane { doing } => pane(doing, environment, here)?,
+        What::Canvas { .. } if cli.no_window => {
+            return Err(Failure::Refused("canvas commands require a running Muster window".into()));
+        }
+        What::Canvas { doing } => canvas(doing, environment, here)?,
         What::Tab { doing } => tab(doing, environment, here, cli.window.as_deref())?,
         What::Focus { asking: true, .. } => send(request::Payload::FocusAsking(FocusAsking {})),
         What::Focus { back: true, .. } => {
@@ -1363,6 +1480,67 @@ pub fn parse(
         (Some(window), _) => for_window(asking, window)?,
     };
     Ok(Invocation { asking, json: cli.json, socket: cli.socket, no_window: cli.no_window })
+}
+
+fn canvas(
+    doing: &WithCanvas,
+    environment: &BTreeMap<String, String>,
+    here: Option<&Path>,
+) -> Result<Asking, Failure> {
+    use muster_proto::open_canvas::{Beside, NewTab, Placement};
+    let (from, payload) = match doing {
+        WithCanvas::Open { document, left, right, up, down, tab, pane, daemon, focus } => {
+            let (from, document) = document.read_from(here)?;
+            let placement = if *tab {
+                if pane.is_some() && daemon.is_some() {
+                    return Err(Failure::Refused(
+                        "canvas open --tab takes either --pane or --daemon".into(),
+                    ));
+                }
+                let (pane_id, daemon_id) =
+                    pane_and_machine(pane.as_ref(), daemon.as_ref(), environment);
+                Placement::NewTab(NewTab { pane_id, daemon_id })
+            } else {
+                let (pane_id, daemon_id, new_pane_daemon_id) =
+                    split_target(pane.as_ref(), daemon.as_ref(), environment);
+                let side = chosen_side([*left, *right, *up, *down]).unwrap_or("right");
+                Placement::Beside(Beside {
+                    pane_id,
+                    daemon_id,
+                    new_pane_daemon_id,
+                    side: side.to_string(),
+                    ratio: 0.5,
+                })
+            };
+            (
+                from,
+                request::Payload::OpenCanvas(OpenCanvas {
+                    placement: Some(placement),
+                    document: Some(document),
+                    take_focus: *focus,
+                    ..OpenCanvas::default()
+                }),
+            )
+        }
+        WithCanvas::Write { document, pane } => {
+            let (from, document) = document.read_from(here)?;
+            (
+                from,
+                request::Payload::WriteCanvas(WriteCanvas {
+                    pane_id: pane.clone().unwrap_or_default(),
+                    document: Some(document),
+                    ..WriteCanvas::default()
+                }),
+            )
+        }
+        WithCanvas::Read { pane } => {
+            return Ok(send(request::Payload::ReadCanvas(ReadCanvas {
+                pane_id: pane.clone().unwrap_or_default(),
+                ..ReadCanvas::default()
+            })));
+        }
+    };
+    Ok(Asking::CanvasFrom { request: Box::new(Request::new(payload)), from })
 }
 
 /// Where `muster focus` puts the keyboard: a step, a place, or a pane, in that order.
@@ -1420,6 +1598,9 @@ fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
         Asking::Send(request) => return Ok(Asking::Send(Box::new(request.for_window(window)))),
         Asking::SendFrom { request, from } => {
             return Ok(Asking::SendFrom { request: Box::new(request.for_window(window)), from });
+        }
+        Asking::CanvasFrom { request, from } => {
+            return Ok(Asking::CanvasFrom { request: Box::new(request.for_window(window)), from });
         }
         Asking::Watch { request, timeout } => {
             return Ok(Asking::Watch { request: Box::new(request.for_window(window)), timeout });
@@ -1917,9 +2098,13 @@ fn directory(
 /// means. Unlike `--cwd` this file is read on this machine, so the only paths refused are the
 /// two nothing here can resolve.
 pub(crate) fn file_to_read(named: &str, here: Option<&Path>) -> Result<String, Failure> {
+    input_path(named, here, "--file")
+}
+
+fn input_path(named: &str, here: Option<&Path>, argument: &str) -> Result<String, Failure> {
     if named.starts_with('~') {
         return Err(Failure::Refused(format!(
-            "`--file {named}` still has its tilde, so the shell did not expand it - quoting is \
+            "`{argument} {named}` still has its tilde, so the shell did not expand it - quoting is \
              what usually does that, and muster does not expand one itself. Nothing was sent. \
              Write the path out, or leave it unquoted so the shell expands it first."
         )));
@@ -1930,7 +2115,7 @@ pub(crate) fn file_to_read(named: &str, here: Option<&Path>) -> Result<String, F
     }
     let Some(here) = here else {
         return Err(Failure::Refused(format!(
-            "`--file {}` is relative and this command cannot tell what directory it is running \
+            "`{argument} {}` is relative and this command cannot tell what directory it is running \
              in, so there is nothing to resolve it against, and nothing was sent. The usual \
              cause is a shell whose working directory has been deleted underneath it. Give an \
              absolute path, or `cd` somewhere that exists and try again.",

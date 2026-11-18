@@ -21,6 +21,98 @@ use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
 #[test]
+fn a_canvas_round_trips_text_and_image_bytes_through_the_cli() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let environment = canvas_window(&daemon);
+    let terminal = &environment[1].1;
+    let missing = run_reading(&["canvas", "write"], &environment, b"Missing");
+    assert_eq!(missing.code, 1, "{}", missing.errors);
+    assert!(missing.errors.contains("no open canvas"), "{}", missing.errors);
+
+    let source = daemon.root().join("example.HTML");
+    let original = b"<p>Text</p>\n\x1b[31mred\x1b[0m  \n\n";
+    std::fs::write(&source, original).unwrap();
+    let opened = run(&["canvas", "open", source.to_str().unwrap(), "--title", "One"], &environment);
+    assert_eq!(opened.code, 0, "{}", opened.errors);
+    let name = opened.out.trim();
+    let read = run_process(&["canvas", "read", "--pane", name], &environment, b"");
+    assert!(read.status.success(), "{read:?}");
+    assert_eq!(read.stdout, original);
+    assert_eq!(
+        json_from(&run(&["canvas", "read", "--json"], &environment)),
+        json!({ "kind": "html", "title": "One", "revision": 1 }),
+    );
+
+    let image = include_bytes!("../../../muster-daemon/tests/fixtures/canvas/pixel.png");
+    let written = run_reading(&["canvas", "write", "--kind", "image"], &environment, image);
+    assert_eq!(written.code, 0, "{}", written.errors);
+    assert_eq!(written.out.trim(), "2");
+    let read = run_process(&["canvas", "read"], &environment, b"");
+    assert!(read.status.success(), "{read:?}");
+    assert_eq!(read.stdout, image);
+
+    let second =
+        run_reading(&["canvas", "open", "--tab", "--title", "In a tab"], &environment, b"# Second");
+    assert_eq!(second.code, 0, "{}", second.errors);
+    let window = json_from(&run(&["window", "--json"], &environment));
+    assert_eq!(window["keyboard"], json!(terminal));
+    let canvas = window["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pane| pane["callsign"] == second.out.trim())
+        .unwrap();
+    assert_eq!(canvas["state"], "canvas");
+    assert_eq!(canvas["canvas"], json!({ "kind": "markdown", "title": "In a tab", "revision": 1 }));
+    let readable = run(&["window"], &environment);
+    assert!(readable.out.lines().any(|line| line.contains("canvas") && line.contains("In a tab")));
+    let ambiguous = run_reading(&["canvas", "write"], &environment, b"Too many");
+    assert_eq!(ambiguous.code, 1, "{}", ambiguous.errors);
+    assert!(
+        ambiguous.errors.contains(name) && ambiguous.errors.contains(second.out.trim()),
+        "{}",
+        ambiguous.errors
+    );
+}
+
+#[test]
+fn a_canvas_write_displays_the_daemons_durability_refusal() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_with(
+        muster_harness::built_daemon(),
+        &[("MUSTER_DAEMON_CANVAS_FAULT", "fail-after-rename")],
+    );
+    let environment = canvas_window(&daemon);
+    let opened = run_reading(&["canvas", "open"], &environment, b"Original");
+    assert_eq!(opened.code, 0, "{}", opened.errors);
+    let refused = run_reading(&["canvas", "write"], &environment, b"Replacement");
+    assert_eq!(refused.code, 1, "{}", refused.errors);
+    assert!(refused.errors.contains("The durability of this write is unknown."));
+    let current = run(&["canvas", "read"], &environment);
+    assert_eq!(current.code, 0, "{}", current.errors);
+    assert_eq!(current.out, "Replacement");
+    assert_eq!(json_from(&run(&["canvas", "read", "--json"], &environment))["revision"], 2,);
+}
+
+fn canvas_window(daemon: &Daemon) -> Vec<(&'static str, String)> {
+    let socket = daemon.root().join("command.sock").to_string_lossy().into_owned();
+    accepted(&dispatch(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        command_socket_path: socket.clone(),
+        ..Startup::default()
+    })));
+    accepted(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
+    let mut environment = vec![("MUSTER_SOCKET", socket)];
+    let terminal = until_some("the window to show a terminal pane", || {
+        let window = json_from(&run(&["window", "--json"], &environment));
+        window["keyboard"].as_str().map(str::to_string)
+    });
+    environment.push(("MUSTER_PANE", terminal));
+    environment
+}
+
+#[test]
 fn a_pane_can_drive_the_window_it_is_drawn_in() {
     let _turn = muster::testing::fresh_session();
     // An empty daemon: a window opening onto nothing asks its daemon for a first tab, and that
@@ -1035,6 +1127,19 @@ fn run(argv: &[&str], environment: &[(&str, String)]) -> Ran {
 
 /// The same, with `input` on its stdin.
 fn run_reading(argv: &[&str], environment: &[(&str, String)], input: &[u8]) -> Ran {
+    let output = run_process(argv, environment, input);
+    Ran {
+        code: output.status.code().unwrap_or(-1),
+        out: String::from_utf8_lossy(&output.stdout).into_owned(),
+        errors: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
+}
+
+fn run_process(
+    argv: &[&str],
+    environment: &[(&str, String)],
+    input: &[u8],
+) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_muster"));
     command
         .args(argv)
@@ -1054,14 +1159,9 @@ fn run_reading(argv: &[&str], environment: &[(&str, String)], input: &[u8]) -> R
         .expect("stdin was asked to be piped")
         .write_all(input)
         .expect("the muster binary takes its stdin");
-    let output = child
+    child
         .wait_with_output()
-        .unwrap_or_else(|error| panic!("the muster binary could not be run: {error}"));
-    Ran {
-        code: output.status.code().unwrap_or(-1),
-        out: String::from_utf8_lossy(&output.stdout).into_owned(),
-        errors: String::from_utf8_lossy(&output.stderr).into_owned(),
-    }
+        .unwrap_or_else(|error| panic!("the muster binary could not be run: {error}"))
 }
 
 fn json_from(ran: &Ran) -> Value {

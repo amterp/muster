@@ -14,7 +14,7 @@ fn main() {
     // anstream decides here, once, whether the escapes the renderer writes survive: kept for a
     // terminal, stripped for a pipe, a file, `NO_COLOR`, or a `TERM` that cannot draw them. So
     // nothing downstream branches on it, and a person and an agent read the same code path.
-    let code = muster_cli::run(
+    let code = muster_cli::run_with_stdout(
         &argv,
         &environment,
         here.as_deref(),

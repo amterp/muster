@@ -37,6 +37,11 @@ pub const TOPICS: &[Topic] = &[
         text: include_str!("../../../docs/cli/agents.md"),
     },
     Topic {
+        name: "canvas",
+        about: "open, replace and read Markdown, HTML and images in canvas panes",
+        text: include_str!("../../../docs/cli/canvas.md"),
+    },
+    Topic {
         name: "msg",
         about: "agents posting to each other, being woken, and the unread guard",
         text: include_str!("../../../docs/cli/msg.md"),

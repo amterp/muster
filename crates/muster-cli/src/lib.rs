@@ -16,10 +16,11 @@
 //! of Muster somebody copies onto a machine that has never heard of it.
 
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::path::Path;
 
 pub mod args;
+mod canvas;
 pub mod daemon;
 pub mod diagram;
 pub mod dial;
@@ -103,8 +104,6 @@ impl Trouble {
 /// touches the process is `main`. The exception is a command line clap refused: clap renders
 /// those itself, to the stream and in the shape its own conventions call for, and re-rendering
 /// them here would be a worse version of a good error.
-// One arm per kind of command, which is the dispatch read in one place.
-#[allow(clippy::too_many_lines)]
 pub fn run(
     argv: &[String],
     environment: &BTreeMap<String, String>,
@@ -112,6 +111,38 @@ pub fn run(
     input: &mut impl Read,
     out: &mut impl Write,
     errors: &mut impl Write,
+) -> i32 {
+    run_command(argv, environment, here, input, out, errors, |out, document| {
+        canvas::write_original(document, false, out)
+    })
+}
+
+/// A process stdout can filter ANSI escapes in normal CLI output. A canvas read writes
+/// directly to the same stream so both text and image bytes arrive intact.
+pub fn run_with_stdout(
+    argv: &[String],
+    environment: &BTreeMap<String, String>,
+    here: Option<&Path>,
+    input: &mut impl Read,
+    out: &mut anstream::AutoStream<std::io::Stdout>,
+    errors: &mut impl Write,
+) -> i32 {
+    run_command(argv, environment, here, input, out, errors, |out, document| {
+        let stdout = out.as_inner();
+        canvas::write_original(document, stdout.is_terminal(), &mut stdout.lock())
+    })
+}
+
+// One arm per kind of command, which is the dispatch read in one place.
+#[allow(clippy::too_many_lines)]
+fn run_command<W: Write>(
+    argv: &[String],
+    environment: &BTreeMap<String, String>,
+    here: Option<&Path>,
+    input: &mut impl Read,
+    out: &mut W,
+    errors: &mut impl Write,
+    print_canvas: impl FnOnce(&mut W, &muster_proto::CanvasDocument) -> Result<(), Trouble>,
 ) -> i32 {
     let invocation = match args::parse(argv, environment, here) {
         Ok(invocation) => invocation,
@@ -229,6 +260,12 @@ pub fn run(
             return finish(rendered, json, out, errors);
         }
         args::Asking::Send(request) => request,
+        args::Asking::CanvasFrom { mut request, from } => {
+            if let Err(trouble) = canvas::load(&mut request, &from, input) {
+                return report(&trouble, json, errors);
+            }
+            request
+        }
         args::Asking::SendFrom { mut request, from } => match read_text(&from, input) {
             Ok(text) => {
                 if let Some(muster_proto::request::Payload::SendToPane(send)) =
@@ -285,6 +322,19 @@ pub fn run(
         }
     }
 
+    if !json && matches!(request.payload, Some(muster_proto::request::Payload::ReadCanvas(_))) {
+        let read = dial::ask(&request, named.as_deref(), environment).and_then(|answer| {
+            let Some(muster_proto::response::Payload::CanvasRead(read)) = &answer.payload else {
+                render::answer(&answer, false)?;
+                return Err(Trouble::Refused("the window did not return a canvas document".into()));
+            };
+            let document = read.document.as_ref().ok_or_else(|| {
+                Trouble::Refused("the window returned an empty canvas answer".into())
+            })?;
+            print_canvas(out, document)
+        });
+        return read.map_or_else(|trouble| report(&trouble, json, errors), |()| 0);
+    }
     let rendered = ask_a_window(&request, named.as_deref(), environment, json, errors);
     finish(rendered, json, out, errors)
 }

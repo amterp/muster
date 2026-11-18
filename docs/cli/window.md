@@ -207,6 +207,8 @@ One entry per pane every followed daemon holds, on screen or not.
   helpers"), or `null` for a pane nobody made as one. The maker may be on another machine, or
   closed. `[.panes[], .hidden[].panes[]] | .[] | select(.maker == env.MUSTER_PANE)` is a pane's
   own helpers, wherever each is held.
+- `canvas` - a canvas pane's document metadata, with `kind`, `title`, and `revision`. The row
+  reads `state: "canvas"`. Use `muster canvas read` to get its document.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
 - `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done`, `unknown` or `unreachable`.
 - `last_state` - what the pane read before its machine stopped answering, while `state` is

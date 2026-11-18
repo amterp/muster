@@ -36,7 +36,13 @@ it needs a window. `muster docs overview`, under "With no window", has the rest.
 
 **Do not retry on exit 4.** A window or daemon took the request and never answered, so what you
 asked for may already have happened, and sending it again is how an agent gets your instruction
-twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before deciding anything.
+twice. Only 3 is safe to repeat. After a 4, inspect the destination with `muster pane read --pane X`
+or `muster canvas read --pane X`.
+
+Use `muster canvas open FILE --title TITLE` to show a Markdown report, HTML preview, or image
+beside your pane without taking the keyboard. Save the callsign it prints to name it later.
+`muster canvas write FILE` updates the one canvas your pane opened. With several canvases, pass
+`--pane CALLSIGN`. Read `muster docs canvas` for placement and reading the original document.
 
 ## Rules the reference states once and agents still break
 

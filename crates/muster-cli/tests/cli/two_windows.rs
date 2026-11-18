@@ -333,6 +333,21 @@ fn a_pane_whose_window_quit_reaches_the_app_holding_it() {
     assert_eq!(asked(&elsewhere), Vec::<Request>::new(), "the other app was sent a command");
 }
 
+#[test]
+fn a_canvas_read_only_reaches_the_app_holding_the_named_pane() {
+    let scratch = Scratch::new("canvas");
+    let home = scratch.home();
+    let elsewhere = holding(&first_socket(home, 333), "p-elsewhere");
+    let holder = holding(&first_socket(home, 444), "p-canvas");
+
+    let (code, out, errors) = run(&["canvas", "read", "--pane", "p-canvas"], home, None);
+
+    assert_eq!(code, 0, "{errors}");
+    assert_eq!(out, "canvas from p-canvas\n\n");
+    assert_eq!(asked(&holder).len(), 1);
+    assert!(asked(&elsewhere).is_empty());
+}
+
 /// A pane with no `$MUSTER_SOCKET` - restored after its daemon restarted, or run under something
 /// that cleared it - still says which pane it is, and reaches the app holding it.
 #[test]
@@ -423,6 +438,16 @@ fn holding(path: &str, pane: &str) -> Receiver<Request> {
                 }
                 (_, Some(Names::Pane(named))) if named != pane => {
                     response::Payload::Failure(Failure { reason: format!("no pane {named}") })
+                }
+                (Some(request::Payload::ReadCanvas(_)), _) => {
+                    response::Payload::CanvasRead(muster_proto::CanvasRead {
+                        revision: 1,
+                        document: Some(muster_proto::CanvasDocument {
+                            kind: muster_proto::CanvasKind::Markdown.into(),
+                            body: format!("canvas from {pane}\n\n").into_bytes(),
+                            ..muster_proto::CanvasDocument::default()
+                        }),
+                    })
                 }
                 _ => response::Payload::Ok(Accepted::default()),
             };

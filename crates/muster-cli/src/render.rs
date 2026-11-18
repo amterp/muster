@@ -260,6 +260,22 @@ pub fn answer_on(response: &Response, json: bool, local: &Local) -> Result<Strin
             // reader is about to grep. `--json` is where the two facts beside it live.
             read.text.clone()
         }),
+        Some(response::Payload::CanvasWritten(written)) => Ok(if json {
+            json!({ "revision": written.revision }).to_string()
+        } else {
+            written.revision.to_string()
+        }),
+        Some(response::Payload::CanvasRead(read)) if json => {
+            let document = read.document.as_ref().ok_or_else(|| {
+                Trouble::Refused("the window returned an empty canvas answer".into())
+            })?;
+            Ok(json!({
+                "kind": canvas_kind(document.kind()),
+                "title": document.title,
+                "revision": read.revision,
+            })
+            .to_string())
+        }
         Some(response::Payload::Daemons(daemons)) => {
             Ok(if json { daemons_json(daemons).to_string() } else { daemons_text(daemons) })
         }
@@ -303,6 +319,26 @@ pub fn answer_on(response: &Response, json: bool, local: &Local) -> Result<Strin
              has an answer, even a refusal."
                 .to_string(),
         )),
+    }
+}
+
+fn canvas_kind(kind: muster_proto::CanvasKind) -> &'static str {
+    match kind {
+        muster_proto::CanvasKind::Markdown => "markdown",
+        muster_proto::CanvasKind::Html => "html",
+        muster_proto::CanvasKind::Image => "image",
+        muster_proto::CanvasKind::Unspecified => "unknown",
+    }
+}
+
+fn pane_state<'a>(
+    pane: Option<&muster_proto::RosterPane>,
+    agent: Option<&'a muster_proto::PaneStateChanged>,
+) -> &'a str {
+    match (pane.and_then(|pane| pane.canvas.as_ref()), agent) {
+        (_, Some(agent)) if agent.state == "unreachable" => "unreachable",
+        (Some(_), _) => "canvas",
+        (_, agent) => agent.map_or("unknown", |agent| agent.state.as_str()),
     }
 }
 
@@ -861,12 +897,17 @@ fn pane_box(
     if let Some(beside) = row.map(beside_callsign).filter(|beside| !beside.is_empty()) {
         lines.push(vec![(beside.to_string(), PLAIN)]);
     }
-    let state = agent.map_or("unknown", |agent| agent.state.as_str());
+    let state = pane_state(row, agent);
     let mut doing = vec![(state.to_string(), agent_style(state))];
     if !size.is_empty() {
         doing.push((format!(" · {size}"), PLAIN));
     }
     lines.push(doing);
+    if let Some(canvas) = row.and_then(|row| row.canvas.as_ref())
+        && !canvas.title.is_empty()
+    {
+        lines.push(vec![(canvas.title.clone(), PLAIN)]);
+    }
     if say_machine && let Some(row) = row {
         lines.push(vec![(format!("on {}", row.daemon_id), QUIET)]);
     }
@@ -988,7 +1029,7 @@ impl Rows<'_> {
     ) -> String {
         let (widths, now_ms, say_machine) = (self.widths, self.now_ms, self.say_machine);
         let agent = self.states.get(pane.pane_id.as_str()).copied();
-        let state = agent.map_or("unknown", |agent| agent.state.as_str());
+        let state = pane_state(Some(pane), agent);
         let held = agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default();
         let mut line = format!(
             "  {}{}  {}  {}  {}  {}",
@@ -1004,10 +1045,12 @@ impl Rows<'_> {
         // What it waits on says more than its title while it waits, and the two would crowd a line.
         // An unreachable pane shows neither: its title is the last one its daemon had, and would
         // read as what the pane is doing now.
+        let subtitle =
+            pane.canvas.as_ref().map_or(pane.subtitle.as_str(), |canvas| canvas.title.as_str());
         match waiting.filter(|waiting| state == "waiting" && !waiting.is_empty()) {
             Some(waiting) => line.push_str(&styled(&format!(" · on {waiting}"), QUIET)),
-            None if !pane.subtitle.is_empty() && state != "unreachable" => {
-                line.push_str(&styled(&format!(" · {}", pane.subtitle), QUIET));
+            None if !subtitle.is_empty() && (state != "unreachable" || pane.canvas.is_some()) => {
+                line.push_str(&styled(&format!(" · {subtitle}"), QUIET));
             }
             None => {}
         }
@@ -1394,7 +1437,7 @@ impl Widths {
             widths.place = widths.place.max(pane.place.to_string().width());
             widths.name = widths.name.max(Helpers::called(pane, depth).width());
             let agent = states.get(pane.pane_id.as_str());
-            let state = agent.map_or("unknown", |agent| agent.state.as_str());
+            let state = pane_state(Some(pane), agent.copied());
             widths.state = widths.state.max(state.width());
             let held = agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default();
             widths.held = widths.held.max(held.width());
@@ -1479,7 +1522,7 @@ fn unplaced_tab_json(
         "daemons": tab.daemon_ids,
         "label": tab.label,
         "given_name": tab.given_name,
-        "panes": tab.panes.iter().map(|pane| with_agent(json!({
+        "panes": tab.panes.iter().map(|pane| with_pane(json!({
             "pane": pane.pane_id,
             "callsign": (!pane.callsign.is_empty()).then_some(&pane.callsign),
             "name": (!pane.name.is_empty()).then_some(&pane.name),
@@ -1487,13 +1530,30 @@ fn unplaced_tab_json(
             "label": pane.label,
             "quiet": pane.quiet,
             "maker": maker_json(pane),
-        }), states.get(pane.pane_id.as_str()).copied())).collect::<Vec<Value>>(),
+        }), pane, states.get(pane.pane_id.as_str()).copied())).collect::<Vec<Value>>(),
     })
 }
 
 /// The id of the pane that made this one as its helper, or null for a pane nobody made as one.
 fn maker_json(pane: &muster_proto::RosterPane) -> Value {
     if pane.maker.is_empty() { Value::Null } else { json!(pane.maker) }
+}
+
+fn with_pane(
+    row: Value,
+    pane: &muster_proto::RosterPane,
+    agent: Option<&muster_proto::PaneStateChanged>,
+) -> Value {
+    let mut row = with_agent(row, agent);
+    if let Some(canvas) = &pane.canvas {
+        row["state"] = pane_state(Some(pane), agent).into();
+        row["canvas"] = json!({
+            "kind": canvas_kind(canvas.kind()),
+            "title": canvas.title,
+            "revision": canvas.revision,
+        });
+    }
+    row
 }
 
 /// A pane's row with what its agent is doing added, the same fields wherever the pane is listed:
@@ -1617,7 +1677,7 @@ fn window_json(window: &Window, others: Others, local: &Local) -> Value {
         }
         tabs_out.push(described);
         for pane in &tab.panes {
-            panes.push(with_agent(json!({
+            panes.push(with_pane(json!({
                 "pane": pane.pane_id,
                 // What to call the pane: `--pane` and `--to` take it, renamed or not. Null only
                 // from a daemon that draws none.
@@ -1641,7 +1701,7 @@ fn window_json(window: &Window, others: Others, local: &Local) -> Value {
                 // `on_screen` above cannot say different things: a rectangle of no size is a
                 // place, and a pane behind a zoom or in a background tab has none.
                 "rect": places.get(pane.pane_id.as_str()).copied().map_or(Value::Null, rect_json),
-            }), states.get(pane.pane_id.as_str()).copied()));
+            }), pane, states.get(pane.pane_id.as_str()).copied()));
         }
     }
 

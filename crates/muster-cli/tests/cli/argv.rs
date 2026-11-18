@@ -42,6 +42,7 @@ fn cli_conformance() {
                     "request",
                     match &invocation.asking {
                         Asking::Send(request)
+                        | Asking::CanvasFrom { request, .. }
                         | Asking::Watch { request, .. }
                         | Asking::WatchLayout { watch: request, .. } => Some(described(request)),
                         Asking::SendFrom { request, from } => match filled(request, from, given) {
@@ -65,6 +66,7 @@ fn cli_conformance() {
                     "window",
                     match &invocation.asking {
                         Asking::Send(request)
+                        | Asking::CanvasFrom { request, .. }
                         | Asking::Watch { request, .. }
                         | Asking::WatchLayout { watch: request, .. }
                         | Asking::SendFrom { request, .. } => {
@@ -79,10 +81,14 @@ fn cli_conformance() {
                 (
                     "reads_from",
                     match &invocation.asking {
-                        Asking::SendFrom { from: TextSource::File(path), .. } => {
+                        Asking::SendFrom { from: TextSource::File(path), .. }
+                        | Asking::CanvasFrom { from: TextSource::File(path), .. } => {
                             Some(json!({ "file": path }))
                         }
-                        Asking::SendFrom { from: TextSource::Stdin, .. } => Some(json!("stdin")),
+                        Asking::SendFrom { from: TextSource::Stdin, .. }
+                        | Asking::CanvasFrom { from: TextSource::Stdin, .. } => {
+                            Some(json!("stdin"))
+                        }
                         _ => None,
                     },
                 ),
@@ -205,6 +211,7 @@ fn described(request: &Request) -> Value {
     };
     described_tab(payload)
         .or_else(|| described_conversation(payload))
+        .or_else(|| described_canvas(payload))
         .unwrap_or_else(|| described_pane_or_window(payload))
 }
 
@@ -247,6 +254,54 @@ fn described_conversation(payload: &request::Payload) -> Option<Value> {
             ("group", said(&open.group)),
         ])
     }))
+}
+
+fn described_canvas(payload: &request::Payload) -> Option<Value> {
+    use muster_proto::open_canvas::Placement;
+    let document = |document: &muster_proto::CanvasDocument| {
+        json!({
+            "kind": document.kind().as_str_name(),
+            "title": document.title,
+        })
+    };
+    Some(match payload {
+        request::Payload::OpenCanvas(open) => {
+            let placement = match open.placement.as_ref()? {
+                Placement::Beside(at) => json!({
+                    "beside": fields([
+                        ("pane_id", said(&at.pane_id)),
+                        ("daemon_id", said(&at.daemon_id)),
+                        ("new_pane_daemon_id", said(&at.new_pane_daemon_id)),
+                        ("side", Some(json!(at.side))),
+                        ("ratio", Some(json!(at.ratio))),
+                    ])
+                }),
+                Placement::NewTab(at) => json!({
+                    "new_tab": fields([
+                        ("pane_id", said(&at.pane_id)),
+                        ("daemon_id", said(&at.daemon_id)),
+                    ])
+                }),
+            };
+            json!({
+                "open_canvas": {
+                    "placement": placement,
+                    "document": open.document.as_ref().map(document),
+                    "take_focus": open.take_focus,
+                }
+            })
+        }
+        request::Payload::WriteCanvas(write) => json!({
+            "write_canvas": fields([
+                ("pane_id", said(&write.pane_id)),
+                ("document", write.document.as_ref().map(document)),
+            ])
+        }),
+        request::Payload::ReadCanvas(read) => json!({
+            "read_canvas": fields([("pane_id", said(&read.pane_id))])
+        }),
+        _ => return None,
+    })
 }
 
 fn described_split(split: &muster_proto::SplitPane) -> Value {
@@ -445,6 +500,7 @@ fn answers_here(asking: &Asking) -> Option<Value> {
     match asking {
         Asking::Send(_)
         | Asking::SendFrom { .. }
+        | Asking::CanvasFrom { .. }
         | Asking::Watch { .. }
         | Asking::WatchLayout { .. } => None,
         Asking::Print(_) => Some(json!("printing something this binary holds")),
@@ -502,4 +558,15 @@ fn a_word_a_pane_verb_cannot_take_is_refused_naming_pane() {
     assert!(new.contains("--pane <REF>"), "{new}");
     let close = refusal(&["pane", "close", "otter", "llama"]);
     assert!(!close.contains("name the pane with"), "{close}");
+}
+
+#[test]
+fn canvas_titles_are_validated_by_utf8_bytes_before_the_file_is_read() {
+    for title in ["é".repeat(129), "a\nb".to_string()] {
+        let argv =
+            ["canvas".into(), "open".into(), "/no-such-file".into(), "--title".into(), title];
+        let failure = args::parse(&argv, &BTreeMap::new(), None).unwrap_err();
+        let args::Failure::Refused(reason) = failure else { panic!("{failure:?}") };
+        assert!(reason.contains("256 bytes") && reason.contains("control characters"), "{reason}");
+    }
 }
