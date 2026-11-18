@@ -5,17 +5,26 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
+  "comments": [
+    {
+      "id": "c_328yI1OKP",
+      "body": "2026-11-18: the owner asked for this to be designed and built with parallel work (muster msg, @human+hornet #4), pointing at tooling-feedback card a_326iWSzf0 and his whiteboard comment on it. Provenance set to approved on that ask. Design: a canvas is a pane whose daemon holds a document (Markdown, HTML or an image) instead of running a program; the core builds one HTML page from it and the shell draws that in a locked-down web view; `muster canvas open|write|read` and the API drive it. The plan is under review by a Codex reviewer before building. Three choices go to the owner with a recommendation each: a web view with scripts on and the network off; no editing by the person in this version; a canvas closes with the pane that opened it.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795026495498
+    }
+  ],
   "created_at_millis": 1792800268999,
   "creator": "Alexander Terp",
   "description": "amterp's chat note, 2026-10-23: \"text canvas agents can draw or update and a pairing scratchpad\". His gloss the same day: a lighter canvas to complement an agent you are running with, probably able to show richer media the way Ghostty or kitty can (images, as through the kitty graphics protocol), not only text.\n\nToday an agent can show something only in its own transcript, or publish a page outside Muster (Lectern). A canvas would sit beside the agent's pane, and the agent would update it through the `muster` CLI as its work moves, a plan or a diagram say, while you edit it too.\n\nNot defined yet: amterp wants to shape it at his computer before anyone designs it. Open: whether it is a kind of pane in the split or something else, what it holds (text, Markdown, images), how an agent writes to it and reads your edits back, and whether it outlives the agent's session.",
   "id": "a_2n4ry4yY0",
-  "position": "b1N",
-  "provenance": "human-raised",
+  "position": "a0",
+  "provenance": "approved",
   "title": "A canvas beside an agent that it writes and updates and you can edit: a pairing scratchpad",
   "type": "feature",
-  "updated_at_millis": 1794703872820,
+  "updated_at_millis": 1795026495498,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792800268999}
+    {"field":"column","value":"backlog-hi","at":1792800268999},
+    {"field":"column","value":"in-progress","at":1795026495300}
   ]
 }

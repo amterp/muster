@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "pane-new-start-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1795026495725,
+  "creator": "Alexander Terp",
+  "description": "From tooling-feedback card a_326iWSzf0, its first fix. `muster tab new --run '\u003ccmd\u003e'` returns in 0.06 s, but `\u003ccmd\u003e` starts 0.75-0.96 s later on a devenv: 0.54 s of that is the person's interactive login bash, which the pane runs before `--run`.\n\nA way to start the program directly, such as `--exec \u003cargv\u003e`, would remove most of the delay for a pane that only shows something. Open: what the pane does when the program exits (a `--run` pane drops back to its shell), what environment it gets without the profile, and how it sits with Fencil `pane-command-job-control`.\n\nNot approved to build: it adds a flag to the CLI and a field to the daemon's protocol, which fails the third approval test. Recommendation: wait until canvas panes land (a_2n4ry4yY0), since they cover the card's own case, an image shown at once, and see whether anything still needs this.",
+  "id": "a_328yIIikz",
+  "position": "b3E",
+  "provenance": "ai-proposed",
+  "title": "pane new: start a pane's program without the login shell",
+  "type": "enhancement",
+  "updated_at_millis": 1795026495725,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795026495725}
+  ]
+}
