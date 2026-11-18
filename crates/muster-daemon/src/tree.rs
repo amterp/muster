@@ -166,12 +166,12 @@ impl Node {
     pub(crate) fn insert(&mut self, beside: &str, new: &str, side: Side, ratio: f32) -> bool {
         let Some(path) = self.path_to(beside) else { return false };
         let leaf = self.at_mut(&path).expect("the path was just found");
-        let existing = Box::new(Node::Pane(beside.to_string()));
-        let added = Box::new(Node::Pane(new.to_string()));
+        let existing = Node::Pane(beside.to_string());
+        let added = Node::Pane(new.to_string());
         *leaf = if side.is_after() {
-            Node::Split { axis: side.axis(), ratio, first: existing, second: added }
+            split(side.axis(), ratio, existing, added)
         } else {
-            Node::Split { axis: side.axis(), ratio: 1.0 - ratio, first: added, second: existing }
+            split(side.axis(), clamp_ratio(1.0 - ratio), added, existing)
         };
         true
     }
@@ -232,7 +232,7 @@ impl Node {
             (Axis::Rows, false) => Side::Up,
             (Axis::Rows, true) => Side::Down,
         };
-        let ratio = if after { *ratio } else { 1.0 - *ratio };
+        let ratio = if after { *ratio } else { clamp_ratio(1.0 - *ratio) };
         let leaves = sibling.leaves().into_iter().map(str::to_string).collect();
         Some(Neighbours { leaves, side, ratio })
     }
@@ -242,20 +242,21 @@ impl Node {
     /// has changed since; false, changing nothing, when none of them is here.
     pub(crate) fn put_back(&mut self, pane: &str, neighbours: &Neighbours) -> bool {
         let Neighbours { leaves, side, ratio } = neighbours;
+        let ratio = clamp_ratio(*ratio);
         if let Some(path) = self.path_holding_exactly(leaves) {
             let node = self.at_mut(&path).expect("the path was just found");
             let existing = std::mem::replace(node, Node::Pane(String::new()));
             let added = Node::Pane(pane.to_string());
             *node = if side.is_after() {
-                split(side.axis(), *ratio, existing, added)
+                split(side.axis(), ratio, existing, added)
             } else {
-                split(side.axis(), 1.0 - *ratio, added, existing)
+                split(side.axis(), clamp_ratio(1.0 - ratio), added, existing)
             };
             return true;
         }
         let present = self.leaves().into_iter().find(|leaf| leaves.iter().any(|held| held == leaf));
         match present.map(str::to_string) {
-            Some(beside) => self.insert(&beside, pane, *side, *ratio),
+            Some(beside) => self.insert(&beside, pane, *side, ratio),
             None => false,
         }
     }
@@ -383,6 +384,11 @@ impl Node {
             (Node::Pane(_) | Node::Foreign { .. }, _) => None,
         }
     }
+}
+
+// Subtracting a tiny share from 1.0 can round to 1.0, including in older saved neighbours.
+fn clamp_ratio(ratio: f32) -> f32 {
+    ratio.clamp(0.0_f32.next_up(), 1.0_f32.next_down())
 }
 
 fn split(axis: Axis, ratio: f32, first: Node, second: Node) -> Node {

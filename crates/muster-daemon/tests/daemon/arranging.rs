@@ -100,6 +100,61 @@ fn moving_a_pane_beside_another_in_its_own_tab_announces_the_tab_once() {
 }
 
 #[test]
+fn a_split_with_a_tiny_retained_share_can_be_saved_and_restored() {
+    use crate::persistence::{state_file, stop, until_restored};
+
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("a", in_new_tab("t1")));
+    let placement = proto::Placement {
+        r#where: Some(proto::placement::Where::Beside(proto::placement::Beside {
+            pane: "a".into(),
+            side: Side::Left.into(),
+            ratio: Some(1.0e-8),
+        })),
+    };
+    make(&mut control, create("b", placement));
+    let before = snapshot(&mut control);
+
+    stop(&mut daemon, &mut control);
+    assert!(state_file(&daemon).is_file(), "the daemon must save the split it accepted");
+    daemon.restart();
+    let after = until_restored(&mut daemon.connect(), 2);
+    assert_eq!(after.tabs, before.tabs);
+}
+
+#[test]
+fn reopening_the_first_pane_of_a_tiny_split_keeps_the_tab_saveable() {
+    use crate::persistence::{state_file, stop, until_restored};
+    use crate::reopen::{close, reopened};
+
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("a", in_new_tab("t1")));
+    let placement = proto::Placement {
+        r#where: Some(proto::placement::Where::Beside(proto::placement::Beside {
+            pane: "a".into(),
+            side: Side::Right.into(),
+            ratio: Some(1.0e-8),
+        })),
+    };
+    make(&mut control, create("b", placement));
+    close(&mut control, "a");
+    reopened(&mut control, "a", "fresh");
+    let before = snapshot(&mut control);
+    let Some(proto::node::Node::Split(split)) = &before.tabs[0].root.as_ref().unwrap().node else {
+        panic!("a should be back beside b");
+    };
+    assert!(0.0 < split.ratio && split.ratio < 1.0, "invalid ratio {}", split.ratio);
+
+    stop(&mut daemon, &mut control);
+    assert!(state_file(&daemon).is_file(), "the daemon must save the reopened split");
+    daemon.restart();
+    let after = until_restored(&mut daemon.connect(), 2);
+    assert_eq!(after.tabs, before.tabs);
+}
+
+#[test]
 fn moving_a_pane_out_announces_the_tab_it_left_and_then_where_it_went() {
     let (_daemon, mut control) = two_panes();
     let asked = expect(&mut control, moved("b", in_new_tab("t2")), proto::Outcome::Done);
