@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_32BKDWmxo",
+      "body": "Second test with the same signature, 2026-11-18: `session_names::a_rename_whose_returns_ran_out_is_sent_when_a_later_post_finds_it` failed the gate at a load of 17.6, timing out after 20 s waiting for p1's agent to be Idle, with the fake agent `Stopped(SIGTTIN)` on screen. It passed alone three times straight afterward. So the defect is in how the fake agent is started under the test shell, not in one test.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795032104944
+    }
+  ],
   "created_at_millis": 1794384109524,
   "creator": "Alexander Terp",
   "description": "Seen once 2026-11-11 in a full gate at load 21 (a --ssh tier ran beside it); passed 3 of 3 alone. The test timed out after 20s waiting for p1's agent to be Idle: 'it was None Unknown', and the screen ended '[1]+  Stopped(SIGTTIN)  .../home/.muster/bin/claude' with a shell prompt under it. So the fake agent was in the background of the pane's shell when it read its terminal, which is a race in how the test starts or resumes the agent, not only slowness. Log: gate-13 of that night's session; the panic is at crates/muster-harness/src/until.rs:113.",
@@ -13,7 +21,7 @@
   "position": "b32",
   "title": "messaging::a_plain_wait_outlasts_its_agents_next_turn fails under load with its agent stopped by SIGTTIN",
   "type": "bug",
-  "updated_at_millis": 1794384109524,
+  "updated_at_millis": 1795032104944,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794384109524}
   ]
