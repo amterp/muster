@@ -4,23 +4,17 @@ use crate::support::*;
 use muster_harness::FIRST_ANSWER_BUDGET;
 use proto::session_request;
 
-/// A daemon-backed test is only in the default gate while a daemon costs about as much as
-/// herdr's did to start (`docs/testing.md`), so this holds muster-daemon to that.
-///
-/// The best of several starts, not each one: macOS assesses a freshly built binary the first
-/// time it runs (about a second), and the gate runs other daemons' tests beside this one.
-/// Twenty starts of a debug build measured 3.9 ms at the fastest and 4.1 ms at the median, on a
-/// machine at a load average of 30, so the fastest of five fails only when every start has got
-/// several times slower.
+/// Take the fastest of several starts because macOS can pause a newly built binary on its first run.
 #[test]
+#[ignore = "./dev --perf checks the wall-clock budget on a quiet machine"]
 fn a_spawned_daemon_answers_its_first_request_within_budget() {
     let starts: Vec<_> = (0..5).map(|_| daemon().started_in()).collect();
     let fastest = starts.iter().min().unwrap();
+    println!("Daemon first answer: fastest {fastest:?}, all starts {starts:?}");
     assert!(
         *fastest <= FIRST_ANSWER_BUDGET,
-        "the fastest of five daemons took {fastest:?} to answer (all: {starts:?}), over the \
-         {FIRST_ANSWER_BUDGET:?} budget.\n  Impact: daemon-backed tests cost more than the \
-         default gate can carry.\n  Check what the daemon does before it binds its socket."
+        "daemon startup exceeded {FIRST_ANSWER_BUDGET:?} on all five starts.\n  \
+         Check what the daemon does before it accepts and answers requests."
     );
 }
 

@@ -25,7 +25,7 @@ args:
     codex bool     # Drive the installed Codex through its hooks, its screen and the doorbell. Reaches the network; not in the gate.
     opencode bool  # Drive OpenCode 1.18+ on a free model through its plugin, its screen and the doorbell. Reaches the network; not in the gate.
     linux bool     # Run the daemon's and detection's suites on Linux, in docker. Not in the gate.
-    perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
+    perf bool      # Check daemon startup and the per-unit budgets in perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
     anyway bool    # With --perf, measure on a busy machine anyway rather than refusing.
     latency bool   # Time input-to-glyph through muster-daemon. Not in the gate.
@@ -559,6 +559,8 @@ fn fail_empty_suite(language, cure):
     print_err(cure)
     exit(1)
 
+DAEMON_STARTUP_TEST = "lifecycle::a_spawned_daemon_answers_its_first_request_within_budget"
+
 // What the default gate is expected to skip, and what runs it instead.
 //
 // A suite that stops running is invisible in a count, which makes it worse than a red one:
@@ -578,6 +580,7 @@ fn fail_empty_suite(language, cure):
 // its run both report 319 whether or not a suite skipped itself, which is the observation this
 // card was raised on - so Swift is asked twice instead: discovery says the suite still exists,
 // and the run's own skip records say it actually skipped.
+//
 // The doctest row is the check earning its place on the day it was written: it was drafted
 // from a count of `#[ignore]` in the tree, and the runner answered with one more than that.
 // A ```ignore example is skipped too, and no grep of the source would have said so.
@@ -602,6 +605,8 @@ SKIPPED_SUITES = [
       "note": "macOS hides a system binary's environment, so MUSTER_RESUME cannot be read off the fake agent; ./dev --linux and CI's linux job run it" },
     { "language": "Rust", "suite": "muster-daemon's echo latency", "skipped": 1,
       "note": "a measurement, not a property; cargo test --release -p muster-daemon --test daemon -- flood::echo_latency --ignored --nocapture prints it" },
+    { "language": "Rust", "suite": "muster-daemon's first answer", "skipped": 1,
+      "note": "needs a quiet machine; ./dev --perf runs it" },
     { "language": "Rust", "suite": "muster-daemon's live Claude Code checks", "skipped": 13,
       "note": "reach the network and spend model turns; ./dev --claude-code runs them" },
     { "language": "Rust", "suite": "muster-daemon's live Codex checks", "skipped": 9,
@@ -660,7 +665,7 @@ fn fail_perf(stdout, stderr, code):
     print_err("  ./dev --perf --record")
     exit(1)
 
-// The one ignored test the remote tier passes over. It is ignored on macOS because macOS hides
+// The remote tier passes over this test on macOS because macOS hides
 // the environment of /bin/sh, which its fake agent runs under, so it cannot pass there; the tier
 // runs every ignored test to reach the remote ones, and reached this one too. ./dev --linux and
 // CI's linux job run it.
@@ -704,7 +709,7 @@ fn run_ssh_tier():
     //
     // muster-contract is left out because its ignored tests are the contract tier's: they
     // launch the app, and need a GUI session rather than a container.
-    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract -- --ignored --list --skip {MACOS_ONLY_IGNORED}`
+    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract -- --ignored --list --skip {MACOS_ONLY_IGNORED} --skip {DAEMON_STARTUP_TEST}`
     names = stdout.split("\n").filter(fn(line) line.ends_with(": test"))
     if len(names) == 0:
         print_err(red("The remote tier discovered no tests."))
@@ -718,7 +723,7 @@ fn run_ssh_tier():
     // --no-fail-fast, because cargo otherwise stops at the first test binary with a failure, and
     // the seam's remote tests come after the daemon's: one failure there hid every one of them
     // from this tier from 2026-10-28, when MACOS_ONLY_IGNORED landed, until it was skipped.
-    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract --no-fail-fast -- --ignored --skip {MACOS_ONLY_IGNORED}`
+    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract --no-fail-fast -- --ignored --skip {MACOS_ONLY_IGNORED} --skip {DAEMON_STARTUP_TEST}`
 
     // Said here because this is where it matters and nothing else says it. The container is
     // left up deliberately - a devenv is a thing you keep - but it goes on costing the machine
@@ -2025,6 +2030,14 @@ if perf:
     // measured there describes a binary nobody uses - and it would report headroom the
     // shipped binary does not have.
     $`cargo build --release --bin muster-perf`
+    startup_status = 0
+    if not record:
+        // Keep the per-unit measurements available when startup exceeds its budget.
+        startup, stderr, startup_status = $`cargo test --release -p muster-daemon --test daemon -- {DAEMON_STARTUP_TEST} --ignored --exact --nocapture` catch:
+            print_err(stderr.trim())
+        print(startup.trim())
+        if startup_status == 0 and not matches(startup, "test result: ok. 1 passed;", partial=true):
+            fail_empty_suite("daemon startup", "Check DAEMON_STARTUP_TEST and its #[ignore] in lifecycle.rs.")
     // Handed over rather than sampled again on the other side, for the same reason the log path
     // and the screens are: what a load average means is a per-OS question, and this script is
     // where this repo answers those. What the harness does with it is record it, so that a
@@ -2039,6 +2052,8 @@ if perf:
         stdout, stderr, code = $`target/release/muster-perf --load {load} --cores {counts}` catch:
             fail_perf(stdout, stderr, code)
     print(stdout.trim())
+    if startup_status != 0:
+        exit(startup_status)
 
 if latency:
     announce("latency")

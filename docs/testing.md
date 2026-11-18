@@ -20,9 +20,9 @@ Muster's principles, adapted to that evidence:
   reality," on the reasoning that a real daemon would be too slow for the default gate. Measured, that reasoning was
   wrong: herdr, the daemon Muster ran first, cost 25 ms to spawn and answer, a session snapshot 0.7 ms, and a full
   mirror bootstrap - snapshot, subscribe, first event - 0.7 ms. Thirty repeated runs across serial and parallel
-  execution produced no failures. muster-daemon answers its first request in about 4 ms. The seconds-per-test cost
-  worth fearing belongs to agent *detection*, which reads a pane's screen: a test that needs an agent state pays
-  the detector's three-second startup grace once per pane, and only those tests pay it.
+  execution produced no failures. Muster-daemon answers its first request in about 4 ms. `./dev --perf` checks
+  that it still answers within 25 ms on a quiet machine. A test that needs an agent state pays the detector's
+  three-second startup grace once per pane.
 
   So the backend seam is not faked at all. Tests that need a daemon spawn a real one through
   `crates/muster-harness` - one daemon per test, stopped on drop including on a panic, isolated by a scratch root
@@ -53,10 +53,8 @@ Muster's principles, adapted to that evidence:
   directory the test runs from. `./dev` builds the workspace before testing, so that daemon is
   from the same commit; a narrowed `cargo test -p` builds only its own package and gets whichever daemon was built
   last. The request builders the daemon's tests read with, such as `make`, `beside` and `until_text`, are in
-  `muster_harness::requests` for the same reason. A spawned
-  one answers its first request in about 4 ms, and a test holds that under the 25 ms that keeps daemon-backed tests
-  in the default gate. A Muster config naming the daemon is `muster_config()`, and a window's test points the seam
-  at it the way a person's file would. Agent state is driven the way a real agent drives it:
+  `muster_harness::requests` for the same reason. A window's test points the seam at its daemon with
+  `muster_config()`. The daemon's fake agent drives the same detector as a real agent:
   `Daemon::start_detecting()` gives the daemon a home holding a fake agent (`crates/muster-harness/fake-agent/`)
   under the name `claude` and an override manifest that reads its markers, `run_agent` starts it in a pane, and
   `set_agent_state` tells it what to paint - so no test sets a state the detector did not reach. Beside the control

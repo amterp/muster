@@ -23,9 +23,8 @@ use crate::until::{PATIENCE, until_within};
 
 /// How long a spawned daemon may take to answer its first request.
 ///
-/// herdr's figure, measured when the suite chose to run a real daemon per test
-/// (`docs/testing.md`): 25 ms to spawn and answer. Daemon-backed tests stay in the default gate
-/// only while a daemon costs about that, so muster-daemon is held to it too.
+/// herdr's figure when the suite chose to run a real daemon per test (`docs/testing.md`).
+/// `./dev --perf` checks this budget on a quiet machine.
 pub const FIRST_ANSWER_BUDGET: Duration = Duration::from_millis(25);
 
 /// A socket path must fit `sockaddr_un.sun_path`, 104 bytes on macOS, so the root stays short.
@@ -210,8 +209,7 @@ impl Daemon {
             paused: None,
             started_in: Duration::ZERO,
         };
-        daemon.process = Some(daemon.spawn(held));
-        daemon.started_in = daemon.wait_until_answering();
+        daemon.spawn_and_wait(held);
         daemon
     }
 
@@ -230,8 +228,13 @@ impl Daemon {
                 "restarting a daemon that is still running; stop or kill it first"
             );
         }
-        self.process = Some(self.spawn(None));
-        self.started_in = self.wait_until_answering();
+        self.spawn_and_wait(None);
+    }
+
+    fn spawn_and_wait(&mut self, held: Option<i32>) {
+        let spawned = Instant::now();
+        self.process = Some(self.spawn(held));
+        self.started_in = self.wait_until_answering(spawned);
     }
 
     fn spawn(&self, held: Option<i32>) -> Child {
@@ -289,9 +292,8 @@ impl Daemon {
     }
 
     /// Dials until the daemon answers a snapshot, and says how long that took from the spawn.
-    fn wait_until_answering(&mut self) -> Duration {
-        let spawned = Instant::now();
-        let deadline = spawned + PATIENCE;
+    fn wait_until_answering(&mut self, spawned: Instant) -> Duration {
+        let deadline = Instant::now() + PATIENCE;
         while Instant::now() < deadline {
             if let Ok(mut control) = Control::try_connect(&self.socket_path) {
                 control.ask(Service::Session(proto::SessionRequest {
