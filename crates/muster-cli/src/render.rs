@@ -384,6 +384,10 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::ClosedPanes(_) => "the closed panes that can be reopened",
         response::Payload::ImagePasteTarget(_) => "an image paste destination",
         response::Payload::ImagePastePrepared(_) => "a prepared image paste",
+        response::Payload::CanvasWritten(_) => "a canvas write",
+        response::Payload::CanvasRead(_) => "a canvas document",
+        response::Payload::CanvasRendered(_) => "a rendered canvas",
+        response::Payload::CanvasKeyHandled(_) => "a canvas key's outcome",
     }
 }
 

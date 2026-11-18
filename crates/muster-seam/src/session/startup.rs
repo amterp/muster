@@ -14,12 +14,12 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use muster_core::composition::{Daemon, DaemonId};
 use muster_core::config::{Appearance, Feel, Rgb};
 use muster_core::diagnostics::poison;
-use muster_core::input::{Bindings, PaneInputSettings};
+use muster_core::input::{Bindings, KeyEvent, Keymap, PaneInputSettings};
 use muster_daemon_client::install as remote_install;
 
 /// The daemon binary this Muster ships, as the shell resolved it.
@@ -191,15 +191,26 @@ pub(crate) fn bindings() -> Bindings {
 /// with. That is what makes a change need a relaunch, and it is the honest arrangement while
 /// the encoder is built once per pane - re-reading here would leave a window whose panes
 /// disagree depending on when each was opened.
-static PANE_INPUT: Mutex<Option<PaneInputSettings>> = Mutex::new(None);
+static PANE_INPUT: Mutex<Option<(PaneInputSettings, Keymap)>> = Mutex::new(None);
+static DEFAULT_KEYMAP: LazyLock<Keymap> = LazyLock::new(Keymap::default);
 
 pub(crate) fn set_pane_input(settings: PaneInputSettings) {
-    *poison::lock(&PANE_INPUT, "input-settings") = Some(settings);
+    let keymap = settings.keymap();
+    *poison::lock(&PANE_INPUT, "input-settings") = Some((settings, keymap));
 }
 
 /// The typing settings in force, which with no config file is what Muster ships.
 pub(crate) fn pane_input() -> PaneInputSettings {
-    poison::lock(&PANE_INPUT, "input-settings").clone().unwrap_or_default()
+    poison::lock(&PANE_INPUT, "input-settings")
+        .as_ref()
+        .map(|(settings, _)| settings.clone())
+        .unwrap_or_default()
+}
+
+pub(crate) fn canvas_key_is_unbound(key: &KeyEvent) -> bool {
+    let typing = poison::lock(&PANE_INPUT, "input-settings");
+    let keymap = typing.as_ref().map_or(&*DEFAULT_KEYMAP, |(_, keymap)| keymap);
+    keymap.is_unbound(key)
 }
 
 /// The root knobs, held for whatever asks about them next.

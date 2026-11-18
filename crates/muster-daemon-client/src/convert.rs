@@ -176,6 +176,7 @@ pub fn pane(record: proto::Pane) -> Pane {
     let facts = record.facts.unwrap_or_default();
     Pane {
         id: PaneId::new(record.pane),
+        canvas: record.canvas.map(canvas_metadata),
         // Which tab holds it is the tab trees' to say; the mirror sets it.
         tab: TabId::new(""),
         agent_state: match agent_state {
@@ -225,6 +226,24 @@ pub fn pane(record: proto::Pane) -> Pane {
         maker: record.maker.filter(|maker| !maker.is_empty()).map(PaneId::new),
         maker_closed: record.maker_closed,
         state_since_ms: record.state_since_ms,
+    }
+}
+
+fn canvas_metadata(record: proto::Canvas) -> muster_core::canvas::CanvasMetadata {
+    use muster_core::canvas::{CanvasInfo, CanvasKind, CanvasMetadata};
+    CanvasMetadata {
+        info: CanvasInfo {
+            revision: record.revision,
+            kind: match record.kind() {
+                proto::CanvasKind::Unspecified => CanvasKind::Unknown,
+                proto::CanvasKind::Markdown => CanvasKind::Markdown,
+                proto::CanvasKind::Html => CanvasKind::Html,
+                proto::CanvasKind::Image => CanvasKind::Image,
+            },
+            title: record.title,
+        },
+        bytes: record.bytes,
+        opened_by: record.opened_by.filter(|id| !id.is_empty()).map(PaneId::new),
     }
 }
 

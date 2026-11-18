@@ -167,6 +167,23 @@ pub(crate) fn read_copy(text: &str) -> CopyNode {
 pub(crate) fn read_pane(given: &Value) -> Pane {
     Pane {
         id: PaneId::new(text(given, "id")),
+        canvas: given.get("canvas").map(|canvas| {
+            use muster_core::canvas::{CanvasInfo, CanvasKind, CanvasMetadata};
+            CanvasMetadata {
+                info: CanvasInfo {
+                    revision: canvas["revision"].as_u64().expect("canvas revision"),
+                    kind: match canvas["kind"].as_str() {
+                        Some("markdown") => CanvasKind::Markdown,
+                        Some("html") => CanvasKind::Html,
+                        Some("image") => CanvasKind::Image,
+                        _ => CanvasKind::Unknown,
+                    },
+                    title: text(canvas, "title"),
+                },
+                bytes: canvas["bytes"].as_u64().unwrap_or_default(),
+                opened_by: optional(canvas, "openedBy").map(PaneId::new),
+            }
+        }),
         // Set by the mirror from the trees; a case never has to.
         tab: TabId::new(""),
         agent_state: AgentState::from_backend(&text(given, "agentState")),

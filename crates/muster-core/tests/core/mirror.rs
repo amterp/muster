@@ -46,6 +46,7 @@ fn mirror_conformance() {
             ("tabs", Some(json!(mirror.tabs().map(|t| t.id.to_string()).collect::<Vec<_>>()))),
             ("paneTabs", Some(pane_tabs(&mirror))),
             ("agentStates", Some(agent_states(&mirror))),
+            ("canvas", canvases(&mirror)),
             ("names", named(&mirror)),
             ("tabLabels", tab_labels(&mirror)),
             ("layouts", Some(layouts(&mirror))),
@@ -62,6 +63,23 @@ fn mirror_conformance() {
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+fn canvases(mirror: &Mirror) -> Option<Value> {
+    let canvases: Map<String, Value> = mirror
+        .panes()
+        .filter_map(|pane| {
+            let canvas = pane.canvas.as_ref()?;
+            Some((
+                pane.id.to_string(),
+                json!({
+                    "revision": canvas.info.revision,
+                    "terminal_refusal": pane.require_terminal().err(),
+                }),
+            ))
+        })
+        .collect();
+    (!canvases.is_empty()).then_some(Value::Object(canvases))
 }
 
 fn pane_tabs(mirror: &Mirror) -> Value {
@@ -178,6 +196,9 @@ fn layouts(mirror: &Mirror) -> Value {
 fn describe(change: &Change) -> String {
     match change {
         Change::PaneAdded(pane) => format!("paneAdded:{pane}"),
+        Change::CanvasChanged { pane, revision, reset } => {
+            format!("canvasChanged:{pane}:{revision}:{reset}")
+        }
         Change::PaneRemoved { pane, .. } => format!("paneRemoved:{pane}"),
         Change::AgentStateChanged { pane, from, to } => {
             format!("agentStateChanged:{pane}:{}->{}", from.as_str(), to.as_str())

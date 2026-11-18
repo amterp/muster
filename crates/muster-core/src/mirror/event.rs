@@ -85,6 +85,11 @@ pub struct Restored {
 pub enum Change {
     MessagingChanged,
     PaneAdded(PaneId),
+    CanvasChanged {
+        pane: PaneId,
+        revision: u64,
+        reset: bool,
+    },
     /// A pane its daemon no longer holds, with what it was called as it went: its name, or its
     /// callsign.
     PaneRemoved {
@@ -171,6 +176,7 @@ impl Change {
         match self {
             Change::MessagingChanged => "messaging_changed",
             Change::PaneAdded(_) => "pane_added",
+            Change::CanvasChanged { .. } => "canvas_changed",
             Change::PaneRemoved { .. } => "pane_removed",
             Change::AgentStateChanged { .. } => "agent_state",
             Change::FinishedUnseen { .. } => "finished_unseen",
@@ -207,6 +213,7 @@ impl Change {
                 | Change::FinishedUnseen { .. }
                 | Change::AgentDescribed(_)
                 | Change::PaneRelabelled(_)
+                | Change::CanvasChanged { .. }
                 | Change::TabRelabelled(_)
                 | Change::PasteHeld { .. }
                 | Change::ClipboardWrite { .. }
@@ -235,6 +242,7 @@ impl Change {
             || matches!(
                 self,
                 Change::PaneRelabelled(_)
+                    | Change::CanvasChanged { reset: true, .. }
                     | Change::TabRelabelled(_)
                     | Change::Restarted(_)
                     | Change::RestartSettled

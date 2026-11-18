@@ -1905,6 +1905,10 @@ public enum Core {
     case .renameTab: return "rename_tab"
     case .closeTab: return "close_tab"
     case .hideTab: return "hide_tab"
+    case .openCanvas: return "open_canvas"
+    case .writeCanvas: return "write_canvas"
+    case .readCanvas: return "read_canvas"
+    case .canvasPage: return "canvas_page"
     case .endNumberedChord: return "end_numbered_chord"
     case .quitting: return "quitting"
     case nil: return "(none)"
@@ -2192,7 +2196,7 @@ public enum Core {
       info("window.raised", ["window": event.window])
       NSApp.activate(ignoringOtherApps: true)
       window(for: event)?.raise()
-    case nil:
+    case .canvasChanged, nil:
       break
     }
   }

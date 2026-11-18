@@ -63,7 +63,7 @@ impl PaneInput {
 
     pub fn is_unbound(&self, key: &KeyEvent) -> bool {
         let typing = self.typing.read().expect("a panicking sender poisoned the settings");
-        matches!(typing.keymap.resolve(key), Resolution::Unbound)
+        typing.keymap.is_unbound(key)
     }
 
     /// Sends one keystroke, unless the keymap takes it, and says whether the pane got it: as

@@ -64,7 +64,10 @@ pub(crate) fn target(window: WindowId, request: &proto::ReadImagePasteTarget) ->
         {
             return Err("the key is not Ctrl+V");
         }
-        let destination = session::image_destination(window, None).ok_or("the pane is gone")?;
+        let destination = session::image_destination(window, None)
+            .ok()
+            .flatten()
+            .ok_or("the terminal is gone")?;
         if !destination.remote {
             return Err("the pane is local and reads its own clipboard");
         }
@@ -101,8 +104,12 @@ pub(crate) fn prepare(window: WindowId, request: proto::PrepareImagePaste) -> Re
             &muster_core::mirror::backend::PaneId::new(request.pane_id),
         )
     });
-    let Some(destination) = session::image_destination(window, named) else {
-        return Response::failure("the image's destination pane is gone; nothing was pasted");
+    let destination = match session::image_destination(window, named) {
+        Ok(Some(destination)) => destination,
+        Ok(None) => {
+            return Response::failure("the image's destination pane is gone; nothing was pasted");
+        }
+        Err(why) => return Response::failure(why),
     };
     if !destination.connected {
         return Response::failure("the image's daemon is disconnected; nothing was pasted");

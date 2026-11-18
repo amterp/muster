@@ -5,6 +5,71 @@
   "why": "The mirror is the core's picture of what a daemon holds: its snapshot, then every event after it, applied in order. The daemon sends whole records, numbered and in order, and nothing from before a snapshot, so every event is applied as it stands and the mirror never has to decide whether one is old news. What it decides is what changed, since that is what the window repaints.\n\nA case is a snapshot, then events, then optionally a second snapshot, which is a reconnect. `panes`, `tabs` and `layouts` are what the mirror holds after all of them, and `changes` is everything the events and the second snapshot reported, in order. Trees render on one line: `columns(p1, p2@0.5)` is p1 beside p2, each at half.",
   "cases": [
     {
+      "name": "an equal-sized canvas write changes only its revision",
+      "why": "The pane keeps its layout and title when the agent replaces the document with another of the same length.",
+      "given": {
+        "snapshot": {
+          "tabs": [{ "id": "t1", "root": "p1" }],
+          "panes": [{ "id": "p1", "callsign": "otter", "canvas": { "revision": 6, "kind": "markdown", "title": "Plan", "bytes": 50 } }]
+        },
+        "events": [
+          { "kind": "paneChanged", "id": "p1", "callsign": "otter", "canvas": { "revision": 7, "kind": "markdown", "title": "Plan", "bytes": 50 } }
+        ]
+      },
+      "expect": {
+        "panes": ["p1"], "tabs": ["t1"], "paneTabs": { "p1": "t1" },
+        "agentStates": { "p1": "unknown" }, "layouts": { "t1": "p1" },
+        "health": "connected", "restoring": false,
+        "canvas": { "p1": { "revision": 7, "terminal_refusal": "pane otter is a canvas" } },
+        "changes": ["canvasChanged:p1:7:false"]
+      }
+    },
+    {
+      "name": "a replacement snapshot can reset a canvas revision",
+      "why": "The shell must redraw from the authoritative file after a lost write whose durability was uncertain.",
+      "given": {
+        "snapshot": {
+          "tabs": [{ "id": "t1", "root": "p1" }],
+          "panes": [{ "id": "p1", "canvas": { "revision": 7, "kind": "markdown" } }]
+        },
+        "resnapshot": {
+          "tabs": [{ "id": "t1", "root": "p1" }],
+          "panes": [{ "id": "p1", "canvas": { "revision": 6, "kind": "markdown" } }]
+        }
+      },
+      "expect": {
+        "panes": ["p1"], "tabs": ["t1"], "paneTabs": { "p1": "t1" },
+        "agentStates": { "p1": "unknown" }, "layouts": { "t1": "p1" },
+        "health": "connected", "restoring": false,
+        "canvas": { "p1": { "revision": 6, "terminal_refusal": "pane p1 is a canvas" } },
+        "changes": ["canvasChanged:p1:6:true"]
+      }
+    },
+    {
+      "name": "a restarted daemon can reuse a canvas revision",
+      "why": "A read after restore can return a different document with the same revision the window saw before the restart.",
+      "given": {
+        "snapshot": {
+          "instance": 1,
+          "tabs": [{ "id": "t1", "root": "p1" }],
+          "panes": [{ "id": "p1", "canvas": { "revision": 7, "kind": "markdown" } }]
+        },
+        "resnapshot": {
+          "instance": 2,
+          "restoredFromFile": true,
+          "tabs": [{ "id": "t1", "root": "p1" }],
+          "panes": [{ "id": "p1", "canvas": { "revision": 7, "kind": "markdown" } }]
+        }
+      },
+      "expect": {
+        "panes": ["p1"], "tabs": ["t1"], "paneTabs": { "p1": "t1" },
+        "agentStates": { "p1": "unknown" }, "layouts": { "t1": "p1" },
+        "health": "connected", "restoring": false,
+        "canvas": { "p1": { "revision": 7, "terminal_refusal": "pane p1 is a canvas" } },
+        "changes": ["canvasChanged:p1:7:true"]
+      }
+    },
+    {
       "name": "a snapshot is the whole world, and every pane takes the tab whose tree names it",
       "why": "A daemon's record of a pane does not say which tab holds it; its tab's tree does. Taking it from the trees means the two can never disagree. The tab is announced before its panes and its tree after them, so nothing hears of an arrangement holding a pane it has not been told exists.",
       "given": {

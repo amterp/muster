@@ -1876,7 +1876,10 @@ impl Session {
                             Some(filling) => vec![filling],
                             None => layout.root.panes().into_iter().cloned().collect(),
                         })
-                        .filter(|pane| !attached.contains_key(pane) && mirror.pane(pane).is_some()),
+                        .filter(|pane| {
+                            !attached.contains_key(pane)
+                                && mirror.pane(pane).is_some_and(|record| record.canvas.is_none())
+                        }),
                 );
             }
             wanted
@@ -1907,6 +1910,7 @@ impl Session {
     /// pane it belongs to - which is what stops a bridge losing a race against its own
     /// listener.
     fn open_channel(&mut self, daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
+        self.require_terminal(daemon, pane)?;
         if self.panes.get(daemon).is_some_and(|held| held.contains_key(pane)) {
             return Ok(());
         }
@@ -1960,12 +1964,23 @@ impl Session {
         self.panes.get(daemon)?.get(pane)
     }
 
+    fn require_terminal(&self, daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
+        if let Some(backend) = self.backends.get(daemon) {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            if let Some(record) = mirror.pane(pane) {
+                return record.require_terminal();
+            }
+        }
+        Ok(())
+    }
+
     /// What one daemon's mirror says a pane's agent is doing.
     ///
     /// Scoped to the daemon the key names rather than searched, like every other lookup here.
     fn agent_state(&self, pane: &PaneKey) -> Option<AgentState> {
         let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
-        mirror.agent_state(&pane.pane)
+        let record = mirror.pane(&pane.pane)?;
+        record.canvas.is_none().then(|| record.state())
     }
 
     /// When its daemon says the pane's agent entered the state it is in.
@@ -1977,7 +1992,10 @@ impl Session {
     /// One pane's agent as this window paints it, if its daemon holds the pane.
     fn agent(&self, key: &PaneKey) -> Option<PaneAgent> {
         let mirror = poison::lock(&self.backends.get(&key.daemon)?.mirror, "mirror");
-        mirror.pane(&key.pane).map(|pane| self.presented(key, pane, mirror.progress(&pane.id)))
+        mirror
+            .pane(&key.pane)
+            .filter(|pane| pane.canvas.is_none())
+            .map(|pane| self.presented(key, pane, mirror.progress(&pane.id)))
     }
 
     /// The harness a pane's daemon recognized in it, if it recognized one.
@@ -2199,7 +2217,7 @@ impl Session {
         let mut agents = Vec::new();
         for (id, backend) in &self.backends {
             let mirror = poison::lock(&backend.mirror, "mirror");
-            for pane in mirror.panes() {
+            for pane in mirror.panes().filter(|pane| pane.canvas.is_none()) {
                 agents.push(self.presented(
                     &PaneKey::new(id, &pane.id),
                     pane,
@@ -2439,7 +2457,7 @@ impl Session {
             |daemon| attaching.contains(daemon),
             |daemon| self.daemon_socket(daemon),
             |daemon| self.remote(daemon),
-            |daemon, pane| self.view_pane(window, daemon, pane),
+            |daemon, pane| self.view_pane(window, daemon, pane, mirrors.get(daemon).map(|m| &**m)),
         )
         .covered_by(self.windows[window].conversation.as_ref().map(|shown| shown.group.clone()))
     }
@@ -2460,7 +2478,9 @@ impl Session {
                     |daemon| attaching.contains(daemon),
                     |daemon| self.daemon_socket(daemon),
                     |daemon| self.remote(daemon),
-                    |daemon, pane| self.view_pane(window, daemon, pane),
+                    |daemon, pane| {
+                        self.view_pane(window, daemon, pane, mirrors.get(daemon).map(|m| &**m))
+                    },
                 )
             })
             .collect()
@@ -2474,12 +2494,23 @@ impl Session {
         self.backends.get(daemon).is_some_and(|backend| backend.tunnel.is_some())
     }
 
-    fn view_pane(&self, window: WindowId, daemon: &DaemonId, pane: &PaneId) -> ViewPane {
+    fn view_pane(
+        &self,
+        window: WindowId,
+        daemon: &DaemonId,
+        pane: &PaneId,
+        mirror: Option<&Mirror>,
+    ) -> ViewPane {
         let key = PaneKey::new(daemon, pane);
+        let offset = self.font_sizes.offset(&key);
+        if let Some(canvas) = mirror.and_then(|mirror| mirror.pane(pane)?.canvas.as_ref()) {
+            return ViewPane::for_canvas(pane.clone(), canvas.info.clone(), offset);
+        }
         ViewPane {
             id: pane.clone(),
+            canvas: None,
             link_socket_path: self.channel(daemon, pane).map(|held| held.link_path().to_string()),
-            font_size_offset: self.font_sizes.offset(&key),
+            font_size_offset: offset,
             bridge_restarts: self.bridge_restarts(window, &key),
         }
     }
@@ -2631,11 +2662,19 @@ impl Session {
                     |daemon| attaching.contains(daemon),
                     |daemon| self.daemon_socket(daemon),
                     |daemon| self.remote(daemon),
-                    |_, pane| ViewPane {
-                        id: pane.clone(),
-                        link_socket_path: None,
-                        font_size_offset: 0,
-                        bridge_restarts: 0,
+                    |daemon, pane| {
+                        if let Some(canvas) =
+                            mirrors.get(daemon).and_then(|m| m.pane(pane)?.canvas.as_ref())
+                        {
+                            return ViewPane::for_canvas(pane.clone(), canvas.info.clone(), 0);
+                        }
+                        ViewPane {
+                            id: pane.clone(),
+                            canvas: None,
+                            link_socket_path: None,
+                            font_size_offset: 0,
+                            bridge_restarts: 0,
+                        }
                     },
                 )
             })
@@ -2878,8 +2917,30 @@ fn asks_a_closed_window(payload: &request::Payload) -> bool {
 }
 
 /// The pane a window's keyboard feeds, if it has one.
-pub(crate) fn keyboard_pane(window: WindowId) -> Option<Arc<AttachedPane>> {
-    poison::lock(&SESSION, "session").keyboard_pane(window)
+pub(crate) fn keyboard_pane(window: WindowId) -> Result<Option<Arc<AttachedPane>>, String> {
+    let session = poison::lock(&SESSION, "session");
+    if let Some(pane) = session.keyboard_pane(window) {
+        return Ok(Some(pane));
+    }
+    if let Some(key) = session.keyboard_key(window) {
+        session.require_terminal(&key.daemon, &key.pane)?;
+    }
+    Ok(None)
+}
+
+pub(crate) fn require_terminal(daemon: &DaemonId, pane: &PaneId) -> Result<(), String> {
+    poison::lock(&SESSION, "session").require_terminal(daemon, pane)
+}
+
+pub(crate) fn canvas_has_keyboard(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> bool {
+    let session = poison::lock(&SESSION, "session");
+    let focused =
+        session.keyboard_key(window).is_some_and(|key| &key.daemon == daemon && &key.pane == pane);
+    focused
+        && session.backends.get(daemon).is_some_and(|backend| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            mirror.pane(pane).is_some_and(|record| record.canvas.is_some())
+        })
 }
 
 pub(crate) struct ImageDestination {
@@ -2894,13 +2955,14 @@ pub(crate) struct ImageDestination {
 pub(crate) fn image_destination(
     window: WindowId,
     named: Option<PaneKey>,
-) -> Option<ImageDestination> {
+) -> Result<Option<ImageDestination>, String> {
     let session = poison::lock(&SESSION, "session");
-    let key = named.or_else(|| session.keyboard_key(window))?;
-    let backend = session.backends.get(&key.daemon)?;
+    let Some(key) = named.or_else(|| session.keyboard_key(window)) else { return Ok(None) };
+    session.require_terminal(&key.daemon, &key.pane)?;
+    let Some(backend) = session.backends.get(&key.daemon) else { return Ok(None) };
     let mirror = poison::lock(&backend.mirror, "mirror");
-    let pane = mirror.pane(&key.pane)?;
-    Some(ImageDestination {
+    let Some(pane) = mirror.pane(&key.pane) else { return Ok(None) };
+    Ok(Some(ImageDestination {
         ready: pane.image_paste,
         key,
         input: backend.images.clone(),
@@ -2908,7 +2970,7 @@ pub(crate) fn image_destination(
         remote: backend.tunnel.is_some(),
         connected: backend.follower.connection().control().is_some()
             && backend.follower.connection().input_ready(),
-    })
+    }))
 }
 
 pub(crate) fn cancel_image(daemon: &DaemonId, pane: &PaneId) {
@@ -3239,7 +3301,9 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
         // never arrives is the same dark pane, which is the case `bridge_link` names as the
         // reason its accept loop runs more than once. Not an ask: this notice can arrive after
         // the new surface's start was reported, and must not take that start back.
-        watchdog::restarted(key);
+        if require_terminal(&daemon, &key.pane).is_ok() {
+            watchdog::restarted(key);
+        }
         return;
     }
     // Nothing to add about how it ended: this arrival says only that a surface's command is
@@ -3303,6 +3367,9 @@ static DARK: Mutex<BTreeSet<PaneKey>> = Mutex::new(BTreeSet::new());
 /// runs on 0.4.1 show never coming (kan a_2IRcMjFs0); this one needs no cooperation from
 /// libghostty or from the dying process, because what ended is a connection this window owns.
 pub(crate) fn bridge_ended(pane: &PaneKey, ended: &Ended) {
+    if require_terminal(&pane.daemon, &pane.pane).is_err() {
+        return;
+    }
     // One death, however many things noticed it. Both watches can fire for one bridge, and
     // counting the second would spend a pane's replacements twice as fast as it earned them.
     //
@@ -6330,48 +6397,16 @@ fn announce(daemon: &DaemonId, notice: Notice) {
     match notice {
         Notice::ProcessesReplaced { .. } => cancel_all_images(daemon),
         Notice::Bootstrapped { changes, unreadable } => {
-            log::info(
-                "mirror.bootstrap",
-                fields! {
-                    "daemon" => daemon.to_string(),
-                    "changes" => changes.len().to_string(),
-                    "unreadable" => unreadable.to_string(),
-                },
-            );
-            if unreadable > 0 {
-                log::warn(
-                    "mirror.tabs_unreadable",
-                    fields! {
-                        "daemon" => daemon.to_string(),
-                        "count" => unreadable.to_string(),
-                        "impact" => "these tabs are not drawn, and neither are their panes",
-                        "check" => "a daemon of this protocol never sends a tree that does not \
-                                    read, so this is a bug on one side or the other - the \
-                                    daemon's log for the snapshot, and the protocol versions \
-                                    the two sides were built with",
-                    },
-                );
-            }
-            // A bootstrap replaces the whole picture, so anything composition names may have
-            // gone in the gap it was rebuilt across.
-            reconcile(daemon);
-            publish("bootstrap");
-            health(daemon, Health::Connected, "");
-            partners::dirty();
-            catch_up_tab_names(daemon);
-            catch_up_tab_trees(daemon);
-            for change in &changes {
-                if let Change::PaneRemoved { pane, called } = change {
-                    tell_closed_maker(daemon, pane, called.as_deref());
-                }
-            }
-            tell_closed_makers();
-            share_callsigns();
-            for change in changes {
-                report(daemon, &change);
-            }
+            announce_bootstrap(daemon, changes, unreadable);
         }
         Notice::Changed(change) => {
+            if let Some(event) = canvas_change(daemon, &change) {
+                if change.republishes() {
+                    publish(change.kind());
+                }
+                ffi::emit(&event);
+                return;
+            }
             if let Change::PaneRemoved { pane, .. } = &change {
                 note_closed_in(daemon, pane);
             }
@@ -6441,6 +6476,53 @@ fn announce(daemon: &DaemonId, notice: Notice) {
     announce_asking();
 }
 
+fn announce_bootstrap(daemon: &DaemonId, changes: Vec<Change>, unreadable: usize) {
+    log::info(
+        "mirror.bootstrap",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "changes" => changes.len().to_string(),
+            "unreadable" => unreadable.to_string(),
+        },
+    );
+    if unreadable > 0 {
+        log::warn(
+            "mirror.tabs_unreadable",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "count" => unreadable.to_string(),
+                "impact" => "these tabs are not drawn, and neither are their panes",
+                "check" => "a daemon of this protocol never sends a tree that does not \
+                            read, so this is a bug on one side or the other - the \
+                            daemon's log for the snapshot, and the protocol versions \
+                            the two sides were built with",
+            },
+        );
+    }
+    // A bootstrap replaces the whole picture, so anything composition names may have
+    // gone in the gap it was rebuilt across.
+    reconcile(daemon);
+    publish("bootstrap");
+    health(daemon, Health::Connected, "");
+    partners::dirty();
+    catch_up_tab_names(daemon);
+    catch_up_tab_trees(daemon);
+    for change in &changes {
+        if let Change::PaneRemoved { pane, called } = change {
+            tell_closed_maker(daemon, pane, called.as_deref());
+        }
+    }
+    tell_closed_makers();
+    share_callsigns();
+    for change in changes {
+        if let Some(event) = canvas_change(daemon, &change) {
+            ffi::emit(&event);
+        } else {
+            report(daemon, &change);
+        }
+    }
+}
+
 /// Asks for a bridge for every pane of this daemon that nothing has dialed, now that it answers.
 ///
 /// The moment a bridge can attach again. The bridges started while the daemon was away failed
@@ -6508,6 +6590,16 @@ fn report_again(daemon: &DaemonId) {
     for pane in &noticed.settled {
         announce_state(pane);
     }
+}
+
+fn canvas_change(daemon: &DaemonId, change: &Change) -> Option<Event> {
+    let Change::CanvasChanged { pane, revision, reset } = change else { return None };
+    Some(Event::new(event::Payload::CanvasChanged(crate::proto::CanvasChanged {
+        daemon_id: daemon.to_string(),
+        pane_id: pane.to_string(),
+        revision: *revision,
+        reset: *reset,
+    })))
 }
 
 fn report(daemon: &DaemonId, change: &Change) {
@@ -8234,6 +8326,43 @@ fn typeable(daemon: &DaemonId, pane: &PaneId) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_bootstrap_passes_a_canvas_reset_to_the_shell() {
+        use prost::Message;
+
+        static RECEIVED: Mutex<Option<crate::proto::CanvasChanged>> = Mutex::new(None);
+
+        extern "C" fn on_event(bytes: *const u8, len: usize) {
+            // SAFETY: the seam owns the bytes and keeps them live for this call.
+            let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+            if let Ok(Event { payload: Some(event::Payload::CanvasChanged(changed)), .. }) =
+                Event::decode(bytes)
+            {
+                *RECEIVED.lock().unwrap() = Some(changed);
+            }
+        }
+
+        let _turn = crate::testing::fresh_session();
+        ffi::muster_set_event_callback(Some(on_event));
+        announce(
+            &DaemonId::new("local"),
+            Notice::Bootstrapped {
+                changes: vec![Change::CanvasChanged {
+                    pane: PaneId::new("p1"),
+                    revision: 7,
+                    reset: true,
+                }],
+                unreadable: 0,
+            },
+        );
+        ffi::muster_set_event_callback(None);
+        let changed = RECEIVED.lock().unwrap().take().expect("the shell received the reset");
+        assert_eq!(changed.daemon_id, "local");
+        assert_eq!(changed.pane_id, "p1");
+        assert_eq!(changed.revision, 7);
+        assert!(changed.reset);
+    }
 
     #[test]
     fn a_pending_tree_write_cannot_reach_a_later_sessions_daemon_with_the_same_name() {

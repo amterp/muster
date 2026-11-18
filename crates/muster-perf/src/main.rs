@@ -222,6 +222,7 @@ fn view_cost() -> Cost {
                 |_| false,
                 |_, pane| ViewPane {
                     id: pane.clone(),
+                    canvas: None,
                     link_socket_path: Some(pane.to_string()),
                     font_size_offset: 0,
                     bridge_restarts: 0,
@@ -528,6 +529,7 @@ fn nested(ids: &[PaneId]) -> LayoutNode {
 fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
     Pane {
         id: id.clone(),
+        canvas: None,
         tab: tab.clone(),
         agent_state: AgentState::Idle,
         finished_unseen: false,

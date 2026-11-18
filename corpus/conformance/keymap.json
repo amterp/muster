@@ -5,6 +5,18 @@
   "why": "Input precedence is fixed (architecture.md): the keymap gets first refusal on every chord, and only what it declines is reported toward the pane. The chords here are the ones people press without thinking in a terminal that is not a text field, and getting one wrong is not a crash - it is a key that quietly does something close to right, which is the kind of bug that survives for months. These are Muster's own policy, so the citation is the whole oracle: there is nothing external to record against.",
   "cases": [
     {
+      "name": "an unbound arrow goes to a canvas web view",
+      "why": "The web view supplies keyboard scrolling without a terminal channel.",
+      "given": { "key": "ArrowUp", "canvas": {} },
+      "expect": { "to_view": true }
+    },
+    {
+      "name": "a rebound text chord is consumed before canvas input",
+      "why": "Muster sees the configured binding first. A canvas has no terminal to receive its bytes.",
+      "given": { "key": "ArrowUp", "canvas": { "text": "up" } },
+      "expect": { "to_view": false }
+    },
+    {
       "name": "cmd+backspace is unix-line-discard",
       "why": "The chord that prompted the whole table. Without it ⌘⌫ deletes a single character and a person holds the key down instead, which looks broken. Readline's 0x15 does the same job, and being a control code it means the same thing whatever the pane has negotiated.",
       "given": { "key": "Backspace", "modifiers": ["super"] },

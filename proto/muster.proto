@@ -121,6 +121,10 @@ message Request {
     ClearAgent clear_agent = 112;
     MarkUnread mark_unread = 113;
     HideTab hide_tab = 114;
+    OpenCanvas open_canvas = 115;
+    WriteCanvas write_canvas = 116;
+    ReadCanvas read_canvas = 117;
+    CanvasPage canvas_page = 118;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -1197,6 +1201,96 @@ message SplitPane {
   string maker = 12;
 }
 
+enum CanvasKind {
+  CANVAS_KIND_UNSPECIFIED = 0;
+  CANVAS_KIND_MARKDOWN = 1;
+  CANVAS_KIND_HTML = 2;
+  CANVAS_KIND_IMAGE = 3;
+}
+
+message CanvasInfo {
+  uint64 revision = 1;
+  CanvasKind kind = 2;
+  string title = 3;
+}
+
+// One document. Text is UTF-8. The body is limited to 4 MiB.
+message CanvasDocument {
+  CanvasKind kind = 1;
+  bytes body = 2;
+  // For images, the canonical media type. Empty for text.
+  string image_type = 3;
+  string title = 4;
+}
+
+// Opens a canvas and answers Made. Request.from_pane identifies its opener.
+message OpenCanvas {
+  message Beside {
+    string pane_id = 1;
+    string daemon_id = 2;
+    string side = 3;
+    float ratio = 4;
+    string new_pane_daemon_id = 5;
+  }
+
+  message NewTab {
+    string pane_id = 1;
+    string daemon_id = 2;
+  }
+
+  oneof placement {
+    Beside beside = 1;
+    NewTab new_tab = 2;
+  }
+  CanvasDocument document = 3;
+  string name = 4;
+  bool take_focus = 5;
+}
+
+// Replaces the whole document and answers CanvasWritten. An empty pane waits for no
+// focus change: it selects the one open canvas this caller opened.
+message WriteCanvas {
+  string pane_id = 1;
+  string daemon_id = 2;
+  CanvasDocument document = 3;
+}
+
+message CanvasWritten {
+  uint64 revision = 1;
+}
+
+// Reads the original document. An empty pane uses the opener lookup as WriteCanvas does.
+message ReadCanvas {
+  string pane_id = 1;
+  string daemon_id = 2;
+}
+
+message CanvasRead {
+  uint64 revision = 1;
+  CanvasDocument document = 2;
+}
+
+// Fetches a page and its policy through the shell's C ABI. The shell schedules this read
+// off its main thread and keeps at most one in flight per canvas.
+message CanvasPage {
+  string pane_id = 1;
+  string daemon_id = 2;
+}
+
+message CanvasRendered {
+  // The revision actually read, which may already be newer than the last event. The shell
+  // drops a reply older than the latest observed revision and fetches that revision again.
+  uint64 revision = 1;
+  CanvasKind kind = 2;
+  string html = 3;
+  // Install these restrictions before loading the page. The shell cancels navigation and
+  // may open a link clicked by the person externally if its scheme is in the list.
+  repeated string load_schemes = 4;
+  repeated string external_link_schemes = 5;
+  // Always false until the owner approves enabling document scripts.
+  bool scripts_enabled = 6;
+}
+
 // Sends text to a pane, whether or not anything is showing it.
 //
 // Not the keyboard. SendText above is a keystroke's worth of input on its way to the pane this
@@ -1920,6 +2014,10 @@ message Response {
     ImagePasteTarget image_paste_target = 33;
     ImagePastePrepared image_paste_prepared = 34;
     PaneThresholds pane_thresholds = 35;
+    CanvasWritten canvas_written = 36;
+    CanvasRead canvas_read = 37;
+    CanvasRendered canvas_rendered = 38;
+    CanvasKeyHandled canvas_key_handled = 39;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.
@@ -2567,6 +2665,8 @@ message KeyDown {
 
   // Whether a composition remains in progress afterwards.
   bool still_composing = 4;
+
+  CanvasKeyTarget canvas_target = 5;
 }
 
 // A key release.
@@ -2576,6 +2676,18 @@ message KeyDown {
 // asked ends up with every keystroke twice.
 message KeyUp {
   KeyEvent key = 1;
+  CanvasKeyTarget canvas_target = 2;
+}
+
+// The pane whose web view received the key. A key for a canvas that lost focus is
+// consumed with to_view false, so it cannot be delivered to the new focused pane.
+message CanvasKeyTarget {
+  string daemon_id = 1;
+  string pane_id = 2;
+}
+
+message CanvasKeyHandled {
+  bool to_view = 1;
 }
 
 // Text with no keystroke behind it - a character picker, a service, a committed
@@ -2992,11 +3104,22 @@ message Event {
     ConversationChanged conversation_changed = 99;
     ImagePasteChanged image_paste_changed = 101;
     AskingListChanged asking_list_changed = 102;
+    CanvasChanged canvas_changed = 103;
   }
 
   // The window this event is for, by its name, or empty for one about the whole app: what the
   // config says, agent states, attention. A shell with one window can ignore it.
   string window = 100;
+}
+
+// A canvas's document moved independently of its place in the tree. A parked canvas can
+// also receive this event. On reset, discard replies from the previous attachment and
+// fetch this revision again. A daemon can reuse a revision after restoring an older file.
+message CanvasChanged {
+  string daemon_id = 1;
+  string pane_id = 2;
+  uint64 revision = 3;
+  bool reset = 4;
 }
 
 // A paste the pane's daemon did not write, waiting for somebody to confirm it.
@@ -3535,6 +3658,9 @@ message RosterPane {
   // tell an agent's pane from a shell's without reading it back out of a label: closing a pane
   // that runs an agent asks first, and closing a shell does not.
   string agent = 20;
+
+  // The canvas role and title, including when this pane is parked.
+  CanvasInfo canvas = 22;
 }
 
 // Everything this window is showing, as one message.
@@ -3683,6 +3809,9 @@ message ViewPane {
   // tore down, and only it knows whether the daemon still holds the pane
   // (crates/muster-core/src/respawn.rs).
   uint32 bridge_restarts = 5;
+
+  // Present for canvases. A canvas has no bridge and uses font_size_offset as page zoom.
+  CanvasInfo canvas = 6;
 }
 
 // What the agent in a pane is doing now.

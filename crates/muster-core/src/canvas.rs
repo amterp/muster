@@ -6,18 +6,42 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use pulldown_cmark::{Event, Options, Parser, html};
 
+use crate::mirror::PaneId;
+
 const MARKDOWN_STYLE: &str = include_str!("canvas/markdown.css");
 const IMAGE_STYLE: &str = include_str!("canvas/image.css");
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CanvasKind {
+    Unknown,
+    Markdown,
+    Html,
+    Image,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CanvasInfo {
+    pub revision: u64,
+    pub kind: CanvasKind,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CanvasMetadata {
+    pub info: CanvasInfo,
+    pub bytes: u64,
+    pub opened_by: Option<PaneId>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CanvasDocument {
-    pub kind: CanvasKind,
+    pub kind: CanvasDocumentKind,
     pub bytes: Vec<u8>,
     pub title: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CanvasKind {
+pub enum CanvasDocumentKind {
     Markdown,
     Html,
     Image(CanvasImageType),
@@ -69,14 +93,14 @@ const POLICY: CanvasPolicy = CanvasPolicy {
 /// Render the document as HTML. The daemon validates the image bytes before they get here.
 pub fn render(document: &CanvasDocument) -> Result<CanvasPage, Utf8Error> {
     let html = match document.kind {
-        CanvasKind::Markdown => {
+        CanvasDocumentKind::Markdown => {
             let source = from_utf8(&document.bytes)?;
             let options = Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS;
             let mut page = page_start(&document.title, MARKDOWN_STYLE);
             html::push_html(&mut page, Parser::new_ext(source, options));
             finish_page(page)
         }
-        CanvasKind::Html => {
+        CanvasDocumentKind::Html => {
             let source = from_utf8(&document.bytes)?;
             if is_html_document(source) {
                 source.to_owned()
@@ -86,7 +110,7 @@ pub fn render(document: &CanvasDocument) -> Result<CanvasPage, Utf8Error> {
                 finish_page(page)
             }
         }
-        CanvasKind::Image(image_type) => {
+        CanvasDocumentKind::Image(image_type) => {
             let mut page = page_start(&document.title, IMAGE_STYLE);
             page.push_str(concat!(
                 r#"<input type="checkbox" id="actual-size" aria-label="Show image at actual size">"#,

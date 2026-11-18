@@ -2,7 +2,7 @@
 //! declines is reported toward the pane. Cases live in corpus/conformance/keymap.json.
 
 use conformance::{CaseError, Conformance, fields, hex, strings};
-use muster_core::input::{Key, KeyAction, KeyEvent, Keymap, Modifiers, Resolution};
+use muster_core::input::{Binding, Key, KeyAction, KeyEvent, Keymap, Modifiers, Resolution};
 use serde_json::{Value, json};
 
 #[test]
@@ -12,6 +12,16 @@ fn keymap_conformance() {
 
     let ran = corpus.run(|given| {
         let event = key_event(given)?;
+        if let Some(canvas) = given.get("canvas") {
+            let canvas_keymap = canvas["text"].as_str().map(|text| {
+                Keymap::with_text([(
+                    Binding::new(event.key, event.modifiers),
+                    text.as_bytes().to_vec(),
+                )])
+            });
+            let keymap = canvas_keymap.as_ref().unwrap_or(&keymap);
+            return Ok(json!({ "to_view": keymap.is_unbound(&event) }));
+        }
         Ok(match keymap.resolve(&event) {
             Resolution::Text(bytes) => {
                 fields([("kind", Some(json!("text"))), ("bytes_hex", Some(json!(hex(&bytes))))])

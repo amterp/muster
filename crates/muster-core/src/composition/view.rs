@@ -170,6 +170,7 @@ impl std::fmt::Display for ViewTree {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewPane {
     pub id: PaneId,
+    pub canvas: Option<crate::canvas::CanvasInfo>,
     /// The socket this pane's bridge reports on, once the core has bound one.
     ///
     /// `None` means none is bound yet, and a surface built from it would have a bridge the
@@ -196,6 +197,22 @@ pub struct ViewPane {
     /// before, which is when taking the terminal over is a re-attach rather than stealing it
     /// from another window (`crate::respawn`).
     pub bridge_restarts: u32,
+}
+
+impl ViewPane {
+    pub fn for_canvas(
+        id: PaneId,
+        canvas: crate::canvas::CanvasInfo,
+        font_size_offset: i32,
+    ) -> Self {
+        Self {
+            id,
+            canvas: Some(canvas),
+            link_socket_path: None,
+            font_size_offset,
+            bridge_restarts: 0,
+        }
+    }
 }
 
 impl View {

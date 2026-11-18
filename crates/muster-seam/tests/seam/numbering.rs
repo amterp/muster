@@ -221,6 +221,11 @@ fn a_tab_is_named_first_and_a_pane_inside_it_second() {
     assert_eq!(tab_presses(), vec![1, 2], "a tab lost its press to a chord being half-typed");
     assert_eq!(chords(), addresses, "the addresses moved under somebody reading them");
 
+    // A page refresh can land between either press, including when the daemon refuses it.
+    let _ = refusal(request::Payload::CanvasPage(muster::proto::CanvasPage::default()));
+    let _ = refusal(request::Payload::ReadCanvas(muster::proto::ReadCanvas::default()));
+    assert_eq!(armed_tabs(), vec![2]);
+
     assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the second pane of the second tab to have the keyboard",

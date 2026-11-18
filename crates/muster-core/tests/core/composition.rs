@@ -378,16 +378,20 @@ fn built(
     let remote = |daemon: &DaemonId| {
         matches!(composition.daemon(daemon).map(|held| &held.endpoint), Some(Endpoint::Ssh { .. }))
     };
-    let pane = |daemon: &DaemonId, pane: &PaneId| ViewPane {
-        id: pane.clone(),
-        link_socket_path: attached
-            .contains(&pane.to_string())
-            .then(|| format!("/tmp/{daemon}-{pane}.sock")),
-        font_size_offset: sizes.offset(&PaneKey::new(daemon, pane)),
-        // Zero, because no case here is about a bridge that had to be replaced - what a
-        // replacement does to a window is `respawn.json`'s subject, and a number in this
-        // driver would only ever restate its own input.
-        bridge_restarts: 0,
+    let pane = |daemon: &DaemonId, pane: &PaneId| {
+        let offset = sizes.offset(&PaneKey::new(daemon, pane));
+        if let Some(canvas) = mirror(daemon).and_then(|mirror| mirror.pane(pane)?.canvas.as_ref()) {
+            return ViewPane::for_canvas(pane.clone(), canvas.info.clone(), offset);
+        }
+        ViewPane {
+            id: pane.clone(),
+            canvas: None,
+            link_socket_path: attached
+                .contains(&pane.to_string())
+                .then(|| format!("/tmp/{daemon}-{pane}.sock")),
+            font_size_offset: offset,
+            bridge_restarts: 0,
+        }
     };
     match tab {
         Some(tab) => View::arranged(composition, tab, mirror, |_| false, socket, remote, pane),
@@ -453,6 +457,13 @@ fn tree_line(tree: &ViewTree, spans: bool) -> String {
             }
             if pane.link_socket_path.is_some() {
                 line.push('*');
+            }
+            if let Some(canvas) = &pane.canvas {
+                let _ = write!(
+                    line,
+                    " canvas({:?}, {}, {})",
+                    canvas.kind, canvas.revision, canvas.title
+                );
             }
             if pane.font_size_offset != 0 {
                 let _ = write!(line, "{:+}", pane.font_size_offset);

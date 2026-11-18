@@ -791,7 +791,10 @@ fn asks_around(
     {
         return false;
     }
-    request.payload.as_ref().is_some_and(muster_proto::only_reads)
+    request.payload.as_ref().is_some_and(|payload| {
+        !matches!(payload, muster_proto::request::Payload::ReadCanvas(_))
+            && muster_proto::only_reads(payload)
+    })
 }
 
 /// The request that asks a window what it is showing.

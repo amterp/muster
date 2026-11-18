@@ -177,6 +177,7 @@ impl RosterTab {
 #[expect(clippy::struct_excessive_bools, reason = "independent facts about a pane, one each")]
 pub struct RosterPane {
     pub key: PaneKey,
+    pub canvas: Option<crate::canvas::CanvasInfo>,
 
     /// Where this pane sits in the window's whole pane order, counting from one.
     ///
@@ -564,6 +565,7 @@ impl Roster {
                         let label = pane_label(pane);
                         pane_place += 1;
                         RosterPane {
+                            canvas: pane.canvas.as_ref().map(|canvas| canvas.info.clone()),
                             place: pane_place,
                             place_in_tab: at + 1,
                             subtitle: pane_subtitle(pane, &label),
@@ -737,6 +739,7 @@ fn hidden_tabs<'a>(
             for pane in ordered_panes(held, &part.id) {
                 let label = pane_label(pane);
                 tab.panes.push(RosterPane {
+                    canvas: pane.canvas.as_ref().map(|canvas| canvas.info.clone()),
                     key: PaneKey::new(&daemon.id, &pane.id),
                     place: 0,
                     place_in_tab: tab.panes.len() + 1,

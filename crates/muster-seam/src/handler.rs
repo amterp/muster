@@ -116,6 +116,9 @@ fn handle(mut request: Request, origin: Origin) -> Response {
     let Some(payload) = request.payload else {
         return nothing_was_asked();
     };
+    if origin == Origin::Socket && matches!(payload, request::Payload::CanvasPage(_)) {
+        return Response::failure("canvas pages are for the shell. Use `muster canvas read`");
+    }
 
     // A numbered chord is armed by one request and spent by the next, so the rule that
     // ends it is stated here rather than at every caller that could: **a request that only
@@ -273,9 +276,17 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         request::Payload::BridgeExited(exited) => bridge_exited(&exited),
         request::Payload::BridgeStarted(started) => bridge_started(&started),
         request::Payload::KeyDown(down) => {
+            if let Some(target) = down.canvas_target.as_ref() {
+                return canvas_key(window, target, down.key.as_ref());
+            }
             with_pane(window, "a keystroke", |pane| key_down(pane, &down))
         }
-        request::Payload::KeyUp(up) => with_pane(window, "a key release", |pane| key_up(pane, &up)),
+        request::Payload::KeyUp(up) => {
+            if let Some(target) = up.canvas_target.as_ref() {
+                return canvas_key(window, target, up.key.as_ref());
+            }
+            with_pane(window, "a key release", |pane| key_up(pane, &up))
+        }
         request::Payload::SendText(text) => with_pane(window, "text", |pane| {
             pane.input.send_text(&text.text);
             Response::ok()
@@ -288,6 +299,12 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         request::Payload::Wheel(wheel) => wheel_over(&wheel),
         request::Payload::Mouse(mouse) => mouse_over(&mouse),
         request::Payload::SplitPane(split) => split_pane(window, &split),
+        request::Payload::OpenCanvas(_)
+        | request::Payload::WriteCanvas(_)
+        | request::Payload::ReadCanvas(_)
+        | request::Payload::CanvasPage(_) => {
+            Response::failure("canvas documents are not available yet")
+        }
         request::Payload::RemoveFromTab(remove) => {
             answer(session::remove_from_tab(window, &PaneId::new(&remove.pane_id)))
         }
@@ -531,6 +548,9 @@ fn read_pane(window: WindowId, read: &proto::ReadPane) -> Response {
              an older window - `muster window` lists the panes this one has."
         ));
     };
+    if let Err(why) = session::require_terminal(&daemon, &pane) {
+        return Response::failure(format!("{why}. Use `muster canvas read`"));
+    }
     let scope = if read.turn { Scope::Turn } else { Scope::Newest(read.rows) };
     match session::read_pane(&daemon, &pane, scope) {
         Ok(read) => Response {
@@ -614,7 +634,7 @@ fn rename_pane(window: WindowId, rename: &proto::RenamePane) -> Response {
 fn compact_pane(window: WindowId, compact: &proto::CompactPane) -> Response {
     let said = |text: &str| Some(text.trim().to_string()).filter(|text| !text.is_empty());
     let (focus, then) = (said(&compact.focus), said(&compact.then));
-    let target = match target(window, &compact.daemon_id, &compact.pane_id) {
+    let target = match terminal_target(window, &compact.daemon_id, &compact.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
@@ -629,7 +649,7 @@ fn compact_pane(window: WindowId, compact: &proto::CompactPane) -> Response {
 /// compaction is typed, and then types the prompt it was asked to start on.
 fn clear_agent(window: WindowId, clear: &proto::ClearAgent) -> Response {
     let then = Some(clear.then.trim().to_string()).filter(|then| !then.is_empty());
-    let target = match target(window, &clear.daemon_id, &clear.pane_id) {
+    let target = match terminal_target(window, &clear.daemon_id, &clear.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
@@ -643,7 +663,7 @@ fn clear_agent(window: WindowId, clear: &proto::ClearAgent) -> Response {
 /// Marks an agent's pane unread, in this window first and then on its daemon, which every other
 /// window hears it from. The keyboard stays where it is.
 fn mark_unread(window: WindowId, mark: &proto::MarkUnread) -> Response {
-    let target = match target(window, &mark.daemon_id, &mark.pane_id) {
+    let target = match terminal_target(window, &mark.daemon_id, &mark.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
@@ -685,7 +705,7 @@ fn queued_at_prompt(
 /// stays where it is, and nothing on screen moves: the pane is where it was, running its agent
 /// again.
 fn restart_agent(window: WindowId, restart: proto::RestartAgent) -> Response {
-    let target = match target(window, &restart.daemon_id, &restart.pane_id) {
+    let target = match terminal_target(window, &restart.daemon_id, &restart.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
@@ -889,14 +909,20 @@ fn pane_compaction(window: WindowId, set: &proto::PaneCompaction) -> Response {
             (Ok(nudge_at), Ok(compact_at)) => (nudge_at, compact_at),
             (Err(refusal), _) | (_, Err(refusal)) => return *refusal,
         };
-    act(window, &set.daemon_id, &set.pane_id, Keyboard::StaysPut, |pane| {
-        BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear: set.clear }
-    })
+    let target = match terminal_target(window, &set.daemon_id, &set.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(window, &target.daemon);
+    };
+    let intent = BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear: set.clear };
+    placed(submit(window, &target.daemon, &intent, Keyboard::StaysPut), &target)
 }
 
 /// The compaction thresholds applying to a pane, as the mirror of its daemon holds them.
 fn pane_thresholds(window: WindowId, set: &proto::PaneCompaction) -> Response {
-    let target = match target(window, &set.daemon_id, &set.pane_id) {
+    let target = match terminal_target(window, &set.daemon_id, &set.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
@@ -1136,6 +1162,30 @@ fn key_up(pane: &AttachedPane, up: &proto::KeyUp) -> Response {
     }
 }
 
+fn canvas_key(
+    window: WindowId,
+    target: &proto::CanvasKeyTarget,
+    key: Option<&proto::KeyEvent>,
+) -> Response {
+    let has_keyboard = session::canvas_has_keyboard(
+        window,
+        &DaemonId::new(&target.daemon_id),
+        &PaneId::new(&target.pane_id),
+    );
+    let to_view = if has_keyboard {
+        match key.map(convert::key) {
+            Some(Ok(key)) => session::startup::canvas_key_is_unbound(&key),
+            Some(Err(why)) => return Response::failure(why),
+            None => return Response::failure("the canvas key was missing"),
+        }
+    } else {
+        false
+    };
+    Response {
+        payload: Some(response::Payload::CanvasKeyHandled(proto::CanvasKeyHandled { to_view })),
+    }
+}
+
 /// Sends a key to the pane unless the keymap takes it, and says whether the pane got it.
 fn send_key(pane: &AttachedPane, key: Option<&proto::KeyEvent>) -> Result<bool, Box<Response>> {
     let Some(key) = key else {
@@ -1258,12 +1308,14 @@ fn pointer(daemon_id: &str, pane_id: &str, event: InputEvent) -> Response {
 fn named_pane(daemon_id: &str, pane_id: &str) -> Result<Arc<AttachedPane>, Box<Response>> {
     let daemon = DaemonId::new(daemon_id);
     let pane = PaneId::new(pane_id);
-    session::attached_pane(&daemon, &pane).ok_or_else(|| {
-        Box::new(Response::failure(format!(
-            "this window is not drawing pane {pane} of {daemon}, so nothing reached it. Most \
+    if let Some(held) = session::attached_pane(&daemon, &pane) {
+        return Ok(held);
+    }
+    session::require_terminal(&daemon, &pane).map_err(|why| Box::new(Response::failure(why)))?;
+    Err(Box::new(Response::failure(format!(
+        "this window is not drawing pane {pane} of {daemon}, so nothing reached it. Most \
              likely it closed or moved to another tab while this was in flight."
-        )))
-    })
+    ))))
 }
 
 fn unknown_modifiers(modifiers: &[String], what: &str) -> Response {
@@ -1288,8 +1340,9 @@ fn with_pane(
     act: impl FnOnce(&AttachedPane) -> Response,
 ) -> Response {
     match session::keyboard_pane(window) {
-        Some(pane) => act(&pane),
-        None => Response::failure(format!(
+        Ok(Some(pane)) => act(&pane),
+        Err(why) => Response::failure(why),
+        Ok(None) => Response::failure(format!(
             "no pane has this window's keyboard, so {what} went nowhere. A window with no \
              pane named is the renderer check and this is expected there; anywhere else it \
              means the attach failed earlier, or the pane it succeeded on has since exited, \
@@ -1310,7 +1363,7 @@ fn with_pane(
 /// way that could make an unknown name right a moment later: this acts on what this window
 /// already knows, so what it knows is the answer.
 fn reattach_pane(window: WindowId, daemon_id: &str, pane_id: &str) -> Response {
-    let target = match target(window, daemon_id, pane_id) {
+    let target = match terminal_target(window, daemon_id, pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
@@ -1324,6 +1377,19 @@ fn reattach_pane(window: WindowId, daemon_id: &str, pane_id: &str) -> Response {
         ));
     }
     Response::ok()
+}
+
+fn terminal_target(
+    window: WindowId,
+    daemon_id: &str,
+    pane_id: &str,
+) -> Result<Target, Box<Response>> {
+    let target = target(window, daemon_id, pane_id)?;
+    if let Some(pane) = target.pane.as_ref() {
+        session::require_terminal(&target.daemon, pane)
+            .map_err(|why| Box::new(Response::failure(why)))?;
+    }
+    Ok(target)
 }
 
 /// Builds an intent about a pane and asks for it.
@@ -1975,6 +2041,8 @@ pub(crate) fn watch_panes(request: &proto::WatchPanes) -> Result<watch::Watch, B
                      `muster window` lists the panes this one has."
                 ))));
             };
+            session::require_terminal(&daemon, &pane)
+                .map_err(|why| Box::new(Response::failure(why)))?;
             keys.insert(PaneKey::new(&daemon, &pane));
         }
         Some(keys)
@@ -2635,7 +2703,7 @@ fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
     // The keyboard never moves for this. Being sent something is not the same as being looked
     // at, and an agent telling two others what to do would otherwise pull the user's cursor
     // onto whichever it addressed last.
-    let target = match target(window, &send.daemon_id, &send.pane_id) {
+    let target = match terminal_target(window, &send.daemon_id, &send.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };

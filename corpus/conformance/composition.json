@@ -5,6 +5,32 @@
   "why": "Composition is the only thing Muster owns rather than mirrors, which makes it the only thing it can get wrong on its own. Every other picture in the app converges on a daemon's answer eventually; this one has no authority above it to be corrected by. What it holds is a window's ordered list of Muster tabs, which of them is on screen, and how each is divided between the machines holding panes in it (MIP-2). Three properties carry the file. View-local focus is written and never read back: which pane this window's keyboard feeds is Muster's decision, so another client moving daemon focus must not yank it, and the case that pins that is the one where a reconcile leaves a working focus alone. Composition names daemon things - a tab, a pane - which disappear without asking, and every way they can disappear ends in a window that ignores the keyboard and cannot say why. And a tab left behind keeps its arrangement, which is what makes switching between tabs cost nothing. The cases are written as steps rather than as one call because that is where the bugs are: what a reconcile does to a focus somebody set three steps earlier.",
   "cases": [
     {
+      "name": "a canvas leaf carries its document revision and has no bridge",
+      "why": "A canvas is a real pane that can receive focus. The shell draws it from the document metadata.",
+      "given": {
+        "worlds": {
+          "canvas": {
+            "tabs": [{ "id": "t1", "root": "p1" }],
+            "panes": [{ "id": "p1", "canvas": { "revision": 7, "kind": "markdown", "title": "Plan" } }]
+          }
+        },
+        "steps": [
+          { "do": "hold", "tab": "t1" },
+          { "do": "attachDaemon", "daemon": "local", "socketPath": "/tmp/daemon-local.sock" },
+          { "do": "openRegion", "daemon": "local", "tab": "t1" },
+          { "do": "reconcile", "daemon": "local", "world": "canvas" }
+        ],
+        "attached": ["p1"]
+      },
+      "expect": {
+        "daemons": ["local local=/tmp/daemon-local.sock"],
+        "focusedPane": "p1", "focusedRegion": "r0",
+        "regions": ["r0 daemon=local tab=t1 pane=p1"],
+        "showing": ["local/p1"], "showingTab": "t1",
+        "view": ["tab=t1 p1 canvas(Markdown, 7, Plan)"]
+      }
+    },
+    {
       "name": "a fresh composition is attached to nothing",
       "why": "The starting state has to be distinguishable from a window that is set up and showing nothing. No focus at all is the honest answer before a daemon is attached, and the input path reads it as 'this keystroke has nowhere to go' rather than sending it to a pane it invented.",
       "given": {

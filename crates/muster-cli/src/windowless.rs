@@ -1393,6 +1393,7 @@ fn core_node(node: &daemon_proto::Node, machine: &DaemonId) -> Option<ViewTree> 
             daemon: machine.clone(),
             pane: ViewPane {
                 id: PaneId::new(pane),
+                canvas: None,
                 link_socket_path: None,
                 font_size_offset: 0,
                 bridge_restarts: 0,

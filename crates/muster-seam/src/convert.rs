@@ -235,6 +235,7 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
                     (pressed(chord.tab), pressed(chord.pane))
                 });
                 proto::RosterPane {
+                    canvas: pane.canvas.as_ref().map(canvas_info),
                     daemon_id: pane.key.daemon.to_string(),
                     pane_id: pane.key.pane.to_string(),
                     place: u32::try_from(pane.place).unwrap_or_default(),
@@ -289,10 +290,29 @@ fn pressed(place: Option<usize>) -> u32 {
 
 fn pane(pane: &ViewPane) -> proto::ViewPane {
     proto::ViewPane {
+        canvas: pane.canvas.as_ref().map(canvas_info),
         pane_id: pane.id.to_string(),
         link_socket_path: pane.link_socket_path.clone().unwrap_or_default(),
         font_size_offset: pane.font_size_offset,
         bridge_restarts: pane.bridge_restarts,
+    }
+}
+
+fn canvas_info(info: &muster_core::canvas::CanvasInfo) -> proto::CanvasInfo {
+    proto::CanvasInfo {
+        revision: info.revision,
+        kind: canvas_kind(info.kind).into(),
+        title: info.title.clone(),
+    }
+}
+
+pub(crate) fn canvas_kind(kind: muster_core::canvas::CanvasKind) -> proto::CanvasKind {
+    use muster_core::canvas::CanvasKind;
+    match kind {
+        CanvasKind::Unknown => proto::CanvasKind::Unspecified,
+        CanvasKind::Markdown => proto::CanvasKind::Markdown,
+        CanvasKind::Html => proto::CanvasKind::Html,
+        CanvasKind::Image => proto::CanvasKind::Image,
     }
 }
 

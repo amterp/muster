@@ -66,11 +66,12 @@ id_type!(
      request that makes it, so the pane's process knows it from birth as `MUSTER_PANE`."
 );
 
-/// One daemon-owned terminal, and what its agent is doing.
+/// A daemon-owned pane and what it holds.
 #[derive(Debug, Clone, PartialEq)]
 #[expect(clippy::struct_excessive_bools, reason = "the daemon's record, one fact each")]
 pub struct Pane {
     pub id: PaneId,
+    pub canvas: Option<crate::canvas::CanvasMetadata>,
     /// The tab whose tree holds this pane. The daemon's record does not carry it, so the
     /// mirror sets it from the tab trees it holds, and whatever a backend passes is replaced.
     pub tab: TabId,
@@ -199,6 +200,14 @@ impl PendingCompaction {
 }
 
 impl Pane {
+    pub fn require_terminal(&self) -> Result<(), String> {
+        if self.canvas.is_some() {
+            let name = self.called().unwrap_or_else(|| self.id.to_string());
+            return Err(format!("pane {name} is a canvas"));
+        }
+        Ok(())
+    }
+
     /// What messaging calls the pane: its callsign, or for a daemon from before callsigns, its
     /// name.
     pub fn called(&self) -> Option<String> {

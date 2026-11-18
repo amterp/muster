@@ -54,6 +54,8 @@ pub fn only_reads(payload: &request::Payload) -> bool {
             | request::Payload::ReadWindowFrame(_)
             | request::Payload::ReportFontFamily(_)
             | request::Payload::ReadPane(_)
+            | request::Payload::ReadCanvas(_)
+            | request::Payload::CanvasPage(_)
             | request::Payload::ReadDaemons(_)
             | request::Payload::WatchPanes(_)
             | request::Payload::ReadAsking(_)
@@ -96,6 +98,13 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
         Payload::FocusPane(focus) => pane(&focus.pane_id),
         Payload::ClosePane(close) => pane(&close.pane_id),
         Payload::SplitPane(split) => pane(&split.pane_id),
+        Payload::OpenCanvas(open) => match open.placement.as_ref()? {
+            open_canvas::Placement::Beside(beside) => pane(&beside.pane_id),
+            open_canvas::Placement::NewTab(tab) => pane(&tab.pane_id),
+        },
+        Payload::WriteCanvas(write) => pane(&write.pane_id),
+        Payload::ReadCanvas(read) => pane(&read.pane_id),
+        Payload::CanvasPage(page) => pane(&page.pane_id),
         Payload::CreateTab(create) => pane(&create.pane_id),
         Payload::ZoomPane(zoom) => pane(&zoom.pane_id),
         Payload::ResizePane(resize) => pane(&resize.pane_id),
@@ -135,6 +144,13 @@ pub fn typed_panes(payload: &mut request::Payload) -> Vec<&mut String> {
         Payload::FocusPane(focus) => vec![&mut focus.pane_id],
         Payload::ClosePane(close) => vec![&mut close.pane_id],
         Payload::SplitPane(split) => vec![&mut split.pane_id, &mut split.maker],
+        Payload::OpenCanvas(open) => match open.placement.as_mut() {
+            Some(open_canvas::Placement::Beside(beside)) => vec![&mut beside.pane_id],
+            Some(open_canvas::Placement::NewTab(tab)) => vec![&mut tab.pane_id],
+            None => Vec::new(),
+        },
+        Payload::WriteCanvas(write) => vec![&mut write.pane_id],
+        Payload::ReadCanvas(read) => vec![&mut read.pane_id],
         Payload::CreateTab(create) => vec![&mut create.pane_id],
         Payload::ZoomPane(zoom) => vec![&mut zoom.pane_id],
         Payload::ResizePane(resize) => vec![&mut resize.pane_id],

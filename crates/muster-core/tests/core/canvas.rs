@@ -1,5 +1,5 @@
 use conformance::{CaseError, Conformance, Outcome};
-use muster_core::canvas::{self, CanvasDocument, CanvasImageType, CanvasKind};
+use muster_core::canvas::{self, CanvasDocument, CanvasDocumentKind, CanvasImageType};
 use serde_json::{Value, json};
 
 #[test]
@@ -10,10 +10,10 @@ fn canvas_conformance() {
 
 fn render_case(given: &Value) -> Outcome {
     let kind = match given["kind"].as_str() {
-        Some("markdown") => CanvasKind::Markdown,
-        Some("html") => CanvasKind::Html,
-        Some("png") => CanvasKind::Image(CanvasImageType::Png),
-        Some("svg") => CanvasKind::Image(CanvasImageType::Svg),
+        Some("markdown") => CanvasDocumentKind::Markdown,
+        Some("html") => CanvasDocumentKind::Html,
+        Some("png") => CanvasDocumentKind::Image(CanvasImageType::Png),
+        Some("svg") => CanvasDocumentKind::Image(CanvasImageType::Svg),
         _ => return Err(CaseError::new("unknown canvas kind")),
     };
     let bytes = match &given["body"] {
@@ -33,7 +33,7 @@ fn render_case(given: &Value) -> Outcome {
         Ok(page) => page,
         Err(error) => return Ok(json!({ "invalid_utf8_at": error.valid_up_to() })),
     };
-    let html = if kind == CanvasKind::Html {
+    let html = if kind == CanvasDocumentKind::Html {
         page.html
     } else {
         let (before, _, after) = split_stylesheet(&page.html)?;
@@ -62,7 +62,7 @@ fn split_stylesheet(html: &str) -> Result<(&str, &str, &str), CaseError> {
 #[test]
 fn theme_and_image_controls_are_defined_in_the_page() {
     let markdown = canvas::render(&CanvasDocument {
-        kind: CanvasKind::Markdown,
+        kind: CanvasDocumentKind::Markdown,
         bytes: Vec::new(),
         title: String::new(),
     })
@@ -76,7 +76,7 @@ fn theme_and_image_controls_are_defined_in_the_page() {
     }
 
     let image = canvas::render(&CanvasDocument {
-        kind: CanvasKind::Image(CanvasImageType::Svg),
+        kind: CanvasDocumentKind::Image(CanvasImageType::Svg),
         bytes: b"<svg/>".to_vec(),
         title: String::new(),
     })

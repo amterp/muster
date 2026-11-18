@@ -137,6 +137,7 @@ impl Mirror {
                     if relabelled(before, pane) {
                         changes.push(Change::PaneRelabelled(id.clone()));
                     }
+                    changes.extend(canvas_changed(before, pane, new_run));
                     if described(before, pane) {
                         changes.push(Change::AgentDescribed(id.clone()));
                     }
@@ -297,6 +298,7 @@ impl Mirror {
         if relabelled(before, &pane) {
             changes.push(Change::PaneRelabelled(id.clone()));
         }
+        changes.extend(canvas_changed(before, &pane, false));
         if described(before, &pane) {
             changes.push(Change::AgentDescribed(id.clone()));
         }
@@ -488,8 +490,23 @@ impl Mirror {
 
 /// Whether what a list of panes says of a pane has moved: the things it names it by, whose helper
 /// it is, and whether its agent can be compacted or it is quiet, which the list's menus offer on.
+fn canvas_changed(before: &Pane, now: &Pane, new_run: bool) -> Option<Change> {
+    let revision = now.canvas.as_ref()?.info.revision;
+    let previous = before.canvas.as_ref().map(|canvas| canvas.info.revision);
+    let reset = previous.is_some_and(|previous| new_run || revision < previous);
+    (reset || previous != Some(revision)).then(|| Change::CanvasChanged {
+        pane: now.id.clone(),
+        revision,
+        reset,
+    })
+}
+
 fn relabelled(before: &Pane, now: &Pane) -> bool {
+    fn canvas_caption(pane: &Pane) -> Option<(crate::canvas::CanvasKind, &str)> {
+        pane.canvas.as_ref().map(|canvas| (canvas.info.kind, canvas.info.title.as_str()))
+    }
     before.cwd != now.cwd
+        || canvas_caption(before) != canvas_caption(now)
         || before.maker != now.maker
         || before.maker_closed != now.maker_closed
         || before.agent != now.agent

@@ -83,11 +83,19 @@ impl Keymap {
     }
 
     pub fn resolve(&self, key: &KeyEvent) -> Resolution {
+        self.binding_for(key).cloned().unwrap_or(Resolution::Unbound)
+    }
+
+    pub fn is_unbound(&self, key: &KeyEvent) -> bool {
+        matches!(self.binding_for(key), None | Some(Resolution::Unbound))
+    }
+
+    fn binding_for(&self, key: &KeyEvent) -> Option<&Resolution> {
         if key.action == KeyAction::Release {
-            return Resolution::Unbound;
+            return None;
         }
         let held = key.modifiers.intersection(Modifiers::CHORD);
-        self.bindings.get(&Binding::new(key.key, held)).cloned().unwrap_or(Resolution::Unbound)
+        self.bindings.get(&Binding::new(key.key, held))
     }
 }
 
