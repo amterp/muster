@@ -7,6 +7,8 @@
 //! that the client may ask again; after it the command may have done something, and the
 //! operation is remembered as uncertain so that no retry runs it a second time.
 
+pub(super) mod canvas;
+
 use std::convert::Infallible;
 use std::path::Path;
 use std::time::Duration;
@@ -28,6 +30,9 @@ use crate::session::{Handled, Session, Shared, Starting};
 /// one way a test gets a handoff between a command starting and its pane being placed. A shipped
 /// daemon never reads it.
 const STARTED_DELAY_SAID: &str = "MUSTER_DAEMON_API_STARTED_DELAY";
+const UNCERTAIN_STARTED_PANE: &str = "a request with this operation id started its pane's command, and the pane was then \
+     lost, so whether the command did anything is unknown. Asking again with this id \
+     never runs it again; a new id does";
 
 pub(super) fn new(shared: &Shared, caller: &Caller, correlation: String, asked: &api::NewPane) {
     let operation = Operation {
@@ -53,7 +58,7 @@ fn made(
     checked(shared, operation, asked)?;
     let mut session = shared.lock();
     let asked_for = operations::fingerprint(&asked.encode_to_vec());
-    begun(&mut session, operation, asked_for, "nothing was made")?;
+    begun(&mut session, operation, asked_for, "nothing was made", UNCERTAIN_STARTED_PANE)?;
     let (mut starting, pane) = match starting(&mut session, caller, operation, asked) {
         Ok(starting) => starting,
         Err(refusal) => {
@@ -109,21 +114,7 @@ fn checked(
     asked: &api::NewPane,
 ) -> Result<(), Box<api::Answer>> {
     let refuse = |refusal, reason| Err(Box::new(operation.refused(refusal, reason)));
-    if asked.operation.is_empty() {
-        return refuse(
-            api::Refusal::Invalid,
-            "a new pane needs an operation id, which makes asking again safe; nothing was made"
-                .to_string(),
-        );
-    }
-    if operation.client.is_empty() {
-        return refuse(
-            api::Refusal::Invalid,
-            "operation ids are kept by the name of the program that chose them, and this \
-             connection's Hello gave none; nothing was made"
-                .to_string(),
-        );
-    }
+    operation.check_id("a new pane", "nothing was made")?;
     let this = shared.api.source().daemon;
     if !asked.machine.is_empty() && asked.machine != this {
         return refuse(
@@ -154,6 +145,7 @@ fn begun(
     operation: &Operation<'_>,
     asked_for: u64,
     undone: &str,
+    uncertain: &str,
 ) -> Result<(), Box<api::Answer>> {
     let now = operations::now_ms();
     let correlation = operation.cause.correlation.clone();
@@ -171,12 +163,7 @@ fn begun(
             "a request with this operation id is still being carried out; ask again with the \
              same id for what it came to",
         ),
-        Begun::Uncertain => unknown(
-            correlation,
-            "a request with this operation id started its pane's command, and the pane was then \
-             lost, so whether the command did anything is unknown. Asking again with this id \
-             never runs it again; a new id does",
-        ),
+        Begun::Uncertain => unknown(correlation, uncertain),
         Begun::Reused => operation.refused(
             api::Refusal::OperationReused,
             format!(
@@ -234,19 +221,7 @@ fn reopened(
 ) -> Result<api::Answer, Box<api::Answer>> {
     let refuse =
         |refusal, reason: &str| Err(Box::new(operation.refused(refusal, reason.to_string())));
-    if asked.operation.is_empty() {
-        return refuse(
-            api::Refusal::Invalid,
-            "a reopen needs an operation id, which makes asking again safe; nothing was reopened",
-        );
-    }
-    if operation.client.is_empty() {
-        return refuse(
-            api::Refusal::Invalid,
-            "operation ids are kept by the name of the program that chose them, and this \
-             connection's Hello gave none; nothing was reopened",
-        );
-    }
+    operation.check_id("a reopen", "nothing was reopened")?;
     if asked.pane.is_empty() {
         return refuse(
             api::Refusal::Invalid,
@@ -257,7 +232,7 @@ fn reopened(
     let asked_for =
         operations::fingerprint(&[b"pane.reopen\0".as_slice(), &asked.encode_to_vec()].concat());
     let mut session = shared.lock();
-    begun(&mut session, operation, asked_for, "nothing was reopened")?;
+    begun(&mut session, operation, asked_for, "nothing was reopened", UNCERTAIN_STARTED_PANE)?;
     let reopen = proto::pane_request::Reopen {
         pane: asked.pane.clone(),
         tab: Minter::new(Mint::Drawn).tab().to_string(),
@@ -377,6 +352,20 @@ struct Operation<'a> {
 }
 
 impl Operation<'_> {
+    fn check_id(&self, request: &str, undone: &str) -> Result<(), Box<api::Answer>> {
+        let reason = if self.id.is_empty() {
+            format!("{request} needs an operation id, which makes asking again safe; {undone}")
+        } else if self.client.is_empty() {
+            format!(
+                "operation ids are kept by the name of the program that chose them, and this \
+                 connection's Hello gave none; {undone}"
+            )
+        } else {
+            return Ok(());
+        };
+        Err(Box::new(self.refused(api::Refusal::Invalid, reason)))
+    }
+
     /// Nothing was carried out, so the client may ask again under the same id.
     fn forget(&self, session: &mut Session) {
         session.pane_operations.forget(self.client, self.id);

@@ -7,15 +7,57 @@ use muster_daemon_proto as proto;
 use proto::{answer::Detail, pane_request};
 
 use super::{Document, Stage, WriteError, validate};
-use crate::session::{Reply, Shared};
+use crate::api::Cause;
+use crate::session::{Reply, Session, Shared};
 
-pub(crate) fn serve(shared: &Shared, request: pane_request::Request, answer: impl FnOnce(Reply)) {
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum FailureKind {
+    Request,
+    Unavailable,
+    Io,
+    DurabilityUnknown,
+}
+
+#[derive(Debug)]
+pub(crate) struct Failure {
+    pub(crate) reply: Reply,
+    pub(crate) kind: FailureKind,
+}
+
+impl Failure {
+    pub(crate) fn request(reply: Reply) -> Self {
+        Self { reply, kind: FailureKind::Request }
+    }
+
+    pub(crate) fn invalid(reason: impl Into<String>) -> Self {
+        Self::request(Reply::refused(reason))
+    }
+
+    pub(crate) fn unavailable(reason: &str) -> Self {
+        Self { reply: Reply::refused(reason), kind: FailureKind::Unavailable }
+    }
+
+    fn io(reason: String) -> Self {
+        Self { reply: Reply::refused(reason), kind: FailureKind::Io }
+    }
+}
+
+pub(crate) type Answer = Result<Reply, Failure>;
+
+pub(crate) fn serve(
+    shared: &Shared,
+    request: pane_request::Request,
+    cause: Option<&Cause>,
+    answer: impl FnOnce(Answer),
+) {
     let _operation = shared.canvases.operation();
     match request {
-        pane_request::Request::CreateCanvas(create) => answer(created(shared, create)),
+        pane_request::Request::CreateCanvas(asked) => {
+            answer(create(shared, asked, cause, |_, answer| answer));
+        }
         pane_request::Request::WriteCanvas(write) => {
             access(shared, &write.pane, answer, |serial, recovering| {
-                written(shared, &write.pane, serial, recovering, write.document)
+                written(shared, &write.pane, serial, recovering, write.document, cause)
             });
         }
         pane_request::Request::ReadCanvas(read) => {
@@ -27,31 +69,44 @@ pub(crate) fn serve(shared: &Shared, request: pane_request::Request, answer: imp
     }
 }
 
-fn created(shared: &Shared, create: pane_request::CreateCanvas) -> Reply {
-    let starting = shared.lock().prepare_canvas(create);
-    let starting = match starting {
-        Ok(starting) => starting,
-        Err(refused) => return refused,
+/// The caller holds the canvas lifetime guard through the answer. Finish keeps an API creation's
+/// operation record and placement in the same session snapshot.
+pub(crate) fn create<T>(
+    shared: &Shared,
+    create: pane_request::CreateCanvas,
+    cause: Option<&Cause>,
+    finish: impl FnOnce(&mut Session, Answer) -> T,
+) -> T {
+    let starting = {
+        let mut session = shared.lock();
+        match session.prepare_canvas(create) {
+            Ok(starting) => starting,
+            Err(refused) => return finish(&mut session, Err(refused)),
+        }
     };
-    let stored = validate(&starting.document.content).map_err(Reply::refused).and_then(|()| {
+    let stored = validate(&starting.document.content).map_err(Failure::invalid).and_then(|()| {
         shared
             .canvases
             .write(starting.name(), &starting.document, true, |stage| fault(shared, stage, true))
             .map_err(|failed| write_refusal(starting.name(), &failed))
     });
-    shared.lock().canvas_started(starting, stored)
+    let mut session = shared.lock();
+    session.cause = cause.cloned();
+    let answer = session.canvas_started(starting, stored);
+    session.cause = None;
+    finish(&mut session, answer)
 }
 
 fn access(
     shared: &Shared,
     name: &str,
-    answer: impl FnOnce(Reply),
-    run: impl FnOnce(u64, &mut bool) -> Reply,
+    answer: impl FnOnce(Answer),
+    run: impl FnOnce(u64, &mut bool) -> Answer,
 ) {
     let target = shared.lock().canvas_target(name);
     let (serial, canvas) = match target {
         Ok(target) => target,
-        Err(refused) => return answer(refused),
+        Err(refused) => return answer(Err(refused)),
     };
     let mut recovering = match canvas.recovering.try_lock() {
         Ok(recovering) => recovering,
@@ -65,23 +120,23 @@ fn access(
     let current = shared.lock().canvas_target(name);
     let reply = match current {
         Ok((held, _)) if held == serial => run(serial, &mut recovering),
-        Ok(_) => Reply::not_there(format!("canvas {name} closed while the request waited")),
-        Err(refused) => refused,
+        Ok(_) => Err(Failure::request(Reply::not_there(format!(
+            "canvas {name} closed while the request waited"
+        )))),
+        Err(refused) => Err(refused),
     };
     answer(reply);
 }
 
-fn read_back(shared: &Shared, name: &str, serial: u64, recovering: &mut bool) -> Reply {
-    match read_document(shared, name, serial, recovering) {
-        Ok(document) => Reply {
-            detail: Some(Box::new(Detail::CanvasRead(proto::CanvasRead {
-                revision: document.revision,
-                document: Some(document.content),
-            }))),
-            ..Reply::done()
-        },
-        Err(refused) => refused,
-    }
+fn read_back(shared: &Shared, name: &str, serial: u64, recovering: &mut bool) -> Answer {
+    let document = read_document(shared, name, serial, recovering, None)?;
+    Ok(Reply {
+        detail: Some(Box::new(Detail::CanvasRead(proto::CanvasRead {
+            revision: document.revision,
+            document: Some(document.content),
+        }))),
+        ..Reply::done()
+    })
 }
 
 fn read_document(
@@ -89,16 +144,31 @@ fn read_document(
     name: &str,
     serial: u64,
     recovering: &mut bool,
-) -> Result<Document, Reply> {
+    cause: Option<&Cause>,
+) -> Result<Document, Failure> {
     let document = shared
         .canvases
         .read(name)
-        .map_err(|error| Reply::refused(format!("could not read canvas {name}: {error}")))?;
+        .map_err(|error| Failure::io(format!("could not read canvas {name}: {error}")))?;
     if *recovering {
-        shared.lock().canvas_changed(name, serial, &document)?;
+        changed(shared, name, serial, &document, cause)?;
         *recovering = false;
     }
     Ok(document)
+}
+
+fn changed(
+    shared: &Shared,
+    name: &str,
+    serial: u64,
+    document: &Document,
+    cause: Option<&Cause>,
+) -> Result<(), Failure> {
+    let mut session = shared.lock();
+    session.cause = cause.cloned();
+    let changed = session.canvas_changed(name, serial, document);
+    session.cause = None;
+    changed.map_err(Failure::request)
 }
 
 fn written(
@@ -107,52 +177,54 @@ fn written(
     serial: u64,
     recovering: &mut bool,
     content: Option<proto::CanvasDocument>,
-) -> Reply {
-    let written = (|| {
-        if *recovering {
-            read_document(shared, name, serial, recovering)?;
-        }
-        let content =
-            content.ok_or_else(|| Reply::refused("the request carries no canvas document"))?;
-        validate(&content).map_err(Reply::refused)?;
-        let revision = shared
-            .lock()
-            .canvas_record(name, serial)?
-            .revision
-            .checked_add(1)
-            .ok_or_else(|| Reply::refused(format!("canvas {name} has no revisions left")))?;
-        let document = Document { revision, content };
-        match shared.canvases.write(name, &document, false, |stage| fault(shared, stage, false)) {
-            Ok(()) => shared.lock().canvas_changed(name, serial, &document)?,
-            Err(failed) => {
-                if failed.stage == Stage::AfterRename {
-                    *recovering = true;
-                    if let Err(refused) = read_document(shared, name, serial, recovering) {
-                        log::warn(
-                            "daemon.canvas.recovery_pending",
-                            fields! { "pane" => name, "why" => refused.reason },
-                        );
-                    }
+    cause: Option<&Cause>,
+) -> Answer {
+    if *recovering {
+        read_document(shared, name, serial, recovering, None)?;
+    }
+    let content =
+        content.ok_or_else(|| Failure::invalid("the request carries no canvas document"))?;
+    validate(&content).map_err(Failure::invalid)?;
+    let revision = shared
+        .lock()
+        .canvas_record(name, serial)
+        .map_err(Failure::request)?
+        .revision
+        .checked_add(1)
+        .ok_or_else(|| Failure::invalid(format!("canvas {name} has no revisions left")))?;
+    let document = Document { revision, content };
+    match shared.canvases.write(name, &document, false, |stage| fault(shared, stage, false)) {
+        Ok(()) => changed(shared, name, serial, &document, cause)?,
+        Err(failed) => {
+            if failed.stage == Stage::AfterRename {
+                *recovering = true;
+                if let Err(refused) = read_document(shared, name, serial, recovering, cause) {
+                    log::warn(
+                        "daemon.canvas.recovery_pending",
+                        fields! { "pane" => name, "why" => refused.reply.reason },
+                    );
                 }
-                return Err(write_refusal(name, &failed));
             }
+            return Err(write_refusal(name, &failed));
         }
-        Ok(Reply {
-            detail: Some(Box::new(Detail::CanvasWritten(proto::CanvasWritten { revision }))),
-            ..Reply::done()
-        })
-    })();
-    written.unwrap_or_else(|refused| refused)
+    }
+    Ok(Reply {
+        detail: Some(Box::new(Detail::CanvasWritten(proto::CanvasWritten { revision }))),
+        ..Reply::done()
+    })
 }
 
-fn write_refusal(name: &str, failed: &WriteError) -> Reply {
+fn write_refusal(name: &str, failed: &WriteError) -> Failure {
     let error = &failed.error;
     match failed.stage {
-        Stage::BeforeRename => Reply::refused(format!("could not save canvas {name}: {error}")),
-        Stage::AfterRename => Reply::refused(format!(
-            "could not sync canvas {name} after replacing its file: {error}. \
-             The durability of this write is unknown."
-        )),
+        Stage::BeforeRename => Failure::io(format!("could not save canvas {name}: {error}")),
+        Stage::AfterRename => Failure {
+            kind: FailureKind::DurabilityUnknown,
+            reply: Reply::refused(format!(
+                "could not sync canvas {name} after replacing its file: {error}. \
+                 The durability of this write is unknown."
+            )),
+        },
     }
 }
 

@@ -35,7 +35,7 @@ use crate::control::{Budget, Farewell, Outbox};
 use crate::session::Shared;
 
 /// Every request this daemon serves, by the name a client tests for in Welcome's features.
-const REQUESTS: [&str; 12] = [
+const REQUESTS: [&str; 15] = [
     "api.read_pane",
     "api.subscribe",
     "msg.ack",
@@ -45,9 +45,12 @@ const REQUESTS: [&str; 12] = [
     "pane.close",
     "pane.compact",
     "pane.new",
+    "pane.new_canvas",
+    "pane.read_canvas",
     "pane.reopen",
     "pane.restart",
     "pane.send",
+    "pane.write_canvas",
 ];
 
 /// Every topic a subscription may name.
@@ -224,6 +227,9 @@ fn handle(shared: &Arc<Shared>, caller: &Caller, request: api::Request) {
                 Pane::Clear(asked) => acting::clear(shared, caller, correlation, &asked),
                 Pane::Restart(asked) => acting::restart(shared, caller, correlation, &asked),
                 Pane::Reopen(asked) => pane::reopen(shared, caller, correlation, &asked),
+                Pane::NewCanvas(asked) => pane::canvas::new(shared, caller, correlation, asked),
+                Pane::WriteCanvas(asked) => pane::canvas::write(shared, caller, correlation, asked),
+                Pane::ReadCanvas(asked) => pane::canvas::read(shared, caller, correlation, asked),
             }
         }
         Some(Namespace::Msg(api::MsgRequest {

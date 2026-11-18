@@ -61,9 +61,12 @@ fn an_api_client_is_welcomed_by_its_own_version_whatever_the_internal_one_says()
         "pane.close",
         "pane.compact",
         "pane.new",
+        "pane.new_canvas",
+        "pane.read_canvas",
         "pane.reopen",
         "pane.restart",
         "pane.send",
+        "pane.write_canvas",
     ];
     assert_eq!(features.requests, requests);
     let topics: Vec<i32> = every_topic().iter().map(|topic| (*topic).into()).collect();

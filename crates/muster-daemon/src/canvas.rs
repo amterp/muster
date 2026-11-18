@@ -18,7 +18,7 @@ use prost::Message as _;
 use crate::persist::{self, Loaded, State};
 
 mod requests;
-pub(crate) use requests::serve;
+pub(crate) use requests::{Answer, Failure, FailureKind, create, serve};
 
 use muster_core::canvas::{CanvasImageType, MAX_BODY, validate_title};
 const MAX_HEADER: usize = proto::connection::LARGEST_MESSAGE as usize;

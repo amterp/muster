@@ -43,7 +43,7 @@ use proto::{Outcome, pane_request, session_request, tab_request};
 
 use crate::api::{Api, Cause};
 use crate::attention::{self, Attention};
-use crate::canvas::{Canvas, Document, Store};
+use crate::canvas::{self, Canvas, Document, Failure as CanvasFailure, Store};
 use crate::compaction::{Compaction, Pending};
 use crate::control::Outbox;
 use crate::daemon_log::DaemonLog;
@@ -2031,19 +2031,22 @@ impl Session {
     pub(crate) fn prepare_canvas(
         &mut self,
         create: pane_request::CreateCanvas,
-    ) -> Result<StartingCanvas, Reply> {
-        self.check_new_pane(&create.pane)?;
+    ) -> Result<StartingCanvas, CanvasFailure> {
+        self.check_new_pane(&create.pane).map_err(CanvasFailure::request)?;
         if let Some(why) = self.unavailable() {
-            return Err(Reply::refused(why));
+            return Err(CanvasFailure::unavailable(why));
         }
-        let given = self.check_label(&create.pane, create.label.as_deref())?;
-        let target = self.target(create.placement, &create.pane, None)?;
+        let given = self
+            .check_label(&create.pane, create.label.as_deref())
+            .map_err(CanvasFailure::request)?;
+        let target =
+            self.target(create.placement, &create.pane, None).map_err(CanvasFailure::request)?;
         if let Some(opened_by) = &create.opened_by {
-            valid_name("opening pane", opened_by).map_err(Reply::refused)?;
+            valid_name("opening pane", opened_by).map_err(CanvasFailure::invalid)?;
         }
         let content = create
             .document
-            .ok_or_else(|| Reply::refused("the request carries no canvas document"))?;
+            .ok_or_else(|| CanvasFailure::invalid("the request carries no canvas document"))?;
         let callsign = self.draw_callsign(given, None, &create.callsigns_elsewhere);
         self.reserve_pane(&create.pane, &target, &callsign);
         let document = Document { revision: 1, content };
@@ -2060,24 +2063,24 @@ impl Session {
     pub(crate) fn canvas_started(
         &mut self,
         starting: StartingCanvas,
-        stored: Result<(), Reply>,
-    ) -> Reply {
+        stored: Result<(), CanvasFailure>,
+    ) -> canvas::Answer {
         let StartingCanvas { mut record, target, opened_by, document } = starting;
         let name = record.pane.clone();
         self.release_pane(&name, &target);
         if let Err(refused) = stored {
             self.state_changed();
-            return refused;
+            return Err(refused);
         }
         if let Some(refused) = self.placement_refusal(&name, &target) {
             self.state_changed();
-            return refused;
+            return Err(CanvasFailure::request(refused));
         }
         record.canvas = Some(document.metadata(opened_by));
         let created = proto::Created { callsign: record.callsign.clone().unwrap_or_default() };
         self.open_canvas(record, None);
         self.place(&name, target);
-        Reply { detail: Some(Box::new(Detail::Created(created))), ..Reply::done() }
+        Ok(Reply { detail: Some(Box::new(Detail::Created(created))), ..Reply::done() })
     }
 
     fn open_canvas(&mut self, record: proto::Pane, hidden_from: Option<persist::ClosedTab>) {
@@ -5697,15 +5700,14 @@ impl Session {
         }
     }
 
-    pub(crate) fn canvas_target(&self, name: &str) -> Result<(u64, Arc<Canvas>), Reply> {
+    pub(crate) fn canvas_target(&self, name: &str) -> Result<(u64, Arc<Canvas>), CanvasFailure> {
         if let Some(why) = self.unavailable() {
-            return Err(Reply::refused(why));
+            return Err(CanvasFailure::unavailable(why));
         }
-        let pane = self.find_pane(name)?;
-        let canvas = pane
-            .body
-            .canvas()
-            .ok_or_else(|| Reply::refused(format!("pane {name} is a terminal, not a canvas")))?;
+        let pane = self.find_pane(name).map_err(CanvasFailure::request)?;
+        let canvas = pane.body.canvas().ok_or_else(|| {
+            CanvasFailure::invalid(format!("pane {name} is a terminal, not a canvas"))
+        })?;
         Ok((pane.serial, Arc::clone(canvas)))
     }
 

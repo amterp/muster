@@ -195,6 +195,34 @@ ended. An agent that was ended but whose session could not be resumed is answere
 REFUSED would say nothing happened: the reason says what was done and gives the line that resumes
 the session.
 
+### pane.new_canvas
+
+Since 0.6. Opens a Markdown, HTML, or image document in a canvas pane. Give it an operation id and
+choose a placement. Use `new_tab {}` for a visible tab of its own. Use `beside` with an existing
+pane's id and a side (`left`, `right`, `up`, or `down`) for a local split. Its optional ratio is
+the existing pane's share, strictly between 0 and 1, with half as the default.
+
+The answer gives the pane id and callsign. Repeating the same operation id and request returns
+the original result as ALREADY_SO. An optional `opened_by` pane id lets that pane find its canvas
+with `muster canvas write` and no pane argument. A canvas stays open after its opener closes.
+
+Supply the document kind and up to 4 MiB of body bytes. Markdown and HTML use UTF-8. Images name
+their media type, which must match the bytes. The daemon supports PNG, JPEG, GIF, WebP, and SVG.
+A title may use up to 256 UTF-8 bytes and may not contain control characters.
+
+### pane.write_canvas
+
+Since 0.6. Replaces the entire document and returns its new revision after the file is durable.
+The last write wins. If the file was replaced but its durability could not be confirmed, the
+answer is UNKNOWN. The daemon does not retry a write. Another write may have landed by the time
+you decide whether to send it again.
+
+### pane.read_canvas
+
+Since 0.6. Returns the document bytes, kind, title, and revision. A canvas read or write refuses
+a missing pane as NOT_FOUND and a terminal as INVALID. Check Welcome's features before using
+any of the three canvas requests.
+
 ## Topics
 
 ### Panes
@@ -204,6 +232,10 @@ directory, harness, the agent's state and since when, what the agent reports of 
 and whether it is hidden or quiet. An event when a pane appears, when anything a client reads of
 it changes, and its id when it closes. A client replaces what it holds of a pane with each event's.
 Output fires nothing, and neither does a title on its own.
+
+Since 0.6, a canvas's `Pane.canvas` holds the revision, kind, title, byte count, and optional
+opener id. A successful write publishes its revision through PaneChanged before its answer.
+Fetch the body with `pane.read_canvas` when you need it.
 
 Since 0.4, `context_change` is the last time the agent's context was cleared or compacted: its kind
 and `at_ms`, when the daemon heard of it. It arrives in a PaneChanged like any other change, and in

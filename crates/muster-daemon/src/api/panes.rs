@@ -40,6 +40,13 @@ pub(crate) fn pane(record: &proto::Pane, hidden: bool, source: &api::Source) -> 
         adapter: adapter(record).into(),
         context_change: record.context_change.as_ref().map(context_change),
         name_from_session: record.label_from_session,
+        canvas: record.canvas.as_ref().map(|canvas| api::Canvas {
+            revision: canvas.revision,
+            kind: super::pane::canvas::public_kind(canvas.kind()).into(),
+            title: canvas.title.clone(),
+            bytes: canvas.bytes,
+            opened_by: canvas.opened_by.clone(),
+        }),
     }
 }
 

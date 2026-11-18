@@ -35,6 +35,76 @@ fn handshake() {
 }
 
 #[test]
+fn a_client_of_the_shipped_api_can_make_a_terminal_and_subscribe() {
+    let directory = conformance::repo_root().join("corpus/api-baseline");
+    let schema = shipped_schema(&directory);
+    let (major, minor) = shipped_version(&directory);
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let canvas = proto::pane_request::CreateCanvas {
+        pane: "canvas".into(),
+        placement: Some(in_new_tab("notes")),
+        document: Some(proto::CanvasDocument {
+            kind: proto::CanvasKind::Markdown.into(),
+            body: b"notes".to_vec(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    expect(
+        &mut control,
+        pane(proto::pane_request::Request::CreateCanvas(canvas)),
+        proto::Outcome::Done,
+    );
+    let mut stream = UnixStream::connect(daemon.socket_path()).unwrap();
+    stream.set_read_timeout(Some(PATIENCE)).unwrap();
+    let mut ask = |request, answer, value: Value| {
+        let frame = schema.encode(request, &value).unwrap();
+        muster_frame::write_frame(&mut stream, &frame).unwrap();
+        let reply = muster_frame::read_frame_or_end(&mut stream, LARGEST_MESSAGE).unwrap().unwrap();
+        schema.decode(answer, &reply).unwrap()
+    };
+    let welcome = ask(
+        "Hello",
+        "HelloAnswer",
+        json!({
+            "kind": "KIND_API",
+            "api": {"major": major, "minor": minor},
+            "client": {"name": "shipped client"}
+        }),
+    );
+    assert!(welcome.get("welcome").is_some(), "{welcome}");
+
+    let made = ask(
+        "Request",
+        "DaemonMessage",
+        json!({
+            "correlation": "new-terminal",
+            "pane": {"new": {"operation": "existing-api"}}
+        }),
+    );
+    assert_eq!(made["answer"]["outcome"], "OUTCOME_DONE", "{made}");
+    let id = made["answer"]["made"]["pane"].as_str().unwrap();
+
+    let snapshot = ask(
+        "Request",
+        "DaemonMessage",
+        json!({
+            "correlation": "subscribe",
+            "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}
+        }),
+    );
+    assert_eq!(snapshot["answer"]["outcome"], "OUTCOME_DONE", "{snapshot}");
+    let panes = snapshot["answer"]["snapshot"]["panes"].as_array().unwrap();
+    assert_eq!(panes.len(), 2);
+    assert!(panes.iter().any(|pane| pane["pane"] == id));
+    let canvas = panes.iter().find(|pane| pane["pane"] == "canvas").unwrap();
+    if (major, minor) < (0, 6) {
+        assert!(canvas.get("canvas").is_none());
+    }
+}
+
+#[test]
 fn requests() {
     played(&Conformance::load("api-requests.json"));
 }

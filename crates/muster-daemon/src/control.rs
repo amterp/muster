@@ -403,13 +403,13 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                         | pane_request::Request::ReadCanvas(_)),
                     ),
             })) => {
-                crate::canvas::serve(shared, canvas, |reply| {
+                crate::canvas::serve(shared, canvas, None, |reply| {
                     let before_lock = Instant::now();
                     let session = shared.lock();
                     answer(
                         &session,
                         &outbox,
-                        reply,
+                        reply.unwrap_or_else(|failure| failure.reply),
                         Answered::after(request.id, name, received, before_lock.elapsed()),
                     );
                 });
