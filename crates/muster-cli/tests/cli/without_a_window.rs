@@ -1313,6 +1313,63 @@ fn a_windowless_canvas_write_with_no_answer_lands_once() {
     assert_eq!(read, json!({ "kind": "markdown", "title": "Once", "revision": 2 }));
 }
 
+#[test]
+fn a_windowless_canvas_image_exports_original_bytes_and_metadata() {
+    let here = Here::new(Daemon::start_built());
+    let image = include_bytes!("../../../muster-daemon/tests/fixtures/canvas/pixel.png");
+    let source = here.home.join("source.png");
+    let dest = here.home.join("export.png");
+    std::fs::write(&source, image).unwrap();
+    std::fs::write(&dest, b"previous output").unwrap();
+    let canvas = ok(&here.muster(&["canvas", "open", source.to_str().unwrap()]));
+    let exported = here.muster(&[
+        "canvas",
+        "read",
+        "--pane",
+        &canvas,
+        "--output",
+        dest.to_str().unwrap(),
+        "--json",
+    ]);
+    let metadata: Value = serde_json::from_str(&ok(&exported)).unwrap();
+    assert_eq!(
+        metadata,
+        json!({ "kind": "image", "image_type": "image/png", "title": "", "revision": 1 })
+    );
+    assert_eq!(std::fs::read(&dest).unwrap(), image);
+
+    let refused =
+        here.muster(&["canvas", "read", "--pane", "pcanvas", "--output", dest.to_str().unwrap()]);
+    refused_with(&refused, 1);
+    assert_eq!(std::fs::read(dest).unwrap(), image);
+}
+
+#[test]
+fn canvas_output_leaves_parent_components_and_trailing_slashes_to_the_filesystem() {
+    let here = Here::new(Daemon::start_built());
+    let top = here.home.join("report.md");
+    let real = here.home.join("project/report.md");
+    let under_link = here.home.join("project/subdir");
+    std::fs::create_dir_all(&under_link).unwrap();
+    std::os::unix::fs::symlink(&under_link, here.home.join("link")).unwrap();
+    std::fs::write(&top, b"Top").unwrap();
+    std::fs::write(&real, b"Project").unwrap();
+    let canvas = ok(&here.muster(&["canvas", "open", real.to_str().unwrap()]));
+    std::fs::write(&real, b"Old project report").unwrap();
+    let read_to = |path: &str| {
+        here.command(&["canvas", "read", "--pane", &canvas, "--output", path])
+            .current_dir(&here.home)
+            .output()
+            .unwrap()
+    };
+    ok(&read_to("link/../report.md"));
+    assert_eq!(std::fs::read(&real).unwrap(), b"Project");
+    assert_eq!(std::fs::read(&top).unwrap(), b"Top");
+    let refused = refused_with(&read_to("report.md/"), 1);
+    assert!(refused.contains("report.md/"), "{refused}");
+    assert_eq!(std::fs::read(top).unwrap(), b"Top");
+}
+
 /// A daemon that takes a request to make a pane and hangs up may have made it, under the id the
 /// CLI minted and sent: the CLI says which, as a window does, rather than invite a second one.
 #[test]

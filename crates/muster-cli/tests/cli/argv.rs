@@ -43,12 +43,22 @@ fn cli_conformance() {
                     match &invocation.asking {
                         Asking::Send(request)
                         | Asking::CanvasFrom { request, .. }
+                        | Asking::ReadCanvas { request, .. }
                         | Asking::Watch { request, .. }
                         | Asking::WatchLayout { watch: request, .. } => Some(described(request)),
                         Asking::SendFrom { request, from } => match filled(request, from, given) {
                             Ok(request) => Some(described(&request)),
                             Err(refusal) => return Ok(json!({ "refused": refusal })),
                         },
+                        _ => None,
+                    },
+                ),
+                (
+                    "writes_to",
+                    match &invocation.asking {
+                        Asking::ReadCanvas { output, .. } => {
+                            output.as_ref().map(|path| json!(path))
+                        }
                         _ => None,
                     },
                 ),
@@ -67,6 +77,7 @@ fn cli_conformance() {
                     match &invocation.asking {
                         Asking::Send(request)
                         | Asking::CanvasFrom { request, .. }
+                        | Asking::ReadCanvas { request, .. }
                         | Asking::Watch { request, .. }
                         | Asking::WatchLayout { watch: request, .. }
                         | Asking::SendFrom { request, .. } => {
@@ -501,6 +512,7 @@ fn answers_here(asking: &Asking) -> Option<Value> {
         Asking::Send(_)
         | Asking::SendFrom { .. }
         | Asking::CanvasFrom { .. }
+        | Asking::ReadCanvas { .. }
         | Asking::Watch { .. }
         | Asking::WatchLayout { .. } => None,
         Asking::Print(_) => Some(json!("printing something this binary holds")),

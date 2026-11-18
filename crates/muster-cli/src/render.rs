@@ -265,17 +265,7 @@ pub fn answer_on(response: &Response, json: bool, local: &Local) -> Result<Strin
         } else {
             written.revision.to_string()
         }),
-        Some(response::Payload::CanvasRead(read)) if json => {
-            let document = read.document.as_ref().ok_or_else(|| {
-                Trouble::Refused("the window returned an empty canvas answer".into())
-            })?;
-            Ok(json!({
-                "kind": canvas_kind(document.kind()),
-                "title": document.title,
-                "revision": read.revision,
-            })
-            .to_string())
-        }
+        Some(response::Payload::CanvasRead(read)) if json => canvas_metadata(read),
         Some(response::Payload::Daemons(daemons)) => {
             Ok(if json { daemons_json(daemons).to_string() } else { daemons_text(daemons) })
         }
@@ -320,6 +310,22 @@ pub fn answer_on(response: &Response, json: bool, local: &Local) -> Result<Strin
                 .to_string(),
         )),
     }
+}
+
+fn canvas_metadata(read: &muster_proto::CanvasRead) -> Result<String, Trouble> {
+    let document = read
+        .document
+        .as_ref()
+        .ok_or_else(|| Trouble::Refused("the window returned an empty canvas answer".into()))?;
+    let mut metadata = json!({
+        "kind": canvas_kind(document.kind()),
+        "title": document.title,
+        "revision": read.revision,
+    });
+    if document.kind() == muster_proto::CanvasKind::Image {
+        metadata["image_type"] = json!(document.image_type);
+    }
+    Ok(metadata.to_string())
 }
 
 fn canvas_kind(kind: muster_proto::CanvasKind) -> &'static str {

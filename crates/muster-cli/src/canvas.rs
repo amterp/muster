@@ -1,6 +1,10 @@
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::Path;
 
 use muster_core::canvas::{CanvasImageType, MAX_BODY};
+use muster_core::names::{Mint, Minter};
 use muster_proto::{CanvasDocument, CanvasKind, Request, request};
 
 use crate::Trouble;
@@ -53,13 +57,33 @@ pub(crate) fn write_original(
 ) -> Result<(), Trouble> {
     if stdout_is_terminal && document.kind() == CanvasKind::Image {
         return Err(Trouble::Refused(
-            "redirect stdout to a file or pipe to read an image, or use --json for its metadata"
+            "read an image with --output FILE, redirect stdout, or use --json for its metadata"
                 .into(),
         ));
     }
     out.write_all(&document.body)
         .and_then(|()| out.flush())
         .map_err(|error| Trouble::Refused(format!("could not print the canvas document ({error})")))
+}
+
+pub(crate) fn write_file(path: &Path, bytes: &[u8]) -> Result<(), Trouble> {
+    let fail = |error| {
+        Trouble::Refused(format!("could not write the canvas to {} ({error})", path.display()))
+    };
+    let temporary = path.with_file_name(format!(".muster-{}.tmp", Minter::new(Mint::Drawn).pane()));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&temporary)
+        .map_err(fail)?;
+    let written = file.write_all(bytes).and_then(|()| file.flush());
+    drop(file);
+    if let Err(error) = written.and_then(|()| std::fs::rename(&temporary, path)) {
+        let _ = std::fs::remove_file(temporary);
+        return Err(fail(error));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -89,7 +113,8 @@ mod tests {
             ..CanvasDocument::default()
         };
         let mut out = Vec::new();
-        assert!(write_original(&document, true, &mut out).is_err());
+        let refusal = write_original(&document, true, &mut out).unwrap_err();
+        assert!(refusal.detail().contains("--output FILE"));
         assert!(out.is_empty());
     }
 }

@@ -5,6 +5,19 @@
   "why": "What `muster pane new --down --run claude` becomes is the whole contract between an agent and the window it is sitting in, and it is the part that outlives this implementation - a `muster` rewritten in anything else has to turn the same words into the same requests. Three shapes of outcome are pinned: the request a line becomes, the refusal a line earns from us, and the *kind* of complaint clap makes about a line it cannot read. The kind rather than the wording, because the wording is clap's and would change under a version bump, while `an unknown flag is refused rather than swallowed` is the promise. Fields left at their protobuf default are absent here, so a case reads as what somebody actually said: `side` and a rename's `name` are the exceptions, the first because every split has a side and the default is the point, and the second because an empty name is what takes a name away.",
   "cases": [
     {
+      "name": "canvas read keeps its local output path out of the request",
+      "why": "The document comes from the daemon, but the output file belongs to the invoking machine.",
+      "given": {
+        "argv": ["canvas", "read", "--pane", "otter", "--output", "exports/../report.png", "--json"],
+        "cwd": "/project"
+      },
+      "expect": {
+        "request": {"read_canvas": {"pane_id": "otter"}},
+        "writes_to": "/project/exports/../report.png",
+        "json": true
+      }
+    },
+    {
       "name": "canvas open defaults to a right half split of the calling pane",
       "why": "An agent can place a report beside its own pane without changing which pane has the keyboard.",
       "given": {

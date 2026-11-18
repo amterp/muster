@@ -69,6 +69,10 @@ pub enum Asking {
         request: Box<Request>,
         from: TextSource,
     },
+    ReadCanvas {
+        request: Box<Request>,
+        output: Option<PathBuf>,
+    },
     /// A request answered with a stream: printed as it arrives, until it ends or `timeout` runs
     /// out. `None` waits for as long as the window keeps the watch open.
     Watch {
@@ -1163,11 +1167,6 @@ enum Doing {
     },
 }
 
-/// What `muster tab` can do.
-///
-/// Far fewer verbs than a pane has, and the gaps are the point: nothing types into a tab or gives
-/// one a bridge - those are things you do to the pane inside it. Moving one is between windows,
-/// because a tab belongs to exactly one.
 #[derive(Debug, Subcommand)]
 enum WithCanvas {
     /// Open a canvas and print its callsign
@@ -1208,11 +1207,14 @@ enum WithCanvas {
         #[arg(long, value_parser = reference)]
         pane: Option<String>,
     },
-    /// Print a canvas's original document, or its metadata with --json
+    /// Print or export a canvas's original document, or print metadata with --json
     Read {
         /// Choose the canvas by callsign or ID. Defaults to the one this pane opened
         #[arg(long, value_parser = reference)]
         pane: Option<String>,
+        /// Write the original document to this local file
+        #[arg(long, value_name = "FILE", value_parser = reference)]
+        output: Option<String>,
     },
 }
 
@@ -1241,7 +1243,7 @@ impl CanvasInput {
         validate_title(&self.title).map_err(|reason| Failure::Refused(reason.to_string()))?;
         let file = self.file.as_deref().filter(|file| *file != "-");
         let from = match file {
-            Some(file) => TextSource::File(input_path(file, here, "FILE")?),
+            Some(file) => TextSource::File(settled(&local_path(file, here, "FILE")?)),
             None => TextSource::Stdin,
         };
         let extension = file
@@ -1269,6 +1271,11 @@ impl CanvasInput {
     }
 }
 
+/// What `muster tab` can do.
+///
+/// Far fewer verbs than a pane has, and the gaps are the point: nothing types into a tab or gives
+/// one a bridge - those are things you do to the pane inside it. Moving one is between windows,
+/// because a tab belongs to exactly one.
 #[derive(Debug, Subcommand)]
 enum WithTab {
     /// Make a tab, and print the name of the pane that appears in it
@@ -1530,11 +1537,14 @@ fn canvas(
                 }),
             )
         }
-        WithCanvas::Read { pane } => {
-            return Ok(send(request::Payload::ReadCanvas(ReadCanvas {
+        WithCanvas::Read { pane, output } => {
+            let output =
+                output.as_ref().map(|path| local_path(path, here, "--output")).transpose()?;
+            let payload = request::Payload::ReadCanvas(ReadCanvas {
                 pane_id: pane.clone().unwrap_or_default(),
                 ..ReadCanvas::default()
-            })));
+            });
+            return Ok(Asking::ReadCanvas { request: Box::new(Request::new(payload)), output });
         }
     };
     Ok(Asking::CanvasFrom { request: Box::new(Request::new(payload)), from })
@@ -1598,6 +1608,12 @@ fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
         }
         Asking::CanvasFrom { request, from } => {
             return Ok(Asking::CanvasFrom { request: Box::new(request.for_window(window)), from });
+        }
+        Asking::ReadCanvas { request, output } => {
+            return Ok(Asking::ReadCanvas {
+                request: Box::new(request.for_window(window)),
+                output,
+            });
         }
         Asking::Watch { request, timeout } => {
             return Ok(Asking::Watch { request: Box::new(request.for_window(window)), timeout });
@@ -2095,10 +2111,10 @@ fn directory(
 /// means. Unlike `--cwd` this file is read on this machine, so the only paths refused are the
 /// two nothing here can resolve.
 pub(crate) fn file_to_read(named: &str, here: Option<&Path>) -> Result<String, Failure> {
-    input_path(named, here, "--file")
+    local_path(named, here, "--file").map(|path| settled(&path))
 }
 
-fn input_path(named: &str, here: Option<&Path>, argument: &str) -> Result<String, Failure> {
+fn local_path(named: &str, here: Option<&Path>, argument: &str) -> Result<PathBuf, Failure> {
     if named.starts_with('~') {
         return Err(Failure::Refused(format!(
             "`{argument} {named}` still has its tilde, so the shell did not expand it - quoting is \
@@ -2108,7 +2124,7 @@ fn input_path(named: &str, here: Option<&Path>, argument: &str) -> Result<String
     }
     let named = Path::new(named);
     if named.is_absolute() {
-        return Ok(settled(named));
+        return Ok(named.to_path_buf());
     }
     let Some(here) = here else {
         return Err(Failure::Refused(format!(
@@ -2119,7 +2135,7 @@ fn input_path(named: &str, here: Option<&Path>, argument: &str) -> Result<String
             named.display()
         )));
     };
-    Ok(settled(&here.join(named)))
+    Ok(here.join(named))
 }
 
 /// What a file or stdin handed over, as the text a `pane send` types.

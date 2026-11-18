@@ -39,6 +39,14 @@ fn a_canvas_round_trips_text_and_image_bytes_through_the_cli() {
     let read = run_process(&["canvas", "read", "--pane", name], &environment, b"");
     assert!(read.status.success(), "{read:?}");
     assert_eq!(read.stdout, original);
+    let output = daemon.root().join("export.html");
+    let exported = run(
+        &["canvas", "read", "--pane", name, "--output", output.to_str().unwrap()],
+        &environment,
+    );
+    assert_eq!(exported.code, 0, "{}", exported.errors);
+    assert!(exported.out.is_empty());
+    assert_eq!(std::fs::read(output).unwrap(), original);
     assert_eq!(
         json_from(&run(&["canvas", "read", "--json"], &environment)),
         json!({ "kind": "html", "title": "One", "revision": 1 }),

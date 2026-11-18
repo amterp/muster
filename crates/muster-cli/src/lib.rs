@@ -266,6 +266,30 @@ fn run_command<W: Write>(
             }
             request
         }
+        args::Asking::ReadCanvas { request, output } => {
+            let read = canvas_answer(&request, named.as_deref(), environment, no_window).and_then(
+                |(answer, silent)| {
+                    let Some(muster_proto::response::Payload::CanvasRead(read)) = &answer.payload
+                    else {
+                        render::answer(&answer, json)?;
+                        return Err(Trouble::Refused(
+                            "the request did not return a canvas document".into(),
+                        ));
+                    };
+                    let document = read.document.as_ref().ok_or_else(|| {
+                        Trouble::Refused("the answer did not contain a canvas document".into())
+                    })?;
+                    if let Some(path) = output {
+                        canvas::write_file(path.as_path(), &document.body)?;
+                    } else if !json {
+                        print_canvas(out, document)?;
+                    }
+                    let text = if json { render::answer(&answer, true)? } else { String::new() };
+                    Ok(noted_answer(text, &silent, json, errors))
+                },
+            );
+            return finish(read, json, out, errors);
+        }
         args::Asking::SendFrom { mut request, from } => match read_text(&from, input) {
             Ok(text) => {
                 if let Some(muster_proto::request::Payload::SendToPane(send)) =
@@ -278,29 +302,6 @@ fn run_command<W: Write>(
             Err(trouble) => return report(&trouble, json, errors),
         },
     };
-
-    if matches!(request.payload, Some(muster_proto::request::Payload::ReadCanvas(_))) {
-        let read = canvas_answer(&request, named.as_deref(), environment, no_window).and_then(
-            |(answer, silent)| {
-                let Some(muster_proto::response::Payload::CanvasRead(read)) = &answer.payload
-                else {
-                    render::answer(&answer, json)?;
-                    return Err(Trouble::Refused(
-                        "the request did not return a canvas document".into(),
-                    ));
-                };
-                let document = read.document.as_ref().ok_or_else(|| {
-                    Trouble::Refused("the answer did not contain a canvas document".into())
-                })?;
-                if !json {
-                    print_canvas(out, document)?;
-                }
-                let text = if json { render::answer(&answer, true)? } else { String::new() };
-                Ok(noted_answer(text, &silent, json, errors))
-            },
-        );
-        return finish(read, json, out, errors);
-    }
 
     if no_window {
         return finish(from_the_daemon(&request, environment, json), json, out, errors);
