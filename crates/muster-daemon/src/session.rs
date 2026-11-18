@@ -54,7 +54,7 @@ use crate::messages::{
     Block, Declared, Doorbell, Messages, Need, Over, Peers, StallTold, agent_to_come,
 };
 use crate::operations::{Operations, Record};
-use crate::pane::{Ended, Pane, PaneIo, Process, Turns, TypedBy, Watching};
+use crate::pane::{Ended, Pane, PaneIo, Process, TerminalPane, Turns, TypedBy, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
@@ -965,15 +965,15 @@ fn place_in(tab: &Tab, pane: &str) -> persist::ClosedTab {
 }
 
 /// A pane as the state file keeps it.
-fn saved_pane(pane: &Pane) -> persist::Pane {
+fn saved_pane(pane: &Pane, terminal: &TerminalPane) -> persist::Pane {
     persist::Pane {
         name: pane.record.pane.clone(),
         label: pane.record.label.clone(),
         label_from_session: pane.record.label_from_session,
         callsign: pane.record.callsign.clone(),
         cwd: PathBuf::from(&pane.record.cwd),
-        grid: pane.io.grid(),
-        resume: pane.resume.clone(),
+        grid: terminal.io.grid(),
+        resume: terminal.resume.clone(),
         quiet: pane.record.quiet,
         maker: pane.record.maker.clone(),
         maker_closed: pane.record.maker_closed,
@@ -1460,8 +1460,8 @@ impl Session {
                     Err(refused) => refused,
                 },
                 P::Read(read) => match self.reading(&read) {
-                    None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
-                    Some(reading) => return Handled::Read(Box::new(reading)),
+                    Ok(reading) => return Handled::Read(Box::new(reading)),
+                    Err(refused) => refused,
                 },
                 P::StoreImage(_) | P::Send(_) => Reply::unsupported(),
             },
@@ -1486,15 +1486,15 @@ impl Session {
         let panes = self
             .panes
             .iter()
-            .map(|pane| {
-                let grid = pane.io.grid();
+            .filter_map(|pane| {
+                let grid = pane.body.terminal()?.io.grid();
                 let size = proto::Grid {
                     cols: u32::from(grid.cols),
                     rows: u32::from(grid.rows),
                     width_px: u32::from(grid.width_px),
                     height_px: u32::from(grid.height_px),
                 };
-                (pane.record.pane.clone(), size)
+                Some((pane.record.pane.clone(), size))
             })
             .collect();
         Reply { detail: Some(Box::new(Detail::Grids(proto::Grids { panes }))), ..Reply::done() }
@@ -1630,7 +1630,10 @@ impl Session {
         for pane in panes {
             let (now, answering) = self.pane_index(&pane).map_or((None, false), |index| {
                 let held = &self.panes[index];
-                (attention::asking(&held.record, self.maker_hearing(&held.record)), held.answering)
+                (
+                    attention::asking(&held.record, self.maker_hearing(&held.record)),
+                    held.body.terminal().is_some_and(|terminal| terminal.answering),
+                )
             });
             // A key typed at a dialog may not have answered it, and a dialog that ignored it is
             // still the one that asked: it goes on asking, as one spell, until the screen shows
@@ -1890,7 +1893,9 @@ impl Session {
         };
         let grid = match create.grid.map(grid) {
             Some(grid) => grid.map_err(Reply::refused)?,
-            None => neighbour.map_or(Grid::FALLBACK, |pane| pane.io.grid()),
+            None => neighbour
+                .and_then(|pane| pane.body.terminal())
+                .map_or(Grid::FALLBACK, |terminal| terminal.io.grid()),
         };
         let (cwd, named) = match create.cwd.filter(|cwd| !cwd.is_empty()) {
             Some(cwd) => (PathBuf::from(cwd), !create.cwd_inherited),
@@ -2226,9 +2231,11 @@ impl Session {
         self.panes[index].quiet_before_orphaned = quiet_before_orphaned;
         self.panes[index].kept_after_maker_closed = kept && record.maker_closed;
         if let Some(resume) = &reopening.resume {
-            self.panes[index].session_id = Some(resume.session.clone());
-            self.panes[index].restart_env.clone_from(&resume.env);
-            self.panes[index].resume = Some(resume.clone());
+            let terminal =
+                self.panes[index].body.terminal_mut().expect("just opened a terminal pane");
+            terminal.session_id = Some(resume.session.clone());
+            terminal.restart_env.clone_from(&resume.env);
+            terminal.resume = Some(resume.clone());
         }
         let Target::Reopened { tab, fresh } = target else {
             unreachable!("a reopen is placed where the pane was")
@@ -2725,13 +2732,14 @@ impl Session {
     ) -> Option<&str> {
         let pane = &self.panes[self.pane_index(pane)?];
         let own = pane.record.agent.as_deref()?;
-        (pane.io.agent_group()? != sender.group).then_some(own)
+        (pane.body.terminal()?.io.agent_group()? != sender.group).then_some(own)
     }
 
     /// Facts the agent in a pane states about itself.
     fn report(&mut self, mut report: pane_request::Report) -> Reply {
-        let Some(index) = self.pane_index(&report.pane) else {
-            return Reply::not_there(format!("no pane {} on this daemon", report.pane));
+        let index = match self.terminal_index(&report.pane) {
+            Ok(index) => index,
+            Err(refused) => return refused,
         };
         let own_state = match own_state(&mut report) {
             Ok(state) => state,
@@ -2781,7 +2789,13 @@ impl Session {
         if kept != Kept::No {
             report.waiting = None;
         }
-        self.panes[index].drop_answered_wait(&mut report);
+        {
+            let pane = &self.panes[index];
+            pane.body
+                .terminal()
+                .expect("report checked terminal")
+                .drop_answered_wait(&pane.record.pane, &mut report);
+        }
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
         let speaks_of_waiting = report.waiting.is_some();
         let record = &mut self.panes[index].record;
@@ -2808,16 +2822,7 @@ impl Session {
         let compacting = self.past_compact_at(index, cleared, context_used);
         self.past_nudge_at(index, context_used);
         self.compaction_changed(index);
-        let pane = &mut self.panes[index];
-        if says_waiting {
-            pane.ran_out = None;
-        }
-        heard_of_waiting(pane, says_waiting, speaks_of_waiting, kept == Kept::ThroughPrompt);
-        if says_waiting {
-            let pid = pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits);
-            pane.turns.wait_process_started =
-                pid.and_then(|pid| i32::try_from(pid).ok()).and_then(pty::process_started);
-        }
+        heard_of_waiting(&mut self.panes[index], says_waiting, speaks_of_waiting, kept);
         // Detection decides what the state comes to, and publishes it as any other change.
         if let Some(state) = own_state {
             self.agent_reported_state(index, agent, state);
@@ -2836,13 +2841,15 @@ impl Session {
     /// and what it was given in the turn goes with them.
     fn agent_reported_state(&mut self, index: usize, agent: String, state: muster_detect::State) {
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return };
+        let io = Arc::clone(&terminal.io);
         if pane.record.agent.as_deref() == Some(agent.as_str()) {
-            pane.turns.reports_turns = true;
+            terminal.turns.reports_turns = true;
             if state == muster_detect::State::Idle {
-                pane.heard_from.clear();
+                terminal.heard_from.clear();
             }
             if state == muster_detect::State::Idle
-                && settle_wait(&mut pane.record, &mut pane.turns, "reported turn end")
+                && settle_wait(&mut pane.record, &mut terminal.turns, "reported turn end")
             {
                 // The turn that ended the wait has finished. Detection marks a finish when it
                 // sees the agent stop, and a pane it already reads idle shows it no stop.
@@ -2853,16 +2860,17 @@ impl Session {
                 self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
             }
         }
-        self.panes[index].io.report_state(agent, state);
+        io.report_state(agent, state);
     }
 
     /// Notes that the agent's harness began compacting its context by itself, when `agent` is the
     /// one detection finds in the pane, and says whether it did.
     fn harness_compacting(&self, index: usize, agent: &str) -> bool {
         let pane = &self.panes[index];
+        let Some(terminal) = pane.body.terminal() else { return false };
         let ours = pane.record.agent.as_deref() == Some(agent);
         if ours {
-            pane.io.compacting_by_itself(std::time::Instant::now());
+            terminal.io.compacting_by_itself(std::time::Instant::now());
         }
         ours
     }
@@ -2877,7 +2885,8 @@ impl Session {
         session_id: Option<String>,
         change: ContextReport,
     ) -> bool {
-        let before = self.panes[index].session_id.clone();
+        let before =
+            self.panes[index].body.terminal().and_then(|terminal| terminal.session_id.clone());
         let identified = self.session_identified(index, agent, session_id);
         self.context_changed(index, agent, change, before.as_deref()) || identified
     }
@@ -2896,6 +2905,7 @@ impl Session {
         session_before: Option<&str>,
     ) -> bool {
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return false };
         let held = pane.record.context_change.as_ref().and_then(|held| held.id.as_deref());
         let repeated = change.id.is_some() && change.id.as_deref() == held;
         if pane.record.agent.as_deref() != Some(agent) || repeated {
@@ -2905,7 +2915,7 @@ impl Session {
             proto::ContextChangeKind::None => return false,
             proto::ContextChangeKind::SessionStarted => {
                 let replaced =
-                    session_before.is_some() && session_before != pane.session_id.as_deref();
+                    session_before.is_some() && session_before != terminal.session_id.as_deref();
                 if !replaced {
                     return false;
                 }
@@ -2938,21 +2948,23 @@ impl Session {
         said: Option<String>,
     ) -> bool {
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return false };
         if cleared {
-            pane.context_session = None;
+            terminal.context_session = None;
         }
         let Some(said) = said.filter(|said| !said.is_empty()) else { return false };
         if pane.record.agent.as_deref().is_some_and(|found| !agent.is_empty() && found != agent) {
             return false;
         }
-        let before = pane.context_session.replace(said);
-        let switched = before.is_some_and(|before| Some(&before) != pane.context_session.as_ref());
+        let before = terminal.context_session.replace(said);
+        let switched =
+            before.is_some_and(|before| Some(&before) != terminal.context_session.as_ref());
         if switched {
             log::debug(
                 "daemon.report.context_session_changed",
                 fields! { "pane" => pane.record.pane },
             );
-            pane.compaction.session_began();
+            terminal.compaction.session_began();
         }
         switched
     }
@@ -2962,12 +2974,13 @@ impl Session {
     fn past_compact_at(&mut self, index: usize, cleared: bool, context_used: Option<f32>) -> bool {
         let manifests = self.detecting.manifests();
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return false };
         let threshold = applied_percent(&pane.record, |applied| applied.compact_at.as_ref());
         if cleared {
-            pane.compaction.session_began();
+            terminal.compaction.session_began();
         }
         let Some(used) = context_used else { return false };
-        if !pane.compaction.reported(used, threshold) {
+        if !terminal.compaction.reported(used, threshold) {
             return false;
         }
         let agent = pane.record.agent.clone().unwrap_or_default();
@@ -2989,8 +3002,8 @@ impl Session {
             "daemon.compact.past_threshold",
             fields! { "pane" => pane.record.pane, "agent" => agent, "context_used" => used },
         );
-        pane.compaction.crossed(line);
-        pane.compaction.wanted().is_some()
+        terminal.compaction.crossed(line);
+        terminal.compaction.wanted().is_some()
     }
 
     /// What a report of the context says against the pane's `nudge_at`, after
@@ -2998,6 +3011,7 @@ impl Session {
     fn past_nudge_at(&mut self, index: usize, context_used: Option<f32>) {
         let Some(used) = context_used else { return };
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return };
         let applied = pane.record.compaction.clone().unwrap_or_default();
         let percent = |threshold: Option<proto::AppliedThreshold>| {
             threshold.and_then(|threshold| u8::try_from(threshold.percent?).ok())
@@ -3005,7 +3019,7 @@ impl Session {
         let withheld = applied.nudge_withheld() != proto::NudgeWithheld::None;
         let nudge_at =
             percent(applied.nudge_at).filter(|_| !withheld && pane.record.agent.is_some());
-        pane.compaction.nudge_reported(used, nudge_at, percent(applied.compact_at));
+        terminal.compaction.nudge_reported(used, nudge_at, percent(applied.compact_at));
     }
 
     /// The nudges owed to agents here, for the doorbell's thread to post
@@ -3015,7 +3029,8 @@ impl Session {
         self.panes
             .iter()
             .filter_map(|pane| {
-                let nudge = pane.compaction.nudge_due()?;
+                let terminal = pane.body.terminal()?;
+                let nudge = terminal.compaction.nudge_due()?;
                 let source = pane.record.compaction.as_ref()?.nudge_at.as_ref()?.source();
                 let agent = pane.record.agent.clone().unwrap_or_default();
                 Some(crate::messages::NudgeDue {
@@ -3041,15 +3056,15 @@ impl Session {
 
     /// The nudge owed to `pane`'s agent was posted.
     pub(crate) fn nudged(&mut self, pane: &str) {
-        if let Some(index) = self.pane_index(pane) {
-            self.panes[index].compaction.nudge_posted();
+        if let Some(terminal) = self.terminal_mut(pane) {
+            terminal.compaction.nudge_posted();
         }
     }
 
     /// The nudge owed to `pane`'s agent could not be posted; true the first time for this
     /// crossing, when it is worth saying.
     pub(crate) fn nudge_not_posted(&mut self, pane: &str) -> bool {
-        self.pane_index(pane).is_some_and(|index| self.panes[index].compaction.nudge_not_posted())
+        self.terminal_mut(pane).is_some_and(|terminal| terminal.compaction.nudge_not_posted())
     }
 
     /// Every wait an agent here declared and holds, for the watch that ends one whose process
@@ -3067,26 +3082,29 @@ impl Session {
         };
         self.panes
             .iter()
-            .filter(|pane| pane.holds_declared_wait())
             .filter_map(|pane| {
+                let terminal = pane.body.terminal()?;
+                if !terminal.holds_declared_wait(&pane.record) {
+                    return None;
+                }
                 let waiting = pane.record.facts.as_ref()?.waiting.clone()?;
-                Some((pane, waiting))
+                Some((pane, terminal, waiting))
             })
-            .map(|(pane, waiting)| Declared {
+            .map(|(pane, terminal, waiting)| Declared {
                 pane: pane.record.pane.clone(),
                 waiting,
-                serial: pane.turns.wait_serial,
+                serial: terminal.turns.wait_serial,
                 until_exits: pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits),
-                process_started: pane.turns.wait_process_started,
+                process_started: terminal.turns.wait_process_started,
                 until_message_from: pane
                     .record
                     .facts
                     .as_ref()
                     .and_then(|facts| facts.waiting_until_message_from.clone()),
-                limited: pane.turns.wait_carried || !woken(pane.record.agent.as_deref()),
-                started_ms: pane.turns.wait_started_ms,
-                noticed: pane.turns.wait_noticed,
-                carried: pane.turns.wait_carried,
+                limited: terminal.turns.wait_carried || !woken(pane.record.agent.as_deref()),
+                started_ms: terminal.turns.wait_started_ms,
+                noticed: terminal.turns.wait_noticed,
+                carried: terminal.turns.wait_carried,
             })
             .collect()
     }
@@ -3095,22 +3113,24 @@ impl Session {
     pub(crate) fn holds_wait(&self, pane: &str, serial: u64) -> bool {
         self.pane_index(pane).is_some_and(|index| {
             let pane = &self.panes[index];
-            pane.holds_declared_wait() && pane.turns.wait_serial == serial
+            pane.body.terminal().is_some_and(|terminal| {
+                terminal.holds_declared_wait(&pane.record) && terminal.turns.wait_serial == serial
+            })
         })
     }
 
-    /// Notes that `pane`'s agent has been given messages from the panes `authors` (`Pane::heard_from`).
+    /// Notes that `pane`'s agent has been given messages from the panes `authors` (`TerminalPane::heard_from`).
     pub(crate) fn heard_from(&mut self, pane: &str, authors: Vec<String>) {
-        if let Some(index) = self.pane_index(pane) {
-            self.panes[index].heard_from.extend(authors);
+        if let Some(terminal) = self.terminal_mut(pane) {
+            terminal.heard_from.extend(authors);
         }
     }
 
     /// Forgets that `pane`'s agent was given messages from the panes `others`, because it has
-    /// since posted to them (`Pane::heard_from`).
+    /// since posted to them (`TerminalPane::heard_from`).
     pub(crate) fn forget_heard_from(&mut self, pane: &str, others: &[String]) {
-        if let Some(index) = self.pane_index(pane) {
-            self.panes[index].heard_from.retain(|heard| !others.contains(heard));
+        if let Some(terminal) = self.terminal_mut(pane) {
+            terminal.heard_from.retain(|heard| !others.contains(heard));
         }
     }
 
@@ -3144,9 +3164,10 @@ impl Session {
         }
         let Some(index) = self.pane_index(pane) else { return false };
         let pane = &mut self.panes[index];
-        pane.turns.wait_carried = false;
+        let Some(terminal) = pane.body.terminal_mut() else { return false };
+        terminal.turns.wait_carried = false;
         if over == Over::RanOut {
-            pane.ran_out = pane.record.facts.as_ref().and_then(|facts| facts.waiting.clone());
+            terminal.ran_out = pane.record.facts.as_ref().and_then(|facts| facts.waiting.clone());
         }
         forget_wait(&mut pane.record, over.as_str());
         if over == Over::RanOut && pane.record.agent_state() == proto::AgentState::Idle {
@@ -3161,16 +3182,19 @@ impl Session {
     /// could not deliver by it is typed instead, until the agent reports one again.
     pub(crate) fn forget_session_id(&mut self, pane: &str, id: &str) {
         if let Some(index) = self.pane_index(pane)
-            && self.panes[index].session_id.as_deref() == Some(id)
+            && let Some(terminal) = self.panes[index].body.terminal_mut()
+            && terminal.session_id.as_deref() == Some(id)
         {
-            self.panes[index].session_id = None;
+            terminal.session_id = None;
             self.session_described(index);
         }
     }
 
     /// Publishes the pane's record when its session or how it resumes has moved on it.
     fn session_described(&mut self, index: usize) {
-        if self.panes[index].describe_session() {
+        let pane = &mut self.panes[index];
+        if pane.body.terminal().is_some_and(|terminal| terminal.describe_session(&mut pane.record))
+        {
             let record = self.panes[index].record.clone();
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
@@ -3181,15 +3205,16 @@ impl Session {
     /// which a harness sends as a session starts, perhaps after the new session's id.
     fn session_identified(&mut self, index: usize, agent: &str, said: Option<String>) -> bool {
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return false };
         let Some(said) = said else { return false };
         if pane.record.agent.as_deref().is_some_and(|found| found != agent) {
             return false;
         }
         let id = Some(said).filter(|id| !id.is_empty());
-        let changed = pane.session_id != id;
+        let changed = terminal.session_id != id;
         // The same session again is worth another try at its resume when the last one could not
         // be built: the job was between processes, or its arguments would not read.
-        if !changed && (id.is_none() || pane.resume.is_some()) {
+        if !changed && (id.is_none() || terminal.resume.is_some()) {
             return false;
         }
         if changed {
@@ -3197,7 +3222,7 @@ impl Session {
                 "session.id.reported",
                 fields! { "pane" => pane.record.pane, "agent" => agent, "known" => id.is_some() },
             );
-            pane.session_id.clone_from(&id);
+            terminal.session_id.clone_from(&id);
         }
         let resume = id.as_deref().and_then(|session| self.resume_of(index, agent, session));
         if let Some(session) = id.as_deref().filter(|_| resume.is_none()) {
@@ -3220,10 +3245,11 @@ impl Session {
                 .is_some()
         });
         let pane = &mut self.panes[index];
-        if !resumable || pane.resume_missed.as_deref() == Some(session) {
+        let Some(terminal) = pane.body.terminal_mut() else { return };
+        if !resumable || terminal.resume_missed.as_deref() == Some(session) {
             return;
         }
-        pane.resume_missed = Some(session.to_string());
+        terminal.resume_missed = Some(session.to_string());
         log::warn(
             "session.resume.unbuilt",
             fields! {
@@ -3247,7 +3273,8 @@ impl Session {
     fn resume_of(&self, index: usize, agent: &str, session: &str) -> Option<persist::Resume> {
         use muster_detect::Processes as _;
         let manifests = self.detecting.manifests()?;
-        let io = &self.panes[index].io;
+        let terminal = self.panes[index].body.terminal()?;
+        let io = &terminal.io;
         let group = u32::try_from(io.foreground_group()?).ok()?;
         let shell = io.shell().and_then(|shell| u32::try_from(shell).ok()).unwrap_or(group);
         let job = muster_detect::System.job(shell, group)?;
@@ -3287,7 +3314,7 @@ impl Session {
             session: session.to_string(),
             command: resume.command,
             uncarried: resume.uncarried,
-            env: self.panes[index].restart_env.clone(),
+            env: terminal.restart_env.clone(),
             files: resume.files,
         })
     }
@@ -3297,20 +3324,25 @@ impl Session {
     pub(crate) fn restarted_with(&mut self, pane: &str, env: persist::Environment) {
         let Some(index) = self.pane_index(pane) else { return };
         let pane = &mut self.panes[index];
-        if let Some(resume) = &mut pane.resume {
+        let Some(terminal) = pane.body.terminal_mut() else { return };
+        if let Some(resume) = &mut terminal.resume {
             resume.env.clone_from(&env);
             self.persister.changed();
         }
-        pane.restart_env = env;
+        terminal.restart_env = env;
     }
 
     /// Says on each pane's record why the wake waiting for its agent is held, by pane.
     pub(crate) fn wakes_held(&mut self, held: &HashMap<String, String>) {
         for index in 0..self.panes.len() {
-            let said = held.get(&self.panes[index].record.pane).cloned();
-            if self.panes[index].record.wake_held != said {
-                self.panes[index].record.wake_held = said;
-                let record = self.panes[index].record.clone();
+            let pane = &mut self.panes[index];
+            if pane.body.terminal().is_none() {
+                continue;
+            }
+            let said = held.get(&pane.record.pane).cloned();
+            if pane.record.wake_held != said {
+                pane.record.wake_held = said;
+                let record = pane.record.clone();
                 self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
             }
         }
@@ -3318,8 +3350,10 @@ impl Session {
 
     /// Keeps what starts the pane's agent session again, saving it when it changed.
     fn resume_changed(&mut self, index: usize, resume: Option<persist::Resume>) {
-        if self.panes[index].resume != resume {
-            self.panes[index].resume = resume;
+        if let Some(terminal) = self.panes[index].body.terminal_mut()
+            && terminal.resume != resume
+        {
+            terminal.resume = resume;
             self.persister.changed();
         }
     }
@@ -3337,19 +3371,20 @@ impl Session {
         said: Option<&str>,
     ) -> bool {
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return false };
         let label = pane.record.label.clone();
-        let wanted = pane.session_name.wanted().map(str::to_string);
+        let wanted = terminal.session_name.wanted().map(str::to_string);
         if cleared {
-            pane.session_name.cleared(&pane.record.pane, label.as_deref());
+            terminal.session_name.cleared(&pane.record.pane, label.as_deref());
         }
         let ours = pane.record.agent.as_deref().is_none_or(|found| found == agent);
-        let taken = said
-            .filter(|_| ours)
-            .and_then(|said| pane.session_name.heard(&pane.record.pane, said, label.as_deref()));
+        let taken = said.filter(|_| ours).and_then(|said| {
+            terminal.session_name.heard(&pane.record.pane, said, label.as_deref())
+        });
         let Some(taken) = taken else {
-            return pane.session_name.wanted() != wanted.as_deref();
+            return terminal.session_name.wanted() != wanted.as_deref();
         };
-        let changed = pane.session_name.wanted() != wanted.as_deref();
+        let changed = terminal.session_name.wanted() != wanted.as_deref();
         let name = pane.record.pane.clone();
         if let Some(holder) =
             given_name(Some(&taken)).and_then(|taken| self.callsign_holder(taken, &name))
@@ -3454,14 +3489,15 @@ impl Session {
         }
         let (Some(index), Some(tab)) = (self.pane_index(pane), self.tab_of(pane)) else { return };
         let (held, tab) = (&self.panes[index], &self.tabs[tab]);
+        let Some(terminal) = held.body.terminal() else { return };
         let closed_at_ms = state_since::now_ms();
         let closed = persist::ClosedPane {
-            pane: saved_pane(held),
+            pane: saved_pane(held, terminal),
             agent: held.record.agent.clone(),
             closed_at_ms,
             until_ms: closed_at_ms.saturating_add(u64::from(minutes) * 60_000),
             tab: place_in(tab, pane),
-            groups: held.groups(),
+            groups: terminal.groups(),
             reopening: false,
             with_maker,
         };
@@ -3521,6 +3557,7 @@ impl Session {
         };
         let name = self.panes[index].record.pane.clone();
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return };
         let record = &mut pane.record;
         let shown = record.state();
         let set = set_reported_field(record, report.what);
@@ -3563,33 +3600,32 @@ impl Session {
                 answering,
             } => {
                 let before = record.clone();
-                let answered = std::mem::replace(&mut pane.answering, answering) && !answering;
+                let answered = std::mem::replace(&mut terminal.answering, answering) && !answering;
                 // What an agent said about itself leaves with it. Not when a pane with no agent
                 // is first recognised: its statusline can report before the first probe lands,
                 // and that report is the new agent's.
                 let replaced = record.agent.is_some() && record.agent != agent;
-                if replaced && agent_left(pane, &name) {
+                if replaced && agent_left(record, terminal, &name) {
                     self.persister.changed();
                 }
-                let record = &mut pane.record;
                 if replaced || (record.agent.is_none() && agent.is_some()) {
-                    pane.session_name.agent_changed(&name, replaced, record.label.as_deref());
+                    terminal.session_name.agent_changed(&name, replaced, record.label.as_deref());
                 }
                 let turn = Turn::between(record.agent_state(), state);
                 if turn == Turn::Started && record.agent == agent {
-                    carry_through_musters_turn(record, &mut pane.turns, &pane.io);
-                    pane.ran_out = None;
+                    carry_through_musters_turn(record, &mut terminal.turns, &terminal.io);
+                    terminal.ran_out = None;
                 }
                 // An agent that reports its own state ends its own turns: a sub-agent's tool
                 // call can read as a turn here after the agent's turn has ended.
-                if turn == Turn::Ended && !pane.turns.reports_turns {
-                    settle_wait(record, &mut pane.turns, "detected turn end");
-                    pane.heard_from.clear();
+                if turn == Turn::Ended && !terminal.turns.reports_turns {
+                    settle_wait(record, &mut terminal.turns, "detected turn end");
+                    terminal.heard_from.clear();
                 }
                 // Before a finish is weighed: a turn that ends waiting on its own work has not
                 // finished. One that ends with the agent still idle, run out or scrolled away,
                 // leaves the turn it held back finished after all.
-                let screen_wait_ended = wait_on_screen(record, &mut pane.turns, on_screen)
+                let screen_wait_ended = wait_on_screen(record, &mut terminal.turns, on_screen)
                     && state == proto::AgentState::Idle
                     && record.agent == agent;
                 let waiting = is_waiting(record.facts.as_ref());
@@ -3613,7 +3649,7 @@ impl Session {
                 record.state_reported = reported;
                 record.screen_unreadable = unreadable;
                 record.prompt_covered_by = prompt_covered_by;
-                date_state(shown, record, &mut pane.blocked_since_ms, again);
+                date_state(shown, record, &mut terminal.blocked_since_ms, again);
                 if record.screen_unreadable && !before.screen_unreadable {
                     unreadable_warning(&name, record.agent.as_deref());
                 }
@@ -3674,7 +3710,9 @@ impl Session {
         }
         let maker = &removed.record;
         self.orphan(&maker.pane, maker.callsign.as_deref().unwrap_or(&maker.pane));
-        removed.io.mark_closed();
+        if let Some(terminal) = removed.body.terminal() {
+            terminal.io.mark_closed();
+        }
         let remembered = self
             .closed
             .iter()
@@ -3788,13 +3826,14 @@ impl Session {
         }
         let Some(index) = self.pane_index(pane) else { return false };
         let helper = &self.panes[index];
+        let Some(terminal) = helper.body.terminal() else { return false };
         let record = &helper.record;
         let at_rest = record.unread_input.is_none()
             && !is_waiting(record.facts.as_ref())
-            && !helper.io.discards().is_restarting()
+            && !terminal.io.discards().is_restarting()
             && match record.agent {
                 Some(_) => record.agent_state() == proto::AgentState::Idle,
-                None => helper.io.since_agent_started() >= agent_to_come(),
+                None => terminal.io.since_agent_started() >= agent_to_come(),
             };
         if !Self::closes_once_idle(helper) || !at_rest {
             return false;
@@ -3827,29 +3866,36 @@ impl Session {
     /// Keeps the stalls of each pane's agent whoever waits was told of, for a handoff to carry.
     pub(crate) fn set_stalls_told(&mut self, told: &BTreeMap<String, Vec<StallTold>>) {
         for pane in &mut self.panes {
-            pane.stalls_told = told.get(&pane.record.pane).cloned().unwrap_or_default();
+            if let Some(terminal) = pane.body.terminal_mut() {
+                terminal.stalls_told = told.get(&pane.record.pane).cloned().unwrap_or_default();
+            }
         }
     }
 
     /// Keeps `pane`'s dialog, or that it is at none, for a handoff to carry.
     pub(crate) fn set_block(&mut self, pane: &str, block: Option<Block>) {
-        if let Some(index) = self.pane_index(pane) {
-            self.panes[index].block = block;
+        if let Some(terminal) = self.terminal_mut(pane) {
+            terminal.block = block;
         }
     }
 
     /// Keeps what each helper's maker has been told it needs, for a handoff to carry.
     pub(crate) fn set_makers_told(&mut self, told: &BTreeMap<String, Need>) {
         for pane in &mut self.panes {
-            pane.maker_told = told.get(&pane.record.pane).copied();
+            if let Some(terminal) = pane.body.terminal_mut() {
+                terminal.maker_told = told.get(&pane.record.pane).copied();
+            }
         }
     }
 
     pub(crate) fn wait_noticed(&mut self, name: &str, since_ms: u64) {
         if let Some(index) = self.pane_index(name) {
             let pane = &mut self.panes[index];
-            if pane.holds_declared_wait() && pane.turns.wait_started_ms == Some(since_ms) {
-                pane.turns.wait_noticed = true;
+            if let Some(terminal) = pane.body.terminal_mut()
+                && terminal.holds_declared_wait(&pane.record)
+                && terminal.turns.wait_started_ms == Some(since_ms)
+            {
+                terminal.turns.wait_noticed = true;
             }
         }
     }
@@ -3980,7 +4026,9 @@ impl Session {
         relabel(record, rename.label, LabelFrom::Given);
         let record = record.clone();
         let pane = &mut self.panes[index];
-        pane.session_name.named(&record.pane, record.label.as_deref());
+        if let Some(terminal) = pane.body.terminal_mut() {
+            terminal.session_name.named(&record.pane, record.label.as_deref());
+        }
         self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         Reply::done()
     }
@@ -4216,8 +4264,9 @@ impl Session {
             scrollback: scrollback(&self.settings),
             scroll_multiplier: self.settings.scroll_multiplier.unwrap_or(1.0),
         });
-        for pane in &self.panes {
-            self.deferred.push(Deferred::Settle(Arc::clone(&pane.io), Arc::clone(&self.settled)));
+        for terminal in self.panes.iter().filter_map(|pane| pane.body.terminal()) {
+            self.deferred
+                .push(Deferred::Settle(Arc::clone(&terminal.io), Arc::clone(&self.settled)));
         }
     }
 
@@ -4316,8 +4365,9 @@ impl Session {
 
     /// Sets the thresholds pane `set.pane` has for itself, which beat every rule.
     fn set_compaction(&mut self, set: &pane_request::SetCompaction) -> Reply {
-        let Some(index) = self.pane_index(&set.pane) else {
-            return Reply::not_there(format!("no pane {} on this daemon", set.pane));
+        let index = match self.terminal_index(&set.pane) {
+            Ok(index) => index,
+            Err(refused) => return refused,
         };
         let held = self.panes[index].record.own_compaction;
         let mut own = if set.clear { Thresholds::default() } else { own_thresholds(held.as_ref()) };
@@ -4377,12 +4427,13 @@ impl Session {
 
     fn refresh_compaction_under(&mut self, rules: &Placed, index: usize) {
         let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return };
         let record = &mut pane.record;
         let (effective, withheld) = applying(rules, record);
         let applied = Some(thresholds::applied(&effective, withheld));
-        pane.compaction.threshold_is(effective.compact_at.percent.map(f32::from));
+        terminal.compaction.threshold_is(effective.compact_at.percent.map(f32::from));
         let nudged = record.agent.is_some() && withheld.is_none();
-        pane.compaction.nudge_threshold_is(effective.nudge_at.percent.filter(|_| nudged));
+        terminal.compaction.nudge_threshold_is(effective.nudge_at.percent.filter(|_| nudged));
         if record.compaction != applied {
             if let Some(why) = withheld {
                 log::info(
@@ -4427,8 +4478,9 @@ impl Session {
 
     /// Asks for the agent in a pane to be compacted, at its next idle, empty prompt.
     fn compact(&mut self, compact: &pane_request::Compact) -> Reply {
-        let Some(index) = self.pane_index(&compact.pane) else {
-            return Reply::not_there(format!("no pane {} on this daemon", compact.pane));
+        let index = match self.terminal_index(&compact.pane) {
+            Ok(index) => index,
+            Err(refused) => return refused,
         };
         let pane = &self.panes[index];
         let Some(agent) = pane.record.agent.clone() else {
@@ -4467,7 +4519,12 @@ impl Session {
                 "then" => then.is_some(),
             },
         );
-        self.panes[index].compaction.ask(line, then.map(str::to_string));
+        self.panes[index]
+            .body
+            .terminal_mut()
+            .expect("request checked terminal")
+            .compaction
+            .ask(line, then.map(str::to_string));
         self.compaction_changed(index);
         Reply::done()
     }
@@ -4476,8 +4533,9 @@ impl Session {
     /// It takes the compaction's place in the queue, since both are a line typed there and a
     /// later ask is the one its asker means.
     fn clear(&mut self, clear: &pane_request::Clear) -> Reply {
-        let Some(index) = self.pane_index(&clear.pane) else {
-            return Reply::not_there(format!("no pane {} on this daemon", clear.pane));
+        let index = match self.terminal_index(&clear.pane) {
+            Ok(index) => index,
+            Err(refused) => return refused,
         };
         let Some(agent) = self.panes[index].record.agent.clone() else {
             return Reply::refused(format!(
@@ -4507,7 +4565,12 @@ impl Session {
             "daemon.clear.asked",
             fields! { "pane" => clear.pane, "agent" => agent, "then" => then.is_some() },
         );
-        self.panes[index].compaction.ask_clear(line, then.map(str::to_string));
+        self.panes[index]
+            .body
+            .terminal_mut()
+            .expect("request checked terminal")
+            .compaction
+            .ask_clear(line, then.map(str::to_string));
         self.compaction_changed(index);
         Reply::done()
     }
@@ -4516,7 +4579,8 @@ impl Session {
     /// the subscribers when that changed.
     fn compaction_changed(&mut self, index: usize) {
         let pane = &mut self.panes[index];
-        let pending = match pane.compaction.pending() {
+        let Some(terminal) = pane.body.terminal_mut() else { return };
+        let pending = match terminal.compaction.pending() {
             Pending::Nothing => proto::PendingCompaction::None,
             Pending::Compaction => proto::PendingCompaction::Queued,
             Pending::FollowUp => proto::PendingCompaction::FollowUp,
@@ -4529,30 +4593,28 @@ impl Session {
 
     /// Checks a restart of a pane's agent, and hands back what runs it.
     fn restart(&self, restart: &pane_request::Restart) -> Result<Restarting, Reply> {
-        let Some(index) = self.pane_index(&restart.pane) else {
-            return Err(Reply::not_there(format!("no pane {} on this daemon", restart.pane)));
-        };
-        let pane = &self.panes[index];
+        let pane = self.find_pane(&restart.pane)?;
+        let terminal = Self::need_terminal(pane)?;
         let name = &restart.pane;
-        let Some(session) = pane
+        let Some(session) = terminal
             .session_id
             .clone()
-            .or_else(|| pane.resume.as_ref().map(|resume| resume.session.clone()))
+            .or_else(|| terminal.resume.as_ref().map(|resume| resume.session.clone()))
         else {
             return Err(Reply::refused(Unrestartable::NoSession.said(name, "its agent")));
         };
         let agent = pane.record.agent.clone().unwrap_or_else(|| "its agent".to_string());
-        let Some(resume) = &pane.resume else {
+        let Some(resume) = &terminal.resume else {
             return Err(Reply::refused(Unrestartable::NoResume.said(name, &agent)));
         };
-        let (Some(group), Some(shell)) = (pane.io.agent_group(), pane.io.shell()) else {
+        let (Some(group), Some(shell)) = (terminal.io.agent_group(), terminal.io.shell()) else {
             return Err(Reply::refused(Unrestartable::GroupUnknown.said(name, &agent)));
         };
         let group = group.cast_signed();
         if group == shell {
             return Err(Reply::refused(Unrestartable::PanesOwn.said(name, &agent)));
         }
-        if pane.io.discards().is_restarting() {
+        if terminal.io.discards().is_restarting() {
             return Err(Reply::refused(format!("pane {name}'s agent is already restarting")));
         }
         let mut variables: Vec<(&str, &str)> =
@@ -4584,7 +4646,7 @@ impl Session {
             session,
             line,
             env,
-            target: restart::Live { io: Arc::clone(&pane.io), group, shell },
+            target: restart::Live { io: Arc::clone(&terminal.io), group, shell },
         })
     }
 
@@ -4592,13 +4654,19 @@ impl Session {
     /// session, or a compaction - which keeps the doorbell's thread looking.
     pub(crate) fn wants_typing(&self) -> bool {
         self.wants_session_names()
-            || self.panes.iter().any(|pane| pane.compaction.pending() != Pending::Nothing)
+            || self
+                .panes
+                .iter()
+                .filter_map(|pane| pane.body.terminal())
+                .any(|terminal| terminal.compaction.pending() != Pending::Nothing)
     }
 
     /// A line of the compaction in `pane` was typed into its agent and taken.
     pub(crate) fn compaction_taken(&mut self, pane: &str, line: &str) {
-        if let Some(index) = self.pane_index(pane) {
-            self.panes[index].compaction.taken(line);
+        if let Some(index) = self.pane_index(pane)
+            && let Some(terminal) = self.panes[index].body.terminal_mut()
+        {
+            terminal.compaction.taken(line);
             self.compaction_changed(index);
         }
     }
@@ -4607,7 +4675,7 @@ impl Session {
     /// if a compaction given up had one.
     pub(crate) fn compaction_given_up(&mut self, pane: &str, line: &str) -> Option<String> {
         let index = self.pane_index(pane)?;
-        let dropped = self.panes[index].compaction.given_up(line);
+        let dropped = self.panes[index].body.terminal_mut()?.compaction.given_up(line);
         self.compaction_changed(index);
         dropped
     }
@@ -4689,8 +4757,8 @@ impl Session {
                 Some(agent) => changed.iter().any(|changed| changed.id() == agent),
                 None => !changed.is_empty(),
             };
-            if reset {
-                pane.io.reset_detection();
+            if reset && let Some(terminal) = pane.body.terminal() {
+                terminal.io.reset_detection();
             }
         }
         Reply::done()
@@ -4734,17 +4802,33 @@ impl Session {
 
     /// What a restart needs of the session now.
     pub(crate) fn persisted(&self) -> persist::State {
+        let canvases: Vec<_> = self
+            .panes
+            .iter()
+            .filter(|pane| pane.body.terminal().is_none())
+            .map(|pane| pane.record.pane.as_str())
+            .collect();
         let tabs: Vec<persist::Tab> = self
             .tabs
             .iter()
-            .map(|tab| persist::Tab {
-                name: tab.name.clone(),
-                label: tab.label.clone(),
-                zoomed: tab.zoomed.clone(),
-                root: tab.root.clone(),
-                hidden: tab.hidden,
-                helpers_of: tab.helpers_of.clone(),
-                layout_generation: tab.layout_generation,
+            .filter_map(|tab| {
+                // The terminal-only state format would restore a shell for a canvas.
+                let root = canvases
+                    .iter()
+                    .try_fold(tab.root.clone(), |root, pane| root.without(pane).0)?;
+                if !canvases.is_empty() && root.panes().is_empty() {
+                    return None;
+                }
+                let zoomed = tab.zoomed.as_ref().filter(|pane| !canvases.contains(&pane.as_str()));
+                Some(persist::Tab {
+                    name: tab.name.clone(),
+                    label: tab.label.clone(),
+                    zoomed: zoomed.cloned(),
+                    root,
+                    hidden: tab.hidden,
+                    helpers_of: tab.helpers_of.clone(),
+                    layout_generation: tab.layout_generation,
+                })
             })
             .collect();
         persist::State {
@@ -4752,7 +4836,11 @@ impl Session {
             daemon: env!("CARGO_PKG_VERSION").to_string(),
             settings: self.settings.clone(),
             tabs,
-            panes: self.panes.iter().map(saved_pane).collect(),
+            panes: self
+                .panes
+                .iter()
+                .filter_map(|pane| Some(saved_pane(pane, pane.body.terminal()?)))
+                .collect(),
             released_callsigns: self.released.iter().cloned().collect(),
             pane_operations: self.pane_operations.saved(),
             closed_panes: self.remembered(state_since::now_ms()).cloned().collect(),
@@ -4896,9 +4984,11 @@ impl Session {
                 if let Some(resume) = resume {
                     Self::resumed(&name, &resume);
                     let index = self.pane_index(&name).expect("the pane just opened");
-                    self.panes[index].session_id = Some(resume.session.clone());
-                    self.panes[index].restart_env.clone_from(&resume.env);
-                    self.panes[index].resume = Some(resume);
+                    let terminal =
+                        self.panes[index].body.terminal_mut().expect("just opened a terminal pane");
+                    terminal.session_id = Some(resume.session.clone());
+                    terminal.restart_env.clone_from(&resume.env);
+                    terminal.resume = Some(resume);
                 }
                 self.restored_from_file = true;
                 back.insert(name);
@@ -5005,6 +5095,8 @@ impl Session {
             Some("the daemon is still bringing back its saved tabs; ask again once it has")
         } else if self.replacing != Replacing::No {
             Some("the daemon is already being replaced")
+        } else if self.panes.iter().any(|pane| pane.body.terminal().is_none()) {
+            Some("this daemon cannot hand over a canvas yet")
         } else {
             None
         }
@@ -5022,16 +5114,19 @@ impl Session {
             panes: self
                 .panes
                 .iter()
-                .map(|pane| HandedPane {
-                    record: pane.record.clone(),
-                    process: pane.process(),
-                    io: Arc::clone(&pane.io),
-                    turns: pane.turns,
-                    session_id: pane.session_id.clone(),
-                    maker_told: pane.maker_told,
-                    stalls_told: pane.stalls_told.clone(),
-                    block: pane.block,
-                    nudged: pane.compaction.nudged(),
+                .filter_map(|pane| {
+                    let terminal = pane.body.terminal()?;
+                    Some(HandedPane {
+                        record: pane.record.clone(),
+                        process: terminal.process(),
+                        io: Arc::clone(&terminal.io),
+                        turns: terminal.turns,
+                        session_id: terminal.session_id.clone(),
+                        maker_told: terminal.maker_told,
+                        stalls_told: terminal.stalls_told.clone(),
+                        block: terminal.block,
+                        nudged: terminal.compaction.nudged(),
+                    })
                 })
                 .collect(),
             persister: Arc::clone(&self.persister),
@@ -5045,18 +5140,20 @@ impl Session {
     /// the state, and one made since was never held.
     pub(crate) fn recapture(&self, handing: &mut Handing) -> Result<(), String> {
         for handed in &mut handing.panes {
-            let Some(pane) = self.panes.iter().find(|pane| Arc::ptr_eq(&pane.io, &handed.io))
-            else {
+            let Some((pane, terminal)) = self.panes.iter().find_map(|pane| {
+                let terminal = pane.body.terminal()?;
+                Arc::ptr_eq(&terminal.io, &handed.io).then_some((pane, terminal))
+            }) else {
                 return Err(format!("pane {} ended during the handoff", handed.record.pane));
             };
             handed.record = pane.record.clone();
-            handed.nudged = pane.compaction.nudged();
+            handed.nudged = terminal.compaction.nudged();
         }
-        if let Some(made) = self
-            .panes
-            .iter()
-            .find(|pane| !handing.panes.iter().any(|handed| Arc::ptr_eq(&pane.io, &handed.io)))
-        {
+        if let Some(made) = self.panes.iter().find(|pane| {
+            pane.body.terminal().is_none_or(|terminal| {
+                !handing.panes.iter().any(|handed| Arc::ptr_eq(&terminal.io, &handed.io))
+            })
+        }) {
             return Err(format!("pane {} was made during the handoff", made.record.pane));
         }
         handing.state = self.persisted();
@@ -5153,20 +5250,21 @@ impl Session {
             &watching,
         )
         .map_err(|error| format!("pane {name}: {error}"))?;
-        pane.session_id = resuming.session_id.map(str::to_string);
-        pane.resume = resuming.resume.cloned();
+        let terminal = pane.body.terminal_mut().expect("just adopted a terminal pane");
+        terminal.session_id = resuming.session_id.map(str::to_string);
+        terminal.resume = resuming.resume.cloned();
         if let Some(resume) = resuming.resume {
-            pane.restart_env.clone_from(&resume.env);
+            terminal.restart_env.clone_from(&resume.env);
         }
-        pane.maker_told = resuming.maker_told;
+        terminal.maker_told = resuming.maker_told;
         pane.quiet_before_orphaned = resuming.quiet_before_orphaned;
-        pane.compaction.carry_nudged(resuming.nudged);
+        terminal.compaction.carry_nudged(resuming.nudged);
         pane.kept_after_maker_closed = resuming.kept_after_maker_closed;
         pane.hidden_from = resuming.hidden_from.cloned();
         let (by, at) = resuming.turn;
-        pane.io.resume_turn(by, at);
-        pane.stalls_told = resuming.stalls_told.to_vec();
-        pane.block = resuming.block;
+        terminal.io.resume_turn(by, at);
+        terminal.stalls_told = resuming.stalls_told.to_vec();
+        terminal.block = resuming.block;
         self.carried_stalls.extend_from_slice(resuming.stalls_told);
         if let Some(block) = resuming.block {
             self.carried_blocks.insert(name.clone(), block);
@@ -5174,7 +5272,7 @@ impl Session {
         if let Some(need) = resuming.maker_told {
             self.carried_told.insert(name, need);
         }
-        pane.describe_session();
+        terminal.describe_session(&mut pane.record);
         self.panes.push(pane);
         Ok(())
     }
@@ -5216,17 +5314,44 @@ impl Session {
 
     /// Lets every adopted pane's reader go on, once the handoff has committed.
     pub(crate) fn release_readers(&self) {
-        for pane in &self.panes {
-            pane.io.release_reader();
+        for terminal in self.panes.iter().filter_map(|pane| pane.body.terminal()) {
+            terminal.io.release_reader();
         }
     }
 
     // -----------------------------------------------------------------------------------------
     // Lookups
 
-    /// What a stream or input connection needs of a pane, found by name.
-    pub(crate) fn pane_io(&self, pane: &str) -> Option<Arc<PaneIo>> {
-        self.pane_index(pane).map(|index| Arc::clone(&self.panes[index].io))
+    fn find_pane(&self, name: &str) -> Result<&Pane, Reply> {
+        let index = self
+            .pane_index(name)
+            .ok_or_else(|| Reply::not_there(format!("no pane {name} on this daemon")))?;
+        Ok(&self.panes[index])
+    }
+
+    fn need_terminal(pane: &Pane) -> Result<&TerminalPane, Reply> {
+        pane.body.terminal().ok_or_else(|| {
+            Reply::refused(format!("pane {} is a canvas and has no terminal", pane.record.pane))
+        })
+    }
+
+    fn terminal_index(&self, name: &str) -> Result<usize, Reply> {
+        let index = self
+            .pane_index(name)
+            .ok_or_else(|| Reply::not_there(format!("no pane {name} on this daemon")))?;
+        Self::need_terminal(&self.panes[index])?;
+        Ok(index)
+    }
+
+    fn terminal_mut(&mut self, name: &str) -> Option<&mut TerminalPane> {
+        let index = self.pane_index(name)?;
+        self.panes[index].body.terminal_mut()
+    }
+
+    /// What a stream or input connection needs of a terminal pane.
+    pub(crate) fn pane_io(&self, name: &str) -> Result<Arc<PaneIo>, Reply> {
+        let terminal = Self::need_terminal(self.find_pane(name)?)?;
+        Ok(Arc::clone(&terminal.io))
     }
 
     /// Something of every pane, read with the session held, for work that goes on without it -
@@ -5250,8 +5375,9 @@ impl Session {
         }
         let Some(manifests) = self.detecting.manifests() else { return false };
         self.panes.iter().any(|pane| {
+            let Some(terminal) = pane.body.terminal() else { return false };
             let (Some(name), Some(agent)) =
-                (pane.session_name.wanted(), pane.record.agent.as_deref())
+                (terminal.session_name.wanted(), pane.record.agent.as_deref())
             else {
                 return false;
             };
@@ -5261,16 +5387,17 @@ impl Session {
 
     /// `name` was typed into the session of the agent in `pane`, or typing it was given up.
     pub(crate) fn session_name_typed(&mut self, pane: &str, name: &str) {
-        if let Some(index) = self.pane_index(pane) {
-            self.panes[index].session_name.typed(name);
+        if let Some(terminal) = self.terminal_mut(pane) {
+            terminal.session_name.typed(name);
         }
     }
 
-    /// What reads the page `read` asks for, outside the lock; None when there is no such pane.
-    pub(crate) fn reading(&self, read: &pane_request::Read) -> Option<Reading> {
-        let pane = &self.panes[self.pane_index(&read.pane)?];
-        Some(Reading {
-            io: Arc::clone(&pane.io),
+    /// What reads the page `read` asks for, outside the lock.
+    pub(crate) fn reading(&self, read: &pane_request::Read) -> Result<Reading, Reply> {
+        let pane = self.find_pane(&read.pane)?;
+        let terminal = Self::need_terminal(pane)?;
+        Ok(Reading {
+            io: Arc::clone(&terminal.io),
             first_row: read.first_row,
             rows: read.rows,
             last: read.last,
@@ -5882,22 +6009,21 @@ fn forget_compaction(compaction: &mut Compaction, pane: &str, agent: &str, resta
 
 /// Forgets what the agent that has left `pane` said about itself, saying whether that took a
 /// resume the pane's restart would have run.
-fn agent_left(pane: &mut Pane, name: &str) -> bool {
-    let record = &mut pane.record;
+fn agent_left(record: &mut proto::Pane, terminal: &mut TerminalPane, name: &str) -> bool {
     record.facts = None;
     record.set_adapter(proto::Adapter::Unsaid);
-    pane.turns.reports_turns = false;
-    pane.session_id = None;
-    pane.context_session = None;
-    pane.ran_out = None;
-    let resumed = pane.resume.take().is_some();
+    terminal.turns.reports_turns = false;
+    terminal.session_id = None;
+    terminal.context_session = None;
+    terminal.ran_out = None;
+    let resumed = terminal.resume.take().is_some();
     (record.session_id, record.resume) = (None, None);
     let left = record.agent.as_deref().unwrap_or_default();
-    let restarting = pane.io.discards().is_restarting();
+    let restarting = terminal.io.discards().is_restarting();
     if !restarting {
-        pane.restart_env = persist::Environment::default();
+        terminal.restart_env = persist::Environment::default();
     }
-    forget_compaction(&mut pane.compaction, name, left, restarting);
+    forget_compaction(&mut terminal.compaction, name, left, restarting);
     record.set_pending_compaction(proto::PendingCompaction::None);
     resumed
 }
@@ -5964,32 +6090,42 @@ enum Kept {
 /// Whether a report leaves standing the wait the agent declared, although it says no wait: one
 /// with a state, from the adapter's prompt hook. The agent saying no wait itself ends any.
 fn keeps_wait(pane: &Pane, states: bool, report: &pane_request::Report) -> Kept {
-    if !states || report.waiting.as_deref() != Some("") || !pane.holds_declared_wait() {
+    let Some(terminal) = pane.body.terminal() else { return Kept::No };
+    if !states
+        || report.waiting.as_deref() != Some("")
+        || !terminal.holds_declared_wait(&pane.record)
+    {
         return Kept::No;
     }
     if pane.record.facts.as_ref().is_some_and(wait_has_condition) {
         return Kept::OnCondition;
     }
-    let typed = pane.io.prompted_by(std::time::Instant::now());
+    let typed = terminal.io.prompted_by(std::time::Instant::now());
     if typed.is_some_and(TypedBy::is_musters) { Kept::ThroughPrompt } else { Kept::No }
 }
 
 /// What a report said of the agent's wait, for when its turn ends: said, which keeps it as the
 /// agent's own; kept through a prompt Muster typed ([`keeps_wait`]); or spoken of at all, which
 /// makes it the agent's word rather than the screen's.
-fn heard_of_waiting(pane: &mut Pane, said: bool, spoken: bool, kept: bool) {
+fn heard_of_waiting(pane: &mut Pane, said: bool, spoken: bool, kept: Kept) {
+    let Some(terminal) = pane.body.terminal_mut() else { return };
+    let turns = &mut terminal.turns;
     if said {
-        pane.turns.wait_declared = true;
-        pane.turns.wait_carried = false;
-        pane.turns.wait_serial += 1;
-        pane.turns.wait_started_ms = Some(crate::messages::now_ms());
-        pane.turns.wait_noticed = false;
+        terminal.ran_out = None;
+        turns.wait_declared = true;
+        turns.wait_carried = false;
+        turns.wait_serial += 1;
+        turns.wait_started_ms = Some(crate::messages::now_ms());
+        turns.wait_noticed = false;
+        let pid = pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits);
+        turns.wait_process_started =
+            pid.and_then(|pid| i32::try_from(pid).ok()).and_then(pty::process_started);
     }
-    if kept {
-        carry_wait(&pane.record.pane, &mut pane.turns, "prompt");
+    if kept == Kept::ThroughPrompt {
+        carry_wait(&pane.record.pane, turns, "prompt");
     }
     if spoken {
-        pane.turns.wait_on_screen = false;
+        turns.wait_on_screen = false;
     }
 }
 
@@ -6176,6 +6312,158 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn mixed_tab(dir: &Path) -> (Arc<Shared>, UnixStream, i32) {
+        let (shared, events) = session(&dir.join("daemon.state.json"));
+        let argv = [
+            "/bin/sh".into(),
+            "-c".into(),
+            "while IFS= read -r line; do printf 'received: %s\\n' \"$line\"; done".into(),
+        ];
+        let grid = Grid::FALLBACK;
+        let (master, child) =
+            pty::start(&Launch { argv: &argv, environment: &[], cwd: dir, grid }).unwrap();
+        let pid = child.id().cast_signed();
+        let mut session = shared.lock();
+        session.restoring = false;
+        session
+            .open(
+                proto::Pane {
+                    pane: "terminal".into(),
+                    cwd: dir.to_string_lossy().into_owned(),
+                    ..Default::default()
+                },
+                grid,
+                master,
+                child,
+                "/bin/sh",
+            )
+            .unwrap();
+        session.place(
+            "terminal",
+            Target::NewTab { name: "t1".into(), label: proto::Label::default(), hidden: false },
+        );
+        session.next_serial += 1;
+        let serial = session.next_serial;
+        session.panes.push(Pane {
+            record: proto::Pane {
+                pane: "canvas".into(),
+                callsign: Some("paper".into()),
+                ..Default::default()
+            },
+            serial,
+            body: crate::pane::PaneBody::Canvas,
+            quiet_before_orphaned: None,
+            kept_after_maker_closed: false,
+            hidden_from: None,
+        });
+        session.place(
+            "canvas",
+            Target::Beside { pane: "terminal".into(), side: tree::Side::Right, ratio: 0.5 },
+        );
+        drop(session);
+        (shared, events, pid)
+    }
+
+    #[test]
+    fn a_canvas_refuses_terminal_connections_without_interrupting_its_neighbour() {
+        use proto::{input_event, stream_message, stream_request};
+
+        let dir = scratch("canvas-input");
+        let (shared, _events, _pid) = mixed_tab(&dir);
+        let (mut bridge, daemon) = UnixStream::pair().unwrap();
+        bridge.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        daemon.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        connection::send(
+            &mut bridge,
+            &proto::StreamRequest {
+                request: Some(stream_request::Request::Attach(stream_request::Attach {
+                    pane: "canvas".into(),
+                    ..Default::default()
+                })),
+            },
+        )
+        .unwrap();
+        crate::stream::serve(daemon, &shared);
+        let message = connection::receive::<proto::StreamMessage>(&mut bridge).unwrap().unwrap();
+        let Some(stream_message::Message::Refused(refused)) = message.message else {
+            panic!("expected attach refusal, got {message:?}");
+        };
+        assert!(refused.reason.contains("canvas"), "{refused:?}");
+
+        let (mut input, daemon) = UnixStream::pair().unwrap();
+        for (pane, text) in [("canvas", "ignored"), ("terminal", "still running")] {
+            connection::send(
+                &mut input,
+                &proto::InputEvent {
+                    pane: pane.into(),
+                    input: Some(input_event::Input::Send(input_event::Send {
+                        text: text.into(),
+                        enter: true,
+                        ..Default::default()
+                    })),
+                },
+            )
+            .unwrap();
+        }
+        input.shutdown(std::net::Shutdown::Write).unwrap();
+        crate::input::serve(daemon, &shared, "test");
+        let reading = shared
+            .lock()
+            .reading(&pane_request::Read {
+                pane: "terminal".into(),
+                last: 10,
+                ..Default::default()
+            })
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let text = reading.page().unwrap().text;
+            if text.contains("received: still running") {
+                assert!(!text.contains("ignored"), "{text}");
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "{text}");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        shared.lock().close_everything();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_canvas_is_open_to_watches_and_does_not_enter_terminal_lifecycle() {
+        let dir = scratch("cv-life");
+        let (shared, events, pid) = mixed_tab(&dir);
+        let presence = crate::messages::TestPresence::of(&shared);
+        assert!(presence.exists("canvas"));
+        assert!(presence.get("canvas").is_none());
+        let mut session = shared.lock();
+        assert!(session.declared_waits().is_empty());
+        assert!(session.nudges_due().is_empty());
+        assert!(!session.wants_typing());
+        let state = session.persisted();
+        assert_eq!(state.tabs[0].root.panes(), ["terminal"]);
+        assert_eq!(
+            state.panes.iter().map(|pane| pane.name.as_str()).collect::<Vec<_>>(),
+            ["terminal"]
+        );
+        let asker = Outbox::open(&events).unwrap();
+        assert_eq!(outcome(session.handle(replace_request(), &asker)), Outcome::Refused);
+        assert!(session.begin_replacing().unwrap_err().contains("canvas"));
+
+        assert_eq!(session.close_pane("canvas", "").outcome, Outcome::Done);
+        assert_eq!(session.tabs[0].root.panes(), ["terminal"]);
+        assert!(session.reopen_until("canvas").is_none());
+        assert_eq!(session.begin_replacing(), Ok(()));
+        let mut handing = session.handing();
+        session.recapture(&mut handing).unwrap();
+        assert_eq!(handing.panes.len(), 1);
+        assert_eq!(handing.panes[0].process, Some(pid));
+        assert!(!session.not_replaced());
+        session.close_everything();
+        drop(session);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

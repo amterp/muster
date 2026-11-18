@@ -1,12 +1,10 @@
-//! One pane: what the daemon publishes about it, the PTY it runs on, and its terminal.
+//! A pane's record and the body that holds its content.
 //!
-//! [`Pane::start`] is the only way a pane comes to exist, and it takes a PTY master, a terminal
-//! and its process rather than spawning anything. A pane this daemon started has its child. A
-//! pane handed over by a daemon being replaced (MIP-3, section 10) arrives as a master, its
-//! record and a terminal rebuilt from a replay, with a process that is some other daemon's
-//! child - so nothing about a pane depends on this process being the PTY's parent.
+//! [`Pane::start`] takes a PTY master, a terminal and its process. A pane handed over by a
+//! daemon being replaced (MIP-3, section 10) arrives with a terminal rebuilt from replay.
+//! Its process stays another daemon's child.
 //!
-//! Each pane runs three threads: a reader that feeds every chunk of output to the pane's
+//! Each terminal pane runs three threads: a reader that feeds every chunk of output to the pane's
 //! terminal, a writer that is the only thing writing to the program, and, with a child, a
 //! waiter that reaps it. None of them takes the session lock except the waiter, whose pane
 //! has ended.
@@ -932,8 +930,43 @@ pub(crate) struct Pane {
     /// What the protocol says about this pane. The fields a restart needs are persisted from
     /// here (`persist.rs`); the rest are observations.
     pub(crate) record: proto::Pane,
-    /// Tells this pane's process apart from a later pane given the same name.
+    /// Tells this pane apart from a later pane given the same name.
     pub(crate) serial: u64,
+    pub(crate) body: PaneBody,
+    /// Whether it was quiet before its maker closed (`persist::Pane::quiet_before_orphaned`).
+    pub(crate) quiet_before_orphaned: Option<bool>,
+    /// The person took it over after its maker closed
+    /// (`persist::Pane::kept_after_maker_closed`).
+    pub(crate) kept_after_maker_closed: bool,
+    /// Where it was when it was hidden (`persist::Pane::hidden_from`).
+    pub(crate) hidden_from: Option<crate::persist::ClosedTab>,
+}
+
+#[derive(Debug)]
+pub(crate) enum PaneBody {
+    Terminal(Box<TerminalPane>),
+    #[cfg_attr(not(test), expect(dead_code, reason = "canvas creation follows the pane split"))]
+    Canvas,
+}
+
+impl PaneBody {
+    pub(crate) fn terminal(&self) -> Option<&TerminalPane> {
+        match self {
+            Self::Terminal(terminal) => Some(terminal),
+            Self::Canvas => None,
+        }
+    }
+
+    pub(crate) fn terminal_mut(&mut self) -> Option<&mut TerminalPane> {
+        match self {
+            Self::Terminal(terminal) => Some(terminal),
+            Self::Canvas => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct TerminalPane {
     pub(crate) io: Arc<PaneIo>,
     /// The write end of a pipe the reader and writer also poll. Dropping it ends them both,
     /// which is how a pane lets go of its master without closing a descriptor another thread
@@ -984,19 +1017,12 @@ pub(crate) struct Pane {
     /// The dialog it is at, as the maker watch or the long-block watch last said, for a handoff to
     /// carry.
     pub(crate) block: Option<Block>,
-    /// Whether it was quiet before its maker closed (`persist::Pane::quiet_before_orphaned`).
-    pub(crate) quiet_before_orphaned: Option<bool>,
     /// When the pane's agent last started reading blocked, kept once it reads otherwise, for
     /// the dialog a key left unchanged to go on from ([`crate::effects::Reported::Agent`]).
     pub(crate) blocked_since_ms: Option<u64>,
     /// Working only while a key typed at its dialog may have answered it
     /// ([`crate::effects::Reported::Agent`]): the dialog still asks for the person until then.
     pub(crate) answering: bool,
-    /// The person took it over after its maker closed
-    /// (`persist::Pane::kept_after_maker_closed`).
-    pub(crate) kept_after_maker_closed: bool,
-    /// Where it was when it was hidden (`persist::Pane::hidden_from`).
-    pub(crate) hidden_from: Option<crate::persist::ClosedTab>,
     /// The variables its agent was restarted with, kept with each resume built for it until the
     /// agent leaves the pane other than by a restart (`persist::Resume::env`).
     pub(crate) restart_env: crate::persist::Environment,
@@ -1229,31 +1255,46 @@ impl Pane {
         Ok(Pane {
             record,
             serial,
-            io,
-            wake,
-            process,
-            adopted: !child && process.is_some(),
-            turns: watching.turns,
-            session_name: SessionName::default(),
-            compaction: Compaction::default(),
-            session_id: None,
-            context_session: None,
-            ran_out: None,
-            heard_from: HashSet::new(),
-            resume: None,
-            resume_missed: None,
-            maker_told: None,
-            stalls_told: Vec::new(),
-            block: None,
             quiet_before_orphaned: None,
-            blocked_since_ms: None,
-            answering: false,
             kept_after_maker_closed: false,
             hidden_from: None,
-            restart_env: crate::persist::Environment::default(),
+            body: PaneBody::Terminal(Box::new(TerminalPane {
+                io,
+                wake,
+                process,
+                adopted: !child && process.is_some(),
+                turns: watching.turns,
+                session_name: SessionName::default(),
+                compaction: Compaction::default(),
+                session_id: None,
+                context_session: None,
+                ran_out: None,
+                heard_from: HashSet::new(),
+                resume: None,
+                resume_missed: None,
+                maker_told: None,
+                stalls_told: Vec::new(),
+                block: None,
+                blocked_since_ms: None,
+                answering: false,
+                restart_env: crate::persist::Environment::default(),
+            })),
         })
     }
 
+    pub(crate) fn live_cwd(&self) -> Option<PathBuf> {
+        let terminal = self.body.terminal()?;
+        live_cwd(terminal.io.master.as_fd(), terminal.process)
+    }
+
+    pub(crate) fn hang_up(self, reason: proto::DetachReason) {
+        if let PaneBody::Terminal(terminal) = self.body {
+            terminal.hang_up(&self.record.pane, reason);
+        }
+    }
+}
+
+impl TerminalPane {
     pub(crate) fn process(&self) -> Option<i32> {
         self.process
     }
@@ -1268,42 +1309,34 @@ impl Pane {
     /// Turns a report of a wait on a message from a pane the agent has already been given one
     /// from (`heard_from`) into a report of no wait: its answer has come, so there is nothing to
     /// wait for.
-    pub(crate) fn drop_answered_wait(&self, report: &mut proto::pane_request::Report) {
+    pub(crate) fn drop_answered_wait(&self, pane: &str, report: &mut proto::pane_request::Report) {
         let answered = report
             .waiting_until_message_from
             .take_if(|sender| self.heard_from.contains(sender.as_str()));
         if let Some(sender) = answered {
-            log::info(
-                "daemon.wait.answered",
-                fields! { "pane" => self.record.pane, "sender" => sender },
-            );
+            log::info("daemon.wait.answered", fields! { "pane" => pane, "sender" => sender });
             report.waiting = Some(String::new());
         }
     }
 
     /// Whether the agent holds a wait it declared, rather than one its screen shows.
-    pub(crate) fn holds_declared_wait(&self) -> bool {
-        let waiting = self.record.facts.as_ref().is_some_and(|facts| facts.waiting.is_some());
+    pub(crate) fn holds_declared_wait(&self, record: &proto::Pane) -> bool {
+        let waiting = record.facts.as_ref().is_some_and(|facts| facts.waiting.is_some());
         waiting && !self.turns.wait_on_screen
     }
 
     /// Puts the agent's session and how it resumes on the record, as `session_id` and `resume`
     /// stand; true when that changed the record, which the caller then publishes. The session is
     /// the resume's when a wake has forgotten the id, since the agent still runs that session.
-    pub(crate) fn describe_session(&mut self) -> bool {
+    pub(crate) fn describe_session(&self, record: &mut proto::Pane) -> bool {
         let resume = self.resume.as_ref();
         let session_id =
             self.session_id.clone().or_else(|| resume.map(|resume| resume.session.clone()));
         let resume = resume.map(crate::persist::Resume::record);
-        let changed = self.record.session_id != session_id || self.record.resume != resume;
-        self.record.session_id = session_id;
-        self.record.resume = resume;
+        let changed = record.session_id != session_id || record.resume != resume;
+        record.session_id = session_id;
+        record.resume = resume;
         changed
-    }
-
-    /// The directory the pane is working in now: its foreground job's, else its shell's.
-    pub(crate) fn live_cwd(&self) -> Option<PathBuf> {
-        live_cwd(self.io.master.as_fd(), self.process)
     }
 
     /// Ends the pane: its bridge told why, SIGHUP to its shell's process group and to whatever
@@ -1314,7 +1347,7 @@ impl Pane {
     ///
     /// An adopted pane's process is reaped by whoever adopted it, so once it has ended its pid is
     /// free for any process: its groups are signaled only while that pid is not somebody else's.
-    pub(crate) fn hang_up(self, reason: proto::DetachReason) {
+    fn hang_up(self, pane: &str, reason: proto::DetachReason) {
         self.io.close(reason);
         let foreground = self.io.foreground_group().filter(|group| Some(*group) != self.process);
         let theirs = self.adopted
@@ -1328,7 +1361,7 @@ impl Pane {
             log::info(
                 "daemon.pane.not_signaled",
                 fields! {
-                    "pane" => self.record.pane,
+                    "pane" => pane,
                     "shell_pid" => self.process.unwrap_or_default(),
                     "why" => "its shell has ended and its pid now belongs to another process",
                 },
@@ -1340,7 +1373,7 @@ impl Pane {
         for &group in &groups {
             pty::hang_up(group);
         }
-        kill_after_grace(groups, &self.record.pane);
+        kill_after_grace(groups, pane);
         drop(self.wake);
     }
 }

@@ -152,49 +152,56 @@ impl Panes {
         let waits = long_waits(&session);
         let naming = session.names_sessions();
         let read = session.each_pane(|pane| {
-            let (record, io) = (&pane.record, &pane.io);
+            let record = &pane.record;
+            let terminal = pane.body.terminal();
             // An agent being restarted is one to come: the pane refuses what would be typed for
             // it, and what waits for it is for the agent resuming in its place.
-            let restarting = io.discards().is_restarting();
-            let agent = record.agent.clone().filter(|_| loaded && !io.is_closed() && !restarting);
-            let seen = agent.map(|agent| {
-                let found = Agent::new(&agent);
-                let rename = pane.session_name.wanted().filter(|_| naming).and_then(|name| {
-                    let line = manifests.as_ref()?.session_rename(&found, name)?;
-                    Some(Rename { name: name.to_string(), line })
+            let restarting =
+                terminal.is_some_and(|terminal| terminal.io.discards().is_restarting());
+            let seen = terminal
+                .filter(|terminal| loaded && !terminal.io.is_closed() && !restarting)
+                .zip(record.agent.as_ref())
+                .map(|(terminal, agent)| {
+                    let found = Agent::new(agent);
+                    let rename =
+                        terminal.session_name.wanted().filter(|_| naming).and_then(|name| {
+                            let line = manifests.as_ref()?.session_rename(&found, name)?;
+                            Some(Rename { name: name.to_string(), line })
+                        });
+                    let session = terminal.session_id.clone().filter(|id| {
+                        manifests.as_ref().is_some_and(|manifests| {
+                            manifests.session_wake(&found, id, "").is_some()
+                        })
+                    });
+                    Seen {
+                        activity: activity(record),
+                        rings: manifests
+                            .as_ref()
+                            .is_some_and(|manifests| manifests.reads_prompt(&found)),
+                        rename,
+                        compact: terminal.compaction.wanted(),
+                        session,
+                        stopped: record
+                            .unread_input
+                            .as_ref()
+                            .map(|unread| (unread.program.clone(), unread.bytes)),
+                        ran_out: terminal.ran_out.clone(),
+                        quiet: record.quiet,
+                        blocked_since_ms: record
+                            .state_since_ms
+                            .filter(|_| record.agent_state() == proto::AgentState::Blocked),
+                        waiting: waits.get(&record.pane).cloned(),
+                        agent: agent.clone(),
+                        io: terminal.io.clone(),
+                    }
                 });
-                let session = pane.session_id.clone().filter(|id| {
-                    manifests
-                        .as_ref()
-                        .is_some_and(|manifests| manifests.session_wake(&found, id, "").is_some())
-                });
-                Seen {
-                    activity: activity(record),
-                    rings: manifests
-                        .as_ref()
-                        .is_some_and(|manifests| manifests.reads_prompt(&found)),
-                    rename,
-                    compact: pane.compaction.wanted(),
-                    session,
-                    stopped: record
-                        .unread_input
-                        .as_ref()
-                        .map(|unread| (unread.program.clone(), unread.bytes)),
-                    ran_out: pane.ran_out.clone(),
-                    quiet: record.quiet,
-                    blocked_since_ms: record
-                        .state_since_ms
-                        .filter(|_| record.agent_state() == proto::AgentState::Blocked),
-                    waiting: waits.get(&record.pane).cloned(),
-                    agent,
-                    io: io.clone(),
-                }
-            });
             let given = record.label.as_deref().map(str::trim).filter(|given| !given.is_empty());
             let given = given.map(str::to_string);
             let callsign = record.callsign.clone().filter(|callsign| !callsign.is_empty());
             let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
-            let young = !loaded || restarting || io.since_agent_started() < agent_to_come;
+            let young = terminal.is_some_and(|terminal| {
+                !loaded || restarting || terminal.io.since_agent_started() < agent_to_come
+            });
             let maker = record.maker.clone().filter(|_| !record.maker_closed);
             let former = record.former_labels.clone();
             let closing = Session::closes_once_idle(pane);

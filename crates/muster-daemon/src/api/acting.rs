@@ -130,12 +130,16 @@ fn sent(shared: &Shared, correlation: String, asked: &api::SendToPane) -> api::A
             return refused(correlation, api::Refusal::Invalid, reason);
         }
     };
-    if shared.lock().pane_io(pane).is_none() {
-        let reason = format!("no pane {pane} on this daemon; nothing was sent");
-        return refused(correlation, api::Refusal::NotFound, reason);
+    if let Err(rejected) = shared.lock().pane_io(pane) {
+        let kind = if rejected.outcome == proto::Outcome::NotThere {
+            api::Refusal::NotFound
+        } else {
+            api::Refusal::Invalid
+        };
+        return refused(correlation, kind, format!("{}; nothing was sent", rejected.reason));
     }
     let read_page = |read: pane_request::Read| {
-        let reading = shared.lock().reading(&read)?;
+        let reading = shared.lock().reading(&read).ok()?;
         reading.page()
     };
     let prompt = || {

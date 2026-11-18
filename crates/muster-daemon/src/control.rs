@@ -383,11 +383,10 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             Some(Service::Pane(proto::PaneRequest {
                 request: Some(pane_request::Request::StoreImage(image)),
             })) => {
-                let exists = locked().pane_io(&image.pane).is_some();
-                let reply = if exists {
-                    shared.images.store(&image.png)
-                } else {
-                    Reply::refused(format!("no pane {} on this daemon", image.pane))
+                let terminal = locked().pane_io(&image.pane).map(drop);
+                let reply = match terminal {
+                    Ok(()) => shared.images.store(&image.png),
+                    Err(refused) => Reply::refused(refused.reason),
                 };
                 Handled::Reply(reply)
             }
@@ -554,8 +553,8 @@ fn sent(shared: &Shared, send: &pane_request::Send) -> Reply {
         Ok(input) => input,
         Err(refusal) => return Reply::refused(format!("{refusal}; nothing was sent")),
     };
-    if shared.lock().pane_io(&send.pane).is_none() {
-        return Reply::not_there(format!("no pane {} on this daemon", send.pane));
+    if let Err(refused) = shared.lock().pane_io(&send.pane) {
+        return refused;
     }
     match crate::input::typed(shared, &send.pane, input) {
         Ok(()) => Reply::done(),

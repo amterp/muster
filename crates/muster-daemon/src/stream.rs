@@ -281,13 +281,18 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
             return;
         }
     };
-    let Some(io) = shared.lock().pane_io(&attach.pane) else {
-        refuse(
-            frames,
-            proto::AttachRefusal::NoPane,
-            format!("no pane {} on this daemon", attach.pane),
-        );
-        return;
+    let terminal = shared.lock().pane_io(&attach.pane);
+    let io = match terminal {
+        Ok(io) => io,
+        Err(rejected) => {
+            let kind = if rejected.outcome == proto::Outcome::NotThere {
+                proto::AttachRefusal::NoPane
+            } else {
+                proto::AttachRefusal::Unspecified
+            };
+            refuse(frames, kind, rejected.reason);
+            return;
+        }
     };
     let grid = match attach.grid.map(session::grid).transpose() {
         Ok(grid) => grid,

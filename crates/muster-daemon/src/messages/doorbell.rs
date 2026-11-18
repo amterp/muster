@@ -670,7 +670,7 @@ fn settle(shared: &Shared, ran: Ran, outcome: Result<(), command::Failed>) {
         Ok(()) => {
             // The doorbell waits for the agent to take it from now, so a mark set as the command
             // started and not yet taken lasts as long, past however long the command took.
-            if let Some(io) = shared.lock().pane_io(&pane) {
+            if let Ok(io) = shared.lock().pane_io(&pane) {
                 io.extend_command_wake(Instant::now() + COMMAND_ANSWER);
             }
             log::info(

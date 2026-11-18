@@ -49,6 +49,8 @@ pub(crate) struct Block {
     pub(crate) person_told: bool,
 }
 pub(crate) use peer::Peers;
+#[cfg(test)]
+pub(crate) use presence::Panes as TestPresence;
 pub(crate) use presence::agent_to_come;
 pub(crate) use waits::{Declared, Over, exists as process_exists};
 
@@ -2150,7 +2152,7 @@ fn pane_of_caller(caller: &Caller) -> Option<&str> {
 /// is one somebody chose to run, perhaps for a later turn, and is not tied to the agent's turns.
 fn turns_before(shared: &Shared, caller: &Caller, wait: &proto::msg_request::Wait) -> Option<u64> {
     let pane = pane_of_caller(caller).filter(|_| wait.due)?;
-    let io = shared.lock().pane_io(pane)?;
+    let io = shared.lock().pane_io(pane).ok()?;
     Some(io.turn_serial())
 }
 
@@ -2163,7 +2165,7 @@ fn turns_before(shared: &Shared, caller: &Caller, wait: &proto::msg_request::Wai
 /// ran itself (a rename, say) is no turn of the agent's, and runs no Stop hook to wait again.
 fn pane_moved_on(shared: &Shared, caller: &Caller, turns_before: Option<u64>) -> Option<GaveUp> {
     let pane = pane_of_caller(caller)?;
-    let Some(io) = shared.lock().pane_io(pane) else { return Some(GaveUp::PaneClosed) };
+    let Ok(io) = shared.lock().pane_io(pane) else { return Some(GaveUp::PaneClosed) };
     let began = turns_before.is_some_and(|before| io.turn_serial() > before)
         && io.turn_typed_by() != Some(TypedBy::Chore);
     began.then_some(GaveUp::NewTurn)

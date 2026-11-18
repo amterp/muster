@@ -17,7 +17,7 @@ use muster_daemon_proto::{self as proto, input_event, input_event::perform};
 use muster_vt::{MouseAction, MouseButton, MouseEvent};
 
 use crate::pane::PaneIo;
-use crate::session::Shared;
+use crate::session::{Reply, Shared};
 use crate::writer::{Input, OwnedKey, Wheel};
 
 /// Serves a welcomed input connection until it hangs up.
@@ -48,9 +48,19 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         let Some(input) = event.input.and_then(input_of) else {
             continue;
         };
-        let Some(io) = panes.get(&event.pane, || shared.lock().pane_io(&event.pane)) else {
-            log::debug("daemon.input.no_pane", fields! { "pane" => event.pane });
-            continue;
+        let io = match panes.get(&event.pane, || shared.lock().pane_io(&event.pane)) {
+            Ok(io) => io,
+            Err(refused) if refused.outcome == proto::Outcome::NotThere => {
+                log::debug("daemon.input.no_pane", fields! { "pane" => event.pane });
+                continue;
+            }
+            Err(refused) => {
+                log::debug(
+                    "daemon.input.refused",
+                    fields! { "pane" => event.pane, "why" => refused.reason },
+                );
+                continue;
+            }
         };
         if io.queue(input) {
             stalled.retain(|pane| *pane != event.pane);
@@ -83,16 +93,16 @@ impl Panes {
     fn get(
         &mut self,
         name: &str,
-        look_up: impl FnOnce() -> Option<Arc<PaneIo>>,
-    ) -> Option<Arc<PaneIo>> {
+        look_up: impl FnOnce() -> Result<Arc<PaneIo>, Reply>,
+    ) -> Result<Arc<PaneIo>, Reply> {
         // A closed pane's name may already be another pane's.
         if let Some(io) = self.cached.get(name).and_then(Weak::upgrade).filter(|io| !io.is_closed())
         {
-            return Some(io);
+            return Ok(io);
         }
         let io = look_up()?;
         self.cached.insert(name.to_string(), Arc::downgrade(&io));
-        Some(io)
+        Ok(io)
     }
 }
 
@@ -168,10 +178,13 @@ fn sent(send: &input_event::Send) -> Option<Input> {
 /// is restarting, or its program has stopped reading with its queue full. The one typing step of
 /// a send that is answered, from the API and from a control connection alike.
 pub(crate) fn typed(shared: &Shared, pane: &str, input: Input) -> Result<(), String> {
-    let io = shared
-        .lock()
-        .pane_io(pane)
-        .ok_or_else(|| format!("pane {pane} closed; nothing was sent"))?;
+    let io = shared.lock().pane_io(pane).map_err(|refused| {
+        if refused.outcome == proto::Outcome::NotThere {
+            format!("pane {pane} closed; nothing was sent")
+        } else {
+            refused.reason
+        }
+    })?;
     if io.queue(input) {
         return Ok(());
     }
@@ -234,10 +247,10 @@ mod tests {
         let old = PaneIo::idle(1);
         let new = PaneIo::idle(2);
         let mut panes = Panes::default();
-        assert_eq!(panes.get("p", || Some(Arc::clone(&old))).map(|io| io.serial), Some(1));
-        assert_eq!(panes.get("p", || None).map(|io| io.serial), Some(1), "from the cache");
+        assert_eq!(panes.get("p", || Ok(Arc::clone(&old))).unwrap().serial, 1);
+        assert_eq!(panes.get("p", || panic!("expected cached I/O")).unwrap().serial, 1);
         old.mark_closed();
-        let found = panes.get("p", || Some(Arc::clone(&new)));
-        assert_eq!(found.map(|io| io.serial), Some(2), "the pane now of that name");
+        let found = panes.get("p", || Ok(Arc::clone(&new)));
+        assert_eq!(found.unwrap().serial, 2, "the pane now of that name");
     }
 }

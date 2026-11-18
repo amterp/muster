@@ -28,6 +28,7 @@ use muster_api::connection;
 use muster_api::version::{API, serves};
 use muster_core::diagnostics::log;
 use muster_core::fields;
+use muster_daemon_proto as proto;
 use prost::Message;
 
 use crate::control::{Budget, Farewell, Outbox};
@@ -308,12 +309,15 @@ fn subscribe(shared: &Shared, connection: u64, correlation: String, asked: &api:
 fn read_pane(shared: &Shared, connection: u64, correlation: String, asked: &api::ReadPane) {
     let reading = shared.lock().reading(&reading::asked(asked));
     let answer = match reading {
-        None => refused(
-            correlation,
-            api::Refusal::NotFound,
-            format!("no pane {} on this daemon", asked.pane),
-        ),
-        Some(reading) => match reading.page() {
+        Err(rejected) => {
+            let kind = if rejected.outcome == proto::Outcome::NotThere {
+                api::Refusal::NotFound
+            } else {
+                api::Refusal::Invalid
+            };
+            refused(correlation, kind, rejected.reason)
+        }
+        Ok(reading) => match reading.page() {
             Some(text) => api::Answer {
                 correlation,
                 outcome: api::Outcome::Done.into(),
