@@ -7,12 +7,20 @@ struct CanvasPolicy: Equatable, Sendable {
   let externalLinkSchemes: [String]
 }
 
-struct CanvasPage: Sendable {
-  enum Kind: Equatable, Sendable {
+public struct CanvasInfo: Equatable, Sendable {
+  public enum Kind: Equatable, Sendable {
     case markdown
     case html
     case image
   }
+
+  public let revision: UInt64
+  public let kind: Kind?
+  public let title: String
+}
+
+struct CanvasPage: Sendable {
+  typealias Kind = CanvasInfo.Kind
 
   let revision: UInt64
   let kind: Kind
@@ -22,7 +30,11 @@ struct CanvasPage: Sendable {
 }
 
 protocol CanvasPageSource: Sendable {
-  func revisions(for pane: PaneKey) -> AsyncStream<UInt64>
+  @MainActor
+  func observeRevisions(
+    for pane: PaneKey, receive: @escaping (UInt64, Bool) -> Void
+  ) -> @MainActor () -> Void
+
   func page(for pane: PaneKey, revision: UInt64) async throws -> CanvasPage
 }
 
@@ -90,10 +102,12 @@ final class CanvasView: NSView, PaneContent {
   private let browser: any CanvasBrowser
   private let openLink: (URL) -> Void
   private let errorLabel = NSTextField(wrappingLabelWithString: "")
-  private var observation: Task<Void, Never>?
+  private var stopObserving: (@MainActor () -> Void)?
   private var work: Task<Void, Never>?
   private var latest: UInt64?
+  private var attachment: UInt64 = 0
   private var displayed: (revision: UInt64, kind: CanvasPage.Kind, policy: CanvasPolicy)?
+  private var metadata: CanvasInfo?
   private var terminalAppearance: MusterRenderer.Appearance
   private var style: CanvasAppearance
   private var fontOffset: Int32 = 0
@@ -132,12 +146,8 @@ final class CanvasView: NSView, PaneContent {
       self?.failed("The canvas web content stopped.")
     }
 
-    let revisions = source.revisions(for: pane)
-    observation = Task { [weak self] in
-      for await revision in revisions {
-        guard let self, !Task.isCancelled else { return }
-        self.request(revision)
-      }
+    stopObserving = source.observeRevisions(for: pane) { [weak self] revision, reset in
+      self?.request(revision, reset: reset)
     }
     request(revision)
   }
@@ -220,16 +230,23 @@ final class CanvasView: NSView, PaneContent {
   func tearDown() {
     guard !closed else { return }
     closed = true
-    observation?.cancel()
-    observation = nil
+    stopObserving?()
+    stopObserving = nil
     work?.cancel()
     work = nil
     displayed = nil
     browser.tearDown()
   }
 
-  func request(_ revision: UInt64) {
-    guard !closed, latest.map({ revision > $0 }) ?? true else { return }
+  func request(_ revision: UInt64, reset: Bool = false) {
+    guard !closed else { return }
+    if reset {
+      attachment &+= 1
+      displayed = nil
+      hideBrowser()
+    } else if let latest, revision <= latest {
+      return
+    }
     latest = revision
     fetchIfIdle()
   }
@@ -238,6 +255,7 @@ final class CanvasView: NSView, PaneContent {
     guard !closed, work == nil, let revision = latest else { return }
     let source = self.source
     let pane = self.pane
+    let attachment = self.attachment
     let started = ContinuousClock.now
     let fetch = Task.detached { try await source.page(for: pane, revision: revision) }
     work = Task { [weak self] in
@@ -247,18 +265,20 @@ final class CanvasView: NSView, PaneContent {
         fetch.cancel()
       }
       guard let self, !Task.isCancelled else { return }
-      await self.render(result, requested: revision, started: started)
+      await self.render(result, requested: revision, attachment: attachment, started: started)
     }
   }
 
   private func render(
-    _ result: Result<CanvasPage, any Error>, requested: UInt64, started: ContinuousClock.Instant
+    _ result: Result<CanvasPage, any Error>, requested: UInt64, attachment: UInt64,
+    started: ContinuousClock.Instant
   ) async {
     var handled = requested
     defer {
       work = nil
-      if let latest, latest > handled { fetchIfIdle() }
+      if self.attachment != attachment || (latest.map { $0 > handled } ?? false) { fetchIfIdle() }
     }
+    guard self.attachment == attachment else { return }
     guard case .success(let page) = result, page.revision >= requested else {
       if latest == requested { failed("Could not read the canvas page.") }
       return
@@ -268,22 +288,26 @@ final class CanvasView: NSView, PaneContent {
     handled = page.revision
 
     let scroll = displayed?.kind == page.kind ? await browser.scrollPosition() : nil
-    guard isLatest(page.revision) else { return }
+    guard isLatest(page.revision, attachment: attachment) else { return }
     do {
       try await browser.prepare(page.policy)
     } catch {
-      if isLatest(page.revision) { failed("Could not install the canvas content rules.") }
+      if isLatest(page.revision, attachment: attachment) {
+        failed("Could not install the canvas content rules.")
+      }
       return
     }
-    guard isLatest(page.revision) else { return }
+    guard isLatest(page.revision, attachment: attachment) else { return }
     updateZoom()
     do {
       try await browser.load(page)
     } catch {
-      if isLatest(page.revision) { failed("Could not display the canvas page.") }
+      if isLatest(page.revision, attachment: attachment) {
+        failed("Could not display the canvas page.")
+      }
       return
     }
-    guard !closed else { return }
+    guard !closed, self.attachment == attachment else { return }
 
     // Keep track of what WebKit displayed even if another revision arrived during navigation.
     displayed = (page.revision, page.kind, page.policy)
@@ -291,8 +315,12 @@ final class CanvasView: NSView, PaneContent {
     errorLabel.isHidden = true
     browser.view.isHidden = false
     if let window, window.firstResponder === self { focus(in: window) }
-    updateTitle(page.title ?? title)
-    guard isLatest(page.revision) else { return }
+    if let metadata, metadata.revision <= page.revision {
+      updateTitle(metadata.title)
+    } else if let title = page.title {
+      updateTitle(title)
+    }
+    guard isLatest(page.revision, attachment: attachment) else { return }
     let duration = started.duration(to: .now).components
     Core.info(
       "canvas.loaded",
@@ -304,11 +332,20 @@ final class CanvasView: NSView, PaneContent {
       ])
   }
 
-  private func isLatest(_ revision: UInt64) -> Bool {
-    !closed && latest == revision
+  private func isLatest(_ revision: UInt64, attachment: UInt64) -> Bool {
+    !closed && self.attachment == attachment && latest == revision
   }
 
-  func updateTitle(_ title: String) {
+  func apply(canvas info: CanvasInfo) {
+    let restored = metadata.map { info.revision < $0.revision } ?? false
+    metadata = info
+    guard let displayed else { return }
+    if displayed.revision == info.revision || (!restored && displayed.revision > info.revision) {
+      updateTitle(info.title)
+    }
+  }
+
+  private func updateTitle(_ title: String) {
     guard self.title != title else { return }
     self.title = title
     onTitleChanged?(title)
@@ -335,14 +372,18 @@ final class CanvasView: NSView, PaneContent {
 
   private func failed(_ reason: String) {
     guard !closed else { return }
+    hideBrowser()
+    errorLabel.stringValue = reason
+    errorLabel.isHidden = false
+    Core.warn("canvas.failed", ["pane": pane.pane, "reason": reason])
+  }
+
+  private func hideBrowser() {
     if let window, let current = window.firstResponder as? NSView,
       current !== self, contains(current)
     {
       window.makeFirstResponder(self)
     }
     browser.view.isHidden = true
-    errorLabel.stringValue = reason
-    errorLabel.isHidden = false
-    Core.warn("canvas.failed", ["pane": pane.pane, "reason": reason])
   }
 }

@@ -356,6 +356,51 @@ public enum Core {
     send(request)
   }
 
+  static func sendCanvasKey(_ event: NSEvent, to pane: PaneKey) -> Bool {
+    var target = Muster_CanvasKeyTarget()
+    target.daemonID = pane.daemon
+    target.paneID = pane.pane
+    var request = Muster_Request()
+    switch event.type {
+    case .keyDown:
+      var down = Muster_KeyDown()
+      down.key = event.musterKeyEvent(
+        action: event.isARepeat ? "repeated" : "press", isComposing: false)
+      down.canvasTarget = target
+      request.keyDown = down
+    case .keyUp:
+      var up = Muster_KeyUp()
+      up.key = event.musterKeyEvent(action: "release", isComposing: false)
+      up.canvasTarget = target
+      request.keyUp = up
+    default:
+      return false
+    }
+    guard case .canvasKeyHandled(let handled) = send(request) else { return false }
+    return handled.toView
+  }
+
+  static func readCanvasPage(_ pane: PaneKey, window: String, through dispatcher: Dispatcher)
+    throws -> CanvasPage
+  {
+    var page = Muster_CanvasPage()
+    page.daemonID = pane.daemon
+    page.paneID = pane.pane
+    var request = Muster_Request()
+    request.window = window
+    request.canvasPage = page
+    guard case .canvasRendered(let rendered) = send(request, through: dispatcher),
+      let kind = CanvasInfo.Kind(rendered.kind)
+    else { throw CanvasPageUnavailable() }
+    return CanvasPage(
+      revision: rendered.revision, kind: kind, title: nil, html: rendered.html,
+      policy: CanvasPolicy(
+        loadSchemes: rendered.loadSchemes, scriptsEnabled: rendered.scriptsEnabled,
+        externalLinkSchemes: rendered.externalLinkSchemes))
+  }
+
+  private struct CanvasPageUnavailable: Error {}
+
   public static func send(text: String) {
     var send = Muster_SendText()
     send.text = text
@@ -2196,7 +2241,13 @@ public enum Core {
       info("window.raised", ["window": event.window])
       NSApp.activate(ignoringOtherApps: true)
       window(for: event)?.raise()
-    case .canvasChanged, nil:
+    case .canvasChanged(let changed):
+      let pane = PaneKey(daemon: changed.daemonID, pane: changed.paneID)
+      for window in windows(for: event) {
+        (window as? CanvasWindow)?.apply(
+          pane: pane, canvasRevision: changed.revision, reset: changed.reset)
+      }
+    case nil:
       break
     }
   }
@@ -2213,13 +2264,13 @@ private func coreEventArrived(_ bytes: UnsafePointer<UInt8>?, _ length: Int) {
   let copied = Data(bytes: bytes, count: length)
   guard let event = try? Muster_Event(serializedBytes: copied) else { return }
   guard case .viewChanged = event.payload else {
-    Task { @MainActor in Core.deliver(event) }
+    DispatchQueue.main.async { Core.deliver(event) }
     return
   }
   // Skipped where it stands rather than moved up to the newest, so every other event keeps its
   // place between the views it arrived between.
   let view = views.next(for: event.window)
-  Task { @MainActor in
+  DispatchQueue.main.async {
     guard views.isLatest(view, for: event.window) else {
       Core.debug("view.skipped", ["why": "a newer view arrived before this one was applied"])
       return

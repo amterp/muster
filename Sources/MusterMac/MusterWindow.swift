@@ -56,6 +56,7 @@ public final class MusterWindow: NSObject {
   /// a `self` to capture - and neither exists until `super.init` has run. Non-nil from the end
   /// of `init` onwards.
   private var surfaces: PaneSurfaces!
+  private lazy var canvasPages = CoreCanvasPageSource(window: name)
 
   /// Whether this window was opened with no daemon behind it on purpose.
   ///
@@ -235,9 +236,13 @@ public final class MusterWindow: NSObject {
     // After the content view, because a parked pane waits inside the window rather than
     // outside every hierarchy - a surface is handed to libghostty as a view, and keeping that
     // view in a window for its whole life is the only state this has ever run in.
-    surfaces = PaneSurfaces(parkedIn: split) { [weak self] machine, terminal, pane in
-      self?.startTerminal(terminal, on: machine, pane: pane)
-    }
+    surfaces = PaneSurfaces(
+      parkedIn: split,
+      makeContent: { [weak self] pane in self?.makeContent(for: pane) ?? SurfaceView(frame: .zero)
+      },
+      startPane: { [weak self] machine, terminal, pane in
+        self?.startTerminal(terminal, on: machine, pane: pane)
+      })
     tabView = TabView(frame: NSRect(x: 0, y: 0, width: 960, height: 600), surfaces: surfaces)
     split.attach(sidebar: sidebar, strip: tabView)
     tabView.attach(empty: empty)
@@ -436,7 +441,9 @@ public final class MusterWindow: NSObject {
     // of this function is - and the surface itself skips a number it already has, which is what
     // stops a publish per agent transition from reflowing the window.
     for leaf in contents.tree?.leaves ?? [] {
-      report(tabView.chrome(for: leaf.key)?.content.setFontSizeOffset(leaf.fontSizeOffset) ?? [])
+      guard let content = tabView.chrome(for: leaf.key)?.content else { continue }
+      report(content.setFontSizeOffset(leaf.fontSizeOffset))
+      if let info = leaf.canvas, let canvas = content as? CanvasView { canvas.apply(canvas: info) }
     }
     // A pane this view just made has no header yet; one that has its row ignores it.
     headers.refreshAll()
@@ -448,6 +455,17 @@ public final class MusterWindow: NSObject {
     zoomed = contents.zoomed
     empty.apply(showing: contents.tab != nil)
     applyTitle()
+  }
+
+  private func makeContent(for pane: PaneTree.Leaf) -> any PaneContent {
+    guard let info = pane.canvas else { return SurfaceView(frame: .zero) }
+    let canvas = CanvasView(
+      pane: pane.key, revision: info.revision, title: info.title, source: canvasPages,
+      terminalAppearance: Core.appearance().pane)
+    canvas.sendKey = { [weak self] event in
+      self?.speaking { Core.sendCanvasKey(event, to: pane.key) } ?? false
+    }
+    return canvas
   }
 
   /// Draws a group's conversation in place of the panes, or takes it down. The tab applied just
@@ -504,10 +522,7 @@ public final class MusterWindow: NSObject {
   /// finished while nobody was looking.
   public func apply(_ roster: Roster) {
     self.roster = roster
-    // The one message naming every pane on every attached daemon, which makes it the only
-    // thing that can say a parked pane has closed. Without this a window that visited fifteen
-    // tabs would hold fifteen tabs' worth of bridges until it quit.
-    surfaces.release(everythingBut: Set(roster.panes.map(\.key)))
+    surfaces.apply(roster)
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
     headers.apply(roster: roster, agents: agents)
     banners.refreshAuthors()
@@ -991,6 +1006,13 @@ extension MusterWindow: ConversationWindow {
 
   func apply(messageBox changed: Muster_MessageBoxChanged) {
     conversation.box.apply(changed)
+  }
+}
+
+extension MusterWindow: CanvasWindow {
+  func apply(pane: PaneKey, canvasRevision: UInt64, reset: Bool) {
+    guard surfaces.chrome(for: pane)?.content is CanvasView else { return }
+    canvasPages.publish(pane: pane, revision: canvasRevision, reset: reset)
   }
 }
 

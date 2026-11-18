@@ -18,7 +18,7 @@ private func page(_ revision: UInt64, kind: CanvasPage.Kind = .markdown) -> Canv
 @Suite("canvas view", .ownsTheSeam)
 @MainActor
 struct CanvasViewTests {
-  @Test("a parked canvas keeps its view and loads revisions without starting a terminal")
+  @Test("a hidden canvas keeps its view and loads revisions without starting a terminal")
   func paneLifetime() async throws {
     let source = TestCanvasSource()
     let browser = TestCanvasBrowser()
@@ -49,10 +49,19 @@ struct CanvasViewTests {
 
     store.park(everythingBut: [])
     tab.apply(.init(tab: nil, tree: nil, keyboard: nil))
+    let hidden = Roster.Tab(
+      id: "t1", place: 1, label: "Hidden", onScreen: false,
+      panes: [
+        .init(
+          key: canvasPane, label: "Canvas", onScreen: false,
+          canvas: CanvasInfo(revision: 2, kind: .markdown, title: "Page 2"))
+      ])
+    store.apply(Roster(tabs: [], hidden: [hidden]))
     #expect(store.parked == [canvasPane])
     source.notify(2)
     await until("a page request while parked") { source.requested == [1, 2] }
-    try source.answer(2, with: page(2))
+    try source.answer(
+      2, with: CanvasPage(revision: 2, kind: .markdown, title: nil, html: "", policy: canvasPolicy))
     await until("the parked title") { chrome.header.shownName == "Page 2" }
 
     tab.apply(contents)
@@ -62,7 +71,7 @@ struct CanvasViewTests {
 
     store.park(everythingBut: [])
     tab.apply(.init(tab: nil, tree: nil, keyboard: nil))
-    store.release(everythingBut: [])
+    store.apply(Roster(tabs: []))
     #expect(store.chrome(for: canvasPane) == nil)
     #expect(browser.teardowns == 1)
     #expect(browser.view.window == nil)
@@ -86,6 +95,130 @@ struct CanvasViewTests {
     try source.answer(3, with: page(3))
     await until("the latest title") { canvas.title == "Page 3" }
     #expect(browser.loads.map(\.revision) == [3])
+  }
+
+  @Test("an attachment reset discards the old reply and keeps one fetch in flight")
+  func restoresOlderRevision() async throws {
+    let source = TestCanvasSource()
+    let browser = TestCanvasBrowser()
+    let canvas = makeCanvas(source, browser)
+    defer { canvas.tearDown() }
+
+    await until("the initial page request") { source.requested == [1] }
+    canvas.apply(canvas: CanvasInfo(revision: 1, kind: .markdown, title: "Page 1"))
+    try source.answer(1, with: page(1))
+    await until("the initial page") { canvas.title == "Page 1" }
+
+    source.notify(4)
+    await until("the request on the old attachment") { source.requested == [1, 4] }
+    canvas.apply(canvas: CanvasInfo(revision: 4, kind: .markdown, title: "Old attachment"))
+    source.notify(2, reset: true)
+    #expect(browser.view.isHidden)
+    #expect(source.requested == [1, 4])
+    try source.answer(4, with: page(4))
+    await until("the reset request") { source.requested == [1, 4, 2] }
+    #expect(browser.loads.map(\.revision) == [1])
+    try source.answer(
+      2, with: CanvasPage(revision: 2, kind: .markdown, title: nil, html: "", policy: canvasPolicy))
+    await until("the restored page") { !browser.view.isHidden }
+    #expect(canvas.title == "Page 1")
+    #expect(browser.loads.map(\.revision) == [1, 2])
+
+    var restored = Muster_RosterPane()
+    restored.canvas.revision = 2
+    restored.canvas.kind = .markdown
+    restored.canvas.title = "Restored"
+    let info = try #require(Roster.Pane(restored).canvas)
+    canvas.apply(canvas: info)
+    #expect(canvas.title == "Restored")
+  }
+
+  @Test("a leaf keeps canvas metadata even when its kind is newer than this shell")
+  func recognizesCanvasLeaves() throws {
+    var pane = Muster_ViewPane()
+    pane.paneID = canvasPane.pane
+    var info = Muster_CanvasInfo()
+    info.revision = 12
+    info.kind = .UNRECOGNIZED(42)
+    info.title = "Canvas title"
+    pane.canvas = info
+    var branch = Muster_ViewTreePane()
+    branch.daemonID = "remote"
+    branch.pane = pane
+    var tree = Muster_ViewTree()
+    tree.pane = branch
+    let leaf = try #require(PaneTree(tree).leaves.first)
+    #expect(leaf.key == PaneKey(daemon: "remote", pane: canvasPane.pane))
+    #expect(leaf.canvas == CanvasInfo(revision: 12, kind: nil, title: "Canvas title"))
+  }
+
+  @Test("the live page source addresses the pane and uses the returned policy and revision")
+  func decodesARealSeamRequest() async throws {
+    let dispatcher = RecordingDispatcher { request in
+      guard case .canvasPage = request.payload else { return nil }
+      #expect(!Thread.isMainThread)
+      var reply = Muster_CanvasRendered()
+      reply.revision = 5
+      reply.kind = .image
+      reply.html = "<p>From the canvas renderer</p>"
+      reply.loadSchemes = ["data", "about"]
+      reply.externalLinkSchemes = ["https"]
+      return .canvasRendered(reply)
+    }
+    let source = CoreCanvasPageSource(window: "window-2", dispatcher: dispatcher)
+    let browser = TestCanvasBrowser()
+    let remote = PaneKey(daemon: "remote", pane: "canvas")
+    let canvas = CanvasView(
+      pane: remote, revision: 3, title: "Opening", source: source,
+      terminalAppearance: Appearance(), browser: browser)
+    defer { canvas.tearDown() }
+    await until("the core's page") { browser.loads.count == 1 }
+    let request = try #require(dispatcher.requests.first)
+    #expect(request.window == "window-2")
+    #expect(request.canvasPage.daemonID == remote.daemon)
+    #expect(request.canvasPage.paneID == remote.pane)
+    let rendered = try #require(browser.loads.first)
+    #expect(rendered.revision == 5)
+    #expect(rendered.kind == .image)
+    #expect(rendered.html == "<p>From the canvas renderer</p>")
+    #expect(
+      rendered.policy
+        == CanvasPolicy(
+          loadSchemes: ["data", "about"], scriptsEnabled: false, externalLinkSchemes: ["https"]))
+  }
+
+  @Test("a canvas key carries its pane across both press and release")
+  func addressesCanvasKeys() throws {
+    let dispatcher = seam(
+      RecordingDispatcher { request in
+        var handled = Muster_CanvasKeyHandled()
+        if case .keyUp = request.payload { handled.toView = true }
+        return .canvasKeyHandled(handled)
+      })
+    let down = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        context: nil, characters: " ", charactersIgnoringModifiers: " ", isARepeat: false,
+        keyCode: 49))
+    let up = try #require(
+      NSEvent.keyEvent(
+        with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        context: nil, characters: " ", charactersIgnoringModifiers: " ", isARepeat: false,
+        keyCode: 49))
+    Core.speaking(for: "window-2") {
+      #expect(!Core.sendCanvasKey(down, to: canvasPane))
+      #expect(Core.sendCanvasKey(up, to: canvasPane))
+    }
+
+    let requests = dispatcher.requests
+    #expect(requests.map(\.window) == ["window-2", "window-2"])
+    let pressed = try #require(requests.first?.keyDown)
+    let released = try #require(requests.last?.keyUp)
+    #expect(pressed.canvasTarget.daemonID == canvasPane.daemon)
+    #expect(pressed.canvasTarget.paneID == canvasPane.pane)
+    #expect(released.canvasTarget == pressed.canvasTarget)
+    #expect(pressed.key.action == "press")
+    #expect(released.key.action == "release")
   }
 
   @Test("the browser sees only the latest HTML when a revision arrives during rule installation")
@@ -319,14 +452,22 @@ private enum TestCanvasError: Error {
 }
 
 private final class TestCanvasSource: CanvasPageSource, @unchecked Sendable {
-  private let stream = AsyncStream<UInt64>.makeStream()
+  @MainActor private var receiver: ((UInt64, Bool) -> Void)?
   private let lock = NSLock()
   private var requests: [UInt64] = []
   private var replies: [UInt64: CheckedContinuation<CanvasPage, any Error>] = [:]
 
+  @MainActor init() {}
+
   var requested: [UInt64] { lock.withLock { requests } }
 
-  func revisions(for pane: PaneKey) -> AsyncStream<UInt64> { stream.stream }
+  @MainActor
+  func observeRevisions(
+    for pane: PaneKey, receive: @escaping (UInt64, Bool) -> Void
+  ) -> @MainActor () -> Void {
+    receiver = receive
+    return { [weak self] in self?.receiver = nil }
+  }
 
   func page(for pane: PaneKey, revision: UInt64) async throws -> CanvasPage {
     try await withTaskCancellationHandler {
@@ -351,11 +492,8 @@ private final class TestCanvasSource: CanvasPageSource, @unchecked Sendable {
     try #require(reply).resume(returning: page)
   }
 
-  func notify(_ revision: UInt64) { stream.continuation.yield(revision) }
-
-  deinit {
-    stream.continuation.finish()
-  }
+  @MainActor
+  func notify(_ revision: UInt64, reset: Bool = false) { receiver?(revision, reset) }
 }
 
 @MainActor

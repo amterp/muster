@@ -76,6 +76,7 @@ public struct Roster: Equatable {
     /// The id of the row it is listed beneath rather than where its tab puts it, as the core
     /// decided: its maker's, for a hidden helper whose maker has a row. Empty for most panes.
     public let under: String
+    public let canvas: CanvasInfo?
 
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
@@ -83,7 +84,7 @@ public struct Roster: Equatable {
       clearable: Bool = false, agent: String = "", resumesAs: String = "", quiet: Bool = false,
       callsign: String = "",
       besideCallsign: String? = nil, directory: String = "",
-      maker: String = "", under: String = ""
+      maker: String = "", under: String = "", canvas: CanvasInfo? = nil
     ) {
       self.key = key
       self.place = place
@@ -103,6 +104,7 @@ public struct Roster: Equatable {
       self.directory = directory
       self.maker = maker
       self.under = under
+      self.canvas = canvas
     }
   }
 

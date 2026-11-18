@@ -87,7 +87,8 @@ public final class KeyboardWindow: NSWindow {
   /// On the press, and the release is swallowed with it, so no view sees half a click.
   public override func sendEvent(_ event: NSEvent) {
     if event.type == .keyDown, onKeyDown?(event) == true { return }
-    if event.type == .keyDown, let canvas = Self.canvas(containing: firstResponder as? NSView),
+    if event.type == .keyDown || event.type == .keyUp,
+      let canvas = Self.canvas(containing: firstResponder as? NSView),
       canvas.sendKey?(event) == false
     {
       return

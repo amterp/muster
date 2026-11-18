@@ -206,7 +206,17 @@ public final class PaneSurfaces {
     if let alive { release(everythingBut: alive) }
   }
 
-  /// Lets go of every parked pane the daemons no longer hold.
+  func apply(_ roster: Roster) {
+    let panes = roster.panes + roster.hiddenPanes.filter { $0.canvas != nil }
+    release(everythingBut: Set(panes.map(\.key)))
+    for pane in panes {
+      if let info = pane.canvas, let canvas = chrome(for: pane.key)?.content as? CanvasView {
+        canvas.apply(canvas: info)
+      }
+    }
+  }
+
+  /// Lets go of every parked pane the window no longer holds.
   ///
   /// Driven by the roster, which is the one message naming every pane on every attached
   /// daemon whether or not a region is showing it. A pane that closed while its tab was off

@@ -4,6 +4,12 @@ import WebKit
 
 @MainActor
 final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUIDelegate {
+  private final class CanvasWebView: WKWebView {
+    // WebKit handles key equivalents before AppKit tries the main menu. Decline them here so
+    // the menu gets its shortcuts and any remaining key reaches KeyboardWindow.sendEvent.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool { false }
+  }
+
   private enum Failure: Error {
     case invalidScheme
     case rulesUnavailable
@@ -82,7 +88,7 @@ final class WKCanvasBrowser: NSObject, CanvasBrowser, WKNavigationDelegate, WKUI
     controller.add(rules)
     controller.add(LinkHandler(browser: self), contentWorld: world, name: Self.linkMessage)
 
-    let webView = WKWebView(frame: view.bounds, configuration: configuration)
+    let webView = CanvasWebView(frame: view.bounds, configuration: configuration)
     webView.autoresizingMask = [.width, .height]
     webView.allowsLinkPreview = false
     webView.navigationDelegate = self

@@ -10,6 +10,33 @@ import Testing
 @Suite("several windows in one process", .ownsTheSeam)
 @MainActor
 struct WindowsTests {
+  @Test("a canvas reset reaches every registered window")
+  func aCanvasResetReachesRegisteredWindows() {
+    Windows.forgetAll()
+    defer { Windows.forgetAll() }
+    let first = StandIn("window-1")
+    let second = StandIn("window-2")
+    Windows.register(first)
+    Windows.register(second)
+
+    var changed = Muster_CanvasChanged()
+    changed.daemonID = "remote"
+    changed.paneID = "p7"
+    changed.revision = 2
+    changed.reset = true
+    var event = Muster_Event()
+    event.canvasChanged = changed
+    Core.deliver(event)
+
+    let pane = PaneKey(daemon: "remote", pane: "p7")
+    for window in [first, second] {
+      #expect(window.canvasChanges.count == 1)
+      #expect(window.canvasChanges.first?.pane == pane)
+      #expect(window.canvasChanges.first?.revision == 2)
+      #expect(window.canvasChanges.first?.reset == true)
+    }
+  }
+
   @Test("a group keeps the partner pane on another daemon")
   func aGroupKeepsItsPartnerPane() {
     Windows.forgetAll()
@@ -275,6 +302,7 @@ private final class StandIn: ShellWindow {
     contentRect: NSRect(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
     backing: .buffered, defer: true)
   var applied: [String] = []
+  var canvasChanges: [(pane: PaneKey, revision: UInt64, reset: Bool)] = []
   /// Whether closing it closes it, as a real window does when nothing holds it open.
   let closes: Bool
 
@@ -308,4 +336,10 @@ extension StandIn: ConversationWindow {
   func apply(conversation: Muster_ConversationChanged) { applied.append("conversation") }
   func apply(conversationMembers: Muster_ConversationMembersChanged) { applied.append("members") }
   func apply(messageBox: Muster_MessageBoxChanged) { applied.append("message box") }
+}
+
+extension StandIn: CanvasWindow {
+  func apply(pane: PaneKey, canvasRevision: UInt64, reset: Bool) {
+    canvasChanges.append((pane, canvasRevision, reset))
+  }
 }

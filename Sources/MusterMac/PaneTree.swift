@@ -124,7 +124,8 @@ extension Roster.Pane {
       besideCallsign: pane.besideCallsign,
       directory: pane.directory,
       maker: pane.maker,
-      under: pane.under)
+      under: pane.under,
+      canvas: pane.hasCanvas ? CanvasInfo(pane.canvas) : nil)
   }
 }
 
@@ -213,10 +214,11 @@ public indirect enum PaneTree: Equatable {
     /// terminal over rather than being refused by whatever is still holding it; a first bridge
     /// never does, and so never takes one another window is legitimately showing.
     public let bridgeRestarts: UInt32
+    public let canvas: CanvasInfo?
 
     public init(
       daemon: String = "local", paneID: String, linkSocketPath: String?,
-      fontSizeOffset: Int32 = 0, bridgeRestarts: UInt32 = 0
+      fontSizeOffset: Int32 = 0, bridgeRestarts: UInt32 = 0, canvas: CanvasInfo? = nil
     ) {
       // Defaulted so that a test describing a window on one machine does not have to say which.
       self.daemon = daemon
@@ -226,6 +228,7 @@ public indirect enum PaneTree: Equatable {
       // have to say so, on the same terms as a region's weight.
       self.fontSizeOffset = fontSizeOffset
       self.bridgeRestarts = bridgeRestarts
+      self.canvas = canvas
     }
 
     public var key: PaneKey { PaneKey(daemon: daemon, pane: paneID) }
@@ -421,7 +424,8 @@ extension PaneTree {
           paneID: pane.paneID,
           linkSocketPath: pane.linkSocketPath.isEmpty ? nil : pane.linkSocketPath,
           fontSizeOffset: pane.fontSizeOffset,
-          bridgeRestarts: pane.bridgeRestarts))
+          bridgeRestarts: pane.bridgeRestarts,
+          canvas: pane.hasCanvas ? CanvasInfo(pane.canvas) : nil))
     case .unreachable(let placeholder):
       self = .unreachable(Placeholder(daemon: placeholder.daemonID, paneID: placeholder.paneID))
     case .split(let split):

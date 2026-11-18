@@ -44,6 +44,11 @@ protocol ConversationWindow: AnyObject {
   func apply(messageBox: Muster_MessageBoxChanged)
 }
 
+@MainActor
+protocol CanvasWindow: AnyObject {
+  func apply(pane: PaneKey, canvasRevision: UInt64, reset: Bool)
+}
+
 /// Every window this process has open, by the name the core gave each (mip/0006-one-process.md).
 ///
 /// Holds them, rather than only knowing of them: a window is closed by taking it out of here,
