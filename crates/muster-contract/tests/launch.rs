@@ -383,6 +383,20 @@ fn a_pane_that_does_not_exist_says_why() {
 
     let mut app = Running::start(&built_app(), &scratch, &[], &["p1w3r07bsd"]);
     app.until_ready();
+    // Stopping the app's process group also signals the refresh child. Give it time to
+    // report its outcome first.
+    let log = scratch.log();
+    until_within(
+        "the adapter refresh to settle before stopping the app",
+        LAUNCH_PATIENCE,
+        || {
+            let records = read_log(&log);
+            ["adapter.refresh.finished", "adapter.refresh.skipped", "adapter.refresh.failed"]
+                .iter()
+                .any(|event| has(&records, event))
+        },
+        || events_seen(&read_log(&log)),
+    );
     let records = app.stop();
 
     // The one refusal this is about, and nothing else. A second unrelated warning here would be
