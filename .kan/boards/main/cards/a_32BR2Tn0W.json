@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-canvas-write-that",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1795032367261,
+  "creator": "Alexander Terp",
+  "description": "When a canvas write's rename succeeds and the directory sync after it fails, the daemon reads the file back, publishes the new revision, and answers `REFUSED` with a message saying durability is unknown. So `muster canvas write` exits 1 for a write that every window is now showing, and a script that retries on 1 writes twice (harmless, since a write is whole-document) or reports a failure that did not happen.\n\nA typed answer would let the CLI exit 4, as it does for a write whose answer was lost: `CanvasWritten` with a field saying the revision is not known to be durable, or a distinct outcome. That is a daemon protocol change, a minor.\n\nFound in review of the CLI on 2026-11-18. Left `ai-proposed`: it fails the third test, since it changes a public interface (the daemon protocol and an exit code). Recommendation: do it with the next protocol minor; the path needs a directory fsync to fail, so it is rare.",
+  "id": "a_32BR2Tn0W",
+  "position": "b3F",
+  "provenance": "ai-proposed",
+  "title": "A canvas write that landed but could not be made durable is answered REFUSED",
+  "type": "enhancement",
+  "updated_at_millis": 1795032367261,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795032367261}
+  ]
+}
