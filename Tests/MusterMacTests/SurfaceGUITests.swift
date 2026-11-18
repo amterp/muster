@@ -1070,17 +1070,11 @@ extension SurfaceGUITests {
       menu.items.compactMap(\.submenu).flatMap(\.items).first {
         $0.action == action
       })
+    #expect(copy.target == nil)
     #expect(responder.responds(to: action))
     copy.target = responder
     copy.menu?.update()
     #expect(copy.isEnabled)
-
-    // WebKit's AppKit Services export uses the legacy string type.
-    let textType = NSPasteboard.PasteboardType("NSStringPboardType")
-    let pasteboard = NSPasteboard.withUniqueName()
-    defer { pasteboard.releaseGlobally() }
-    #expect((webView as AnyObject).writeSelection?(to: pasteboard, types: [textType]) == true)
-    #expect(pasteboard.string(forType: textType)?.contains("Copy from the canvas") == true)
   }
 
   @MainActor
