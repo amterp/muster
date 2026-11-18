@@ -87,6 +87,12 @@ public final class KeyboardWindow: NSWindow {
   /// On the press, and the release is swallowed with it, so no view sees half a click.
   public override func sendEvent(_ event: NSEvent) {
     if event.type == .keyDown, onKeyDown?(event) == true { return }
+    if event.type == .keyDown, let canvas = Self.canvas(containing: firstResponder as? NSView),
+      canvas.sendKey?(event) == false
+    {
+      return
+    }
+    if takeCanvasClick(event) { return }
     guard let forward = Self.historyDirection(for: event) else {
       super.sendEvent(event)
       return
@@ -94,6 +100,28 @@ public final class KeyboardWindow: NSWindow {
     if event.type == .otherMouseDown {
       onHistoryButton?(forward)
     }
+  }
+
+  private func takeCanvasClick(_ event: NSEvent) -> Bool {
+    guard event.type == .leftMouseDown || event.type == .rightMouseDown, let root = contentView
+    else { return false }
+    let point = root.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
+    guard let canvas = Self.canvas(containing: root.hitTest(point)) else { return false }
+    canvas.onClick?()
+    guard event.type == .rightMouseDown || event.modifierFlags.contains(.control) else {
+      return false
+    }
+    if let menu = canvas.onMenu?() { NSMenu.popUpContextMenu(menu, with: event, for: canvas) }
+    return true
+  }
+
+  private static func canvas(containing view: NSView?) -> CanvasView? {
+    var current = view
+    while let view = current {
+      if let canvas = view as? CanvasView { return canvas }
+      current = view.superview
+    }
+    return nil
   }
 
   /// Whether this event is the mouse's back or forward button, and which: `true` for forward.

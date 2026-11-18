@@ -305,6 +305,10 @@ public final class PaneChrome: NSView {
     terminal?.onHoverLink = { [weak self] url in
       self?.showLink(url)
     }
+    if let canvas = content as? CanvasView {
+      header.showCanvas(title: canvas.title)
+      canvas.onTitleChanged = { [weak self] title in self?.header.showCanvas(title: title) }
+    }
     // After the surface, so it composites over libghostty's own layer rather than under it.
     addSubview(badge)
     badge.isHidden = true

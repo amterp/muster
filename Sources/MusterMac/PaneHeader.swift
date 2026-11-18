@@ -73,6 +73,7 @@ final class PaneHeaderView: NSView, NSDraggingSource {
   private let tintLayer = CALayer()
   private let edgeBar = CALayer()
   private let icon = StateIcon()
+  private let canvasIcon = NSImageView()
   private let name = NSTextField(labelWithString: "")
   private let directory = NSTextField(labelWithString: "")
   private let stateWord = NSTextField(labelWithString: "")
@@ -80,6 +81,7 @@ final class PaneHeaderView: NSView, NSDraggingSource {
   private var keys: [KeycapView] = []
   private var contextBar: ContextBar?
   private var shown: SidebarModel.Row?
+  private var canvasTitle: String?
   private var hovering = false
   private(set) var dragging = false
 
@@ -93,7 +95,10 @@ final class PaneHeaderView: NSView, NSDraggingSource {
   // What a test reads, which is what somebody would see rather than what was meant.
   var shownRow: SidebarModel.Row? { shown }
   var shownKeys: [Int] { keys.map(\.value) }
-  var shownIcon: String? { icon.superlayer == nil ? nil : icon.state }
+  var shownIcon: String? {
+    if canvasIcon.superview != nil { return "canvas" }
+    return icon.superlayer == nil ? nil : icon.state
+  }
   var showsTint: Bool { tintLayer.superlayer != nil }
   private(set) var tintColor: NSColor?
   /// What the whole header is painted in, under its tint.
@@ -118,6 +123,7 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     grip.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Move pane")?
       .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
     grip.isHidden = true
+    canvasIcon.image = NSImage(systemSymbolName: "doc.richtext", accessibilityDescription: "Canvas")
     addSubview(name)
     addSubview(grip)
   }
@@ -135,14 +141,21 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     draw()
   }
 
+  func showCanvas(title: String) {
+    guard canvasTitle != title else { return }
+    canvasTitle = title
+    redrawCount += 1
+    draw()
+  }
+
   private func draw() {
     for layer in [tintLayer, edgeBar, icon] { layer.removeFromSuperlayer() }
     for key in keys { key.removeFromSuperview() }
     keys = []
     contextBar?.removeFromSuperview()
     contextBar = nil
-    for label in [directory, stateWord] { label.removeFromSuperview() }
-    guard let row = shown else {
+    for view in [directory, stateWord, canvasIcon] as [NSView] { view.removeFromSuperview() }
+    guard shown != nil || canvasTitle != nil else {
       name.stringValue = ""
       toolTip = nil
       fillColor = nil
@@ -156,6 +169,29 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     // a light terminal under a dark appearance, or the reverse, is unreadable.
     fillColor = palette.background.color
     layer?.backgroundColor = palette.background.color.cgColor
+    grip.contentTintColor = palette.dimText.color
+    if let row = shown, case .pane(let first, let second) = row.kind {
+      for press in [first, second] where SidebarRowView.pressable(press) {
+        let key = KeycapView(digit: press)
+        key.show(digit: press, live: false, surface: palette)
+        addSubview(key)
+        keys.append(key)
+      }
+    }
+    if let canvasTitle {
+      canvasIcon.contentTintColor = palette.dimText.color
+      addSubview(canvasIcon)
+      name.textColor = palette.text.color
+      name.stringValue = canvasTitle
+      let label = canvasTitle.isEmpty ? "Canvas" : "Canvas, \(canvasTitle)"
+      toolTip = label
+      setAccessibilityElement(true)
+      setAccessibilityRole(.group)
+      setAccessibilityLabel(label)
+      needsLayout = true
+      return
+    }
+    guard let row = shown else { return }
     let tinted = PaneHeaderModel.isTinted(row)
     var layers: [CALayer] = []
     tintColor = nil
@@ -172,14 +208,6 @@ final class PaneHeaderView: NSView, NSDraggingSource {
       self.layer?.insertSublayer(layer, at: UInt32(index))
     }
 
-    if case .pane(let first, let second) = row.kind {
-      for press in [first, second] where SidebarRowView.pressable(press) {
-        let key = KeycapView(digit: press)
-        key.show(digit: press, live: false, surface: palette)
-        addSubview(key)
-        keys.append(key)
-      }
-    }
     icon.show(state: row.state, color: PaneAppearance.borderColor(state: row.state))
     layer?.addSublayer(icon)
 
@@ -207,8 +235,6 @@ final class PaneHeaderView: NSView, NSDraggingSource {
       addSubview(bar)
       contextBar = bar
     }
-    grip.contentTintColor = palette.dimText.color
-
     // The whole of what is known, on hover and to VoiceOver, which otherwise hears a name and
     // nothing of the icon beside it.
     let details = SidebarModel.details(of: row)
@@ -227,7 +253,7 @@ final class PaneHeaderView: NSView, NSDraggingSource {
   /// Draws the header again from the colors now in force, for a config file read again or an
   /// appearance changed: what depends on them is computed per row, and one header is cheap.
   func recolor() {
-    guard shown != nil else { return }
+    guard shown != nil || canvasTitle != nil else { return }
     draw()
   }
 
@@ -244,8 +270,8 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     defer { CATransaction.commit() }
     tintLayer.frame = bounds
     edgeBar.frame = CGRect(x: 0, y: 0, width: Self.edgeWidth, height: bounds.height)
-    guard let row = shown else { return }
-    let parts = PaneHeaderModel.parts(width: bounds.width, for: row)
+    guard shown != nil || canvasTitle != nil else { return }
+    let parts = shown.map { PaneHeaderModel.parts(width: bounds.width, for: $0) }
     var left = Self.padding
     for key in keys {
       key.frame = CGRect(
@@ -257,6 +283,7 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     icon.frame = CGRect(
       x: left, y: ((bounds.height - StateIcon.size) / 2).rounded(), width: StateIcon.size,
       height: StateIcon.size)
+    canvasIcon.frame = icon.frame
     left += StateIcon.size + 7
 
     var right = bounds.width - Self.padding
@@ -264,8 +291,8 @@ final class PaneHeaderView: NSView, NSDraggingSource {
       x: right - Self.gripWidth, y: (bounds.height - 12) / 2, width: Self.gripWidth, height: 12)
     right -= Self.gripWidth + 4
     if let bar = contextBar {
-      bar.isHidden = !parts.context
-      if parts.context {
+      bar.isHidden = parts?.context != true
+      if parts?.context == true {
         bar.frame = CGRect(
           x: right - ContextBar.width, y: (bounds.height - ContextBar.height) / 2,
           width: ContextBar.width, height: ContextBar.height)
@@ -277,8 +304,8 @@ final class PaneHeaderView: NSView, NSDraggingSource {
       place(stateWord, x: right - width, width: width)
       right -= width + 8
     }
-    directory.isHidden = !parts.directory
-    if directory.superview != nil, parts.directory {
+    directory.isHidden = parts?.directory != true
+    if directory.superview != nil, parts?.directory == true {
       let width = min(ceil(directory.fittingSize.width), max(0, (right - left) * 0.35))
       place(directory, x: right - width, width: width)
       right -= width + 8

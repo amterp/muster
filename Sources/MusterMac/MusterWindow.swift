@@ -639,6 +639,7 @@ public final class MusterWindow: NSObject {
     // changes no state.
     for chrome in surfaces.chromes {
       chrome.recolor()
+      (chrome.content as? CanvasView)?.apply(terminalAppearance: appearance.pane)
     }
     sidebar.reloadColors()
     // The conversation and the banner draw in the terminal's colors, which are what changed.
@@ -1635,15 +1636,14 @@ extension MusterWindow {
     }
   }
 
-  // Ghostty's surface-local binding actions, carried out on the surface with the keyboard.
-  @objc public func scrollToTop(_ sender: Any?) { performOnSurface(.scrollToTop) }
-  @objc public func scrollToBottom(_ sender: Any?) { performOnSurface(.scrollToBottom) }
-  @objc public func scrollPageUp(_ sender: Any?) { performOnSurface(.scrollPageUp) }
-  @objc public func scrollPageDown(_ sender: Any?) { performOnSurface(.scrollPageDown) }
+  @objc public func scrollToTop(_ sender: Any?) { performInPane(.scrollToTop) }
+  @objc public func scrollToBottom(_ sender: Any?) { performInPane(.scrollToBottom) }
+  @objc public func scrollPageUp(_ sender: Any?) { performInPane(.scrollPageUp) }
+  @objc public func scrollPageDown(_ sender: Any?) { performInPane(.scrollPageDown) }
   @objc public func jumpToPreviousPrompt(_ sender: Any?) {
-    performOnSurface(.jumpToPreviousPrompt)
+    performInPane(.jumpToPreviousPrompt)
   }
-  @objc public func jumpToNextPrompt(_ sender: Any?) { performOnSurface(.jumpToNextPrompt) }
+  @objc public func jumpToNextPrompt(_ sender: Any?) { performInPane(.jumpToNextPrompt) }
   /// The pane's text, unless a field the person is typing in has the keyboard - the rename
   /// sheet, the find bar - in which case that field's. The menu item targets this window
   /// directly, so without this a field never hears cmd+A.
@@ -1652,7 +1652,7 @@ extension MusterWindow {
       field.selectAll(sender)
       return
     }
-    performOnSurface(.selectAll)
+    performInPane(.selectAll)
   }
 
   /// The text a field holds while the person types in it, given what has the keyboard: the field
@@ -1670,8 +1670,13 @@ extension MusterWindow {
     beepUnless(Core.perform(.resetTerminal, key: NSApp.currentEvent))
   }
 
-  private func performOnSurface(_ action: SurfaceAction) {
-    keyboardChrome()?.terminal?.perform(action)
+  private func performInPane(_ action: SurfaceAction) {
+    guard let chrome = keyboardChrome() else { return }
+    if let canvas = chrome.content as? CanvasView {
+      canvas.perform(action)
+    } else {
+      chrome.terminal?.perform(action)
+    }
   }
 
   @objc public func increaseFontSize(_ sender: Any?) {

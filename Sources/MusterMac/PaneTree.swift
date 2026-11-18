@@ -146,7 +146,7 @@ extension Roster.Numbering {
 ///
 /// Two daemons hand out the same ids, so anything the shell keys by pane alone - which agent
 /// state belongs to which border - would let one machine's `w1:p1` answer for the other's.
-public struct PaneKey: Hashable {
+public struct PaneKey: Hashable, Sendable {
   public let daemon: String
   public let pane: String
 

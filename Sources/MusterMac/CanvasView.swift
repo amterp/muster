@@ -1,0 +1,348 @@
+import AppKit
+import MusterRenderer
+
+struct CanvasPolicy: Equatable, Sendable {
+  let loadSchemes: [String]
+  let scriptsEnabled: Bool
+  let externalLinkSchemes: [String]
+}
+
+struct CanvasPage: Sendable {
+  enum Kind: Equatable, Sendable {
+    case markdown
+    case html
+    case image
+  }
+
+  let revision: UInt64
+  let kind: Kind
+  let title: String?
+  let html: String
+  let policy: CanvasPolicy
+}
+
+protocol CanvasPageSource: Sendable {
+  func revisions(for pane: PaneKey) -> AsyncStream<UInt64>
+  func page(for pane: PaneKey, revision: UInt64) async throws -> CanvasPage
+}
+
+enum CanvasScroll: String {
+  case top
+  case bottom
+  case pageUp
+  case pageDown
+}
+
+struct CanvasAppearance: Equatable {
+  let background: RGB
+  let foreground: RGB
+  let accent: RGB
+  let fontFamily: String?
+  let fontSize: Double
+
+  @MainActor
+  static func resolved(_ appearance: NSAppearance, terminal: MusterRenderer.Appearance)
+    -> CanvasAppearance
+  {
+    let colors = ChromePalette.current(for: appearance).pane
+    return CanvasAppearance(
+      background: colors.background, foreground: colors.text, accent: colors.accentText,
+      fontFamily: terminal.fontFamily, fontSize: Double(terminal.fontSize ?? 13))
+  }
+
+  var css: [String: String] {
+    [
+      "--muster-background": background.hex,
+      "--muster-foreground": foreground.hex,
+      "--muster-accent": accent.hex,
+      "--muster-font": "system-ui",
+      "--muster-mono": fontFamily.map {
+        let escaped = $0.replacingOccurrences(of: "\\", with: "\\\\")
+          .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\", monospace"
+      } ?? "monospace",
+    ]
+  }
+}
+
+@MainActor
+protocol CanvasBrowser: AnyObject {
+  var view: NSView { get }
+  var focusTarget: NSView? { get }
+  var onLink: ((UInt64, URL) -> Void)? { get set }
+  var onBlockedNavigation: ((URL?) -> Void)? { get set }
+  var onContentLost: (() -> Void)? { get set }
+
+  func prepare(_ policy: CanvasPolicy) async throws
+  func load(_ page: CanvasPage) async throws
+  func scrollPosition() async -> NSPoint?
+  func update(appearance: CanvasAppearance, scrollTo: NSPoint?)
+  func scroll(_ movement: CanvasScroll)
+  func selectAll()
+  func setZoom(_ zoom: CGFloat)
+  func tearDown()
+}
+
+@MainActor
+final class CanvasView: NSView, PaneContent {
+  let pane: PaneKey
+  private let source: any CanvasPageSource
+  private let browser: any CanvasBrowser
+  private let openLink: (URL) -> Void
+  private let errorLabel = NSTextField(wrappingLabelWithString: "")
+  private var observation: Task<Void, Never>?
+  private var work: Task<Void, Never>?
+  private var latest: UInt64?
+  private var displayed: (revision: UInt64, kind: CanvasPage.Kind, policy: CanvasPolicy)?
+  private var terminalAppearance: MusterRenderer.Appearance
+  private var style: CanvasAppearance
+  private var fontOffset: Int32 = 0
+  private var closed = false
+
+  var view: NSView { self }
+  var onClick: (@MainActor () -> Void)?
+  var onMenu: (@MainActor () -> NSMenu?)?
+  var onTitleChanged: ((String) -> Void)?
+  var sendKey: ((NSEvent) -> Bool)?
+  private(set) var title: String
+
+  init(
+    pane: PaneKey, revision: UInt64, title: String, source: any CanvasPageSource,
+    terminalAppearance: MusterRenderer.Appearance, browser: any CanvasBrowser = WKCanvasBrowser(),
+    openLink: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }
+  ) {
+    self.pane = pane
+    self.source = source
+    self.browser = browser
+    self.title = title
+    self.terminalAppearance = terminalAppearance
+    self.style = .resolved(
+      NSApp?.effectiveAppearance ?? .currentDrawing(), terminal: terminalAppearance)
+    self.openLink = openLink
+    super.init(frame: .zero)
+    addSubview(browser.view)
+    errorLabel.alignment = .center
+    errorLabel.isHidden = true
+    addSubview(errorLabel)
+
+    browser.onLink = { [weak self] revision, url in self?.activated(url, revision: revision) }
+    browser.onBlockedNavigation = { [weak self] url in self?.blocked(url) }
+    browser.onContentLost = { [weak self] in
+      self?.displayed = nil
+      self?.failed("The canvas web content stopped.")
+    }
+
+    let revisions = source.revisions(for: pane)
+    observation = Task { [weak self] in
+      for await revision in revisions {
+        guard let self, !Task.isCancelled else { return }
+        self.request(revision)
+      }
+    }
+    request(revision)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
+  }
+
+  override var acceptsFirstResponder: Bool { true }
+
+  override func layout() {
+    super.layout()
+    browser.view.frame = bounds
+    errorLabel.frame = bounds.insetBy(dx: min(16, bounds.width / 4), dy: 0)
+  }
+
+  func contains(_ view: NSView?) -> Bool {
+    guard let view else { return false }
+    return view === self || view.isDescendant(of: self)
+  }
+
+  func focus(in window: NSWindow) {
+    let current = window.firstResponder as? NSView
+    if !browser.view.isHidden, let target = browser.focusTarget {
+      if current !== target, current?.isDescendant(of: target) != true {
+        window.makeFirstResponder(target)
+      }
+    } else if current !== self {
+      window.makeFirstResponder(self)
+    }
+  }
+
+  func apply(windowIsKey: Bool) {}
+  func apply(windowIsVisible: Bool) {}
+  func apply(parked: Bool) {}
+  func apply(covered: Bool) {}
+  func matchBackingScale() {}
+
+  func setFontSizeOffset(_ points: Int32) -> [String] {
+    fontOffset = points
+    updateZoom()
+    return []
+  }
+
+  func perform(_ action: SurfaceAction) {
+    guard displayed != nil, errorLabel.isHidden else { return }
+    switch action {
+    case .selectAll: browser.selectAll()
+    case .scrollToTop: browser.scroll(.top)
+    case .scrollToBottom: browser.scroll(.bottom)
+    case .scrollPageUp: browser.scroll(.pageUp)
+    case .scrollPageDown: browser.scroll(.pageDown)
+    case .jumpToPreviousPrompt, .jumpToNextPrompt: break
+    }
+  }
+
+  func apply(terminalAppearance: MusterRenderer.Appearance) {
+    self.terminalAppearance = terminalAppearance
+    adoptAppearance()
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    adoptAppearance()
+  }
+
+  private func adoptAppearance() {
+    let resolved = CanvasAppearance.resolved(effectiveAppearance, terminal: terminalAppearance)
+    guard style != resolved else { return }
+    style = resolved
+    browser.update(appearance: style, scrollTo: nil)
+    updateZoom()
+  }
+
+  private func updateZoom() {
+    let base = max(1, style.fontSize)
+    browser.setZoom(max(1, base + Double(fontOffset)) / base)
+  }
+
+  func tearDown() {
+    guard !closed else { return }
+    closed = true
+    observation?.cancel()
+    observation = nil
+    work?.cancel()
+    work = nil
+    displayed = nil
+    browser.tearDown()
+  }
+
+  func request(_ revision: UInt64) {
+    guard !closed, latest.map({ revision > $0 }) ?? true else { return }
+    latest = revision
+    fetchIfIdle()
+  }
+
+  private func fetchIfIdle() {
+    guard !closed, work == nil, let revision = latest else { return }
+    let source = self.source
+    let pane = self.pane
+    let started = ContinuousClock.now
+    let fetch = Task.detached { try await source.page(for: pane, revision: revision) }
+    work = Task { [weak self] in
+      let result = await withTaskCancellationHandler {
+        await fetch.result
+      } onCancel: {
+        fetch.cancel()
+      }
+      guard let self, !Task.isCancelled else { return }
+      await self.render(result, requested: revision, started: started)
+    }
+  }
+
+  private func render(
+    _ result: Result<CanvasPage, any Error>, requested: UInt64, started: ContinuousClock.Instant
+  ) async {
+    var handled = requested
+    defer {
+      work = nil
+      if let latest, latest > handled { fetchIfIdle() }
+    }
+    guard case .success(let page) = result, page.revision >= requested else {
+      if latest == requested { failed("Could not read the canvas page.") }
+      return
+    }
+    guard let latest, page.revision >= latest else { return }
+    self.latest = page.revision
+    handled = page.revision
+
+    let scroll = displayed?.kind == page.kind ? await browser.scrollPosition() : nil
+    guard isLatest(page.revision) else { return }
+    do {
+      try await browser.prepare(page.policy)
+    } catch {
+      if isLatest(page.revision) { failed("Could not install the canvas content rules.") }
+      return
+    }
+    guard isLatest(page.revision) else { return }
+    updateZoom()
+    do {
+      try await browser.load(page)
+    } catch {
+      if isLatest(page.revision) { failed("Could not display the canvas page.") }
+      return
+    }
+    guard !closed else { return }
+
+    // Keep track of what WebKit displayed even if another revision arrived during navigation.
+    displayed = (page.revision, page.kind, page.policy)
+    browser.update(appearance: style, scrollTo: scroll)
+    errorLabel.isHidden = true
+    browser.view.isHidden = false
+    if let window, window.firstResponder === self { focus(in: window) }
+    updateTitle(page.title ?? title)
+    guard isLatest(page.revision) else { return }
+    let duration = started.duration(to: .now).components
+    Core.info(
+      "canvas.loaded",
+      [
+        "pane": pane.pane,
+        "revision": String(page.revision),
+        "bytes": String(page.html.utf8.count),
+        "ms": String(duration.seconds * 1000 + duration.attoseconds / 1_000_000_000_000_000),
+      ])
+  }
+
+  private func isLatest(_ revision: UInt64) -> Bool {
+    !closed && latest == revision
+  }
+
+  func updateTitle(_ title: String) {
+    guard self.title != title else { return }
+    self.title = title
+    onTitleChanged?(title)
+  }
+
+  private func activated(_ url: URL, revision: UInt64) {
+    guard !closed, errorLabel.isHidden, let displayed, displayed.revision == revision,
+      let scheme = url.scheme?.lowercased(),
+      displayed.policy.externalLinkSchemes.contains(where: { $0.lowercased() == scheme })
+    else {
+      blocked(url)
+      return
+    }
+    openLink(url)
+  }
+
+  private func blocked(_ url: URL?) {
+    Core.info(
+      "canvas.blocked",
+      [
+        "pane": pane.pane, "scheme": url?.scheme ?? "", "host": url?.host ?? "",
+      ])
+  }
+
+  private func failed(_ reason: String) {
+    guard !closed else { return }
+    if let window, let current = window.firstResponder as? NSView,
+      current !== self, contains(current)
+    {
+      window.makeFirstResponder(self)
+    }
+    browser.view.isHidden = true
+    errorLabel.stringValue = reason
+    errorLabel.isHidden = false
+    Core.warn("canvas.failed", ["pane": pane.pane, "reason": reason])
+  }
+}
