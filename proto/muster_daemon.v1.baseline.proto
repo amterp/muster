@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.16
+// Version: 1.17
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -327,6 +327,54 @@ message PaneRequest {
     Clear clear = 19;
     // Since 1.16.
     Unseen unseen = 20;
+    // Since 1.17.
+    CreateCanvas create_canvas = 21;
+    // Since 1.17.
+    WriteCanvas write_canvas = 22;
+    // Since 1.17.
+    ReadCanvas read_canvas = 23;
+  }
+
+  // Makes a canvas: a pane that holds a document for a view to draw, and runs no program. It has
+  // no terminal, so nothing can be typed into it, read off its screen or streamed from it, and it
+  // never holds an agent. In every other way it is a pane: it has a callsign, a place in a tab's
+  // tree, and is renamed, moved, hidden, closed and reopened as one. Answered as Create is, with
+  // Created and its callsign; a pane of that name already here answers ALREADY_SO.
+  //
+  // A request of its own and not a field on Create, because a daemon older than 1.17 would
+  // ignore the field, start a shell and answer DONE; an arm it does not know it refuses.
+  // REFUSED for a document the daemon will not hold (`CanvasDocument`).
+  message CreateCanvas {
+    // Muster's name for it (`p1w3r07bsd`), as Create's.
+    string pane = 1;
+    Placement placement = 2;
+    optional string label = 3;
+    CanvasDocument document = 4;
+    // Starts it quiet (`Pane.quiet`).
+    bool quiet = 5;
+    // The pane that asked for it, by id, when a pane did (`Canvas.opened_by`). Uses the same
+    // pane ID grammar as pane. The opening pane need not be on this daemon.
+    optional string opened_by = 6;
+    // As Create's: the callsigns the asker's other machines hold.
+    repeated string callsigns_elsewhere = 7;
+  }
+
+  // Replaces a canvas's document whole. DONE, with CanvasWritten, once the document is on disk
+  // and would survive a power loss; the pane's record carries the new revision in a PaneChanged
+  // before the answer. NOT_THERE for a pane this daemon does not hold. REFUSED, with the old
+  // document kept, for a pane that is not a canvas or a document the daemon will not hold.
+  //
+  // The last write wins: a write carries no condition. A client whose answer was lost does not
+  // send it again by itself, since by then another write may have landed.
+  message WriteCanvas {
+    string pane = 1;
+    CanvasDocument document = 2;
+  }
+
+  // Reads a canvas's document as it was last written, answered with CanvasRead. NOT_THERE for a
+  // pane this daemon does not hold, REFUSED for one that is not a canvas.
+  message ReadCanvas {
+    string pane = 1;
   }
 
   // Types into a pane as `muster pane send` does: the text, then each key, then Return. DONE
@@ -1536,7 +1584,48 @@ message Answer {
     Reopened reopened = 17;
     // Since 1.11.
     ImageStored image_stored = 18;
+    // Since 1.17.
+    CanvasWritten canvas_written = 19;
+    // Since 1.17.
+    CanvasRead canvas_read = 20;
   }
+}
+
+// What a canvas holds: one self-contained document. Since 1.17.
+//
+// REFUSED, wherever one is sent, when `kind` is unspecified, `body` is longer than 4 MiB,
+// Markdown or HTML is not UTF-8, or an image does not read as the type `image_type` names. The
+// limit is what every route to a daemon carries: a window's command socket frames at 8 MiB, and
+// an image grows by a third when a view embeds it in a page.
+message CanvasDocument {
+  CanvasKind kind = 1;
+  bytes body = 2;
+  // For CANVAS_KIND_IMAGE, its media type: image/png, image/jpeg, image/gif, image/webp or
+  // image/svg+xml. Empty otherwise.
+  string image_type = 3;
+  // Shown in the pane's header. REFUSED if it exceeds 256 UTF-8 bytes or contains a control
+  // character. May be empty.
+  string title = 4;
+}
+
+enum CanvasKind {
+  CANVAS_KIND_UNSPECIFIED = 0;
+  // CommonMark.
+  CANVAS_KIND_MARKDOWN = 1;
+  // A whole HTML document, or a fragment of one.
+  CANVAS_KIND_HTML = 2;
+  CANVAS_KIND_IMAGE = 3;
+}
+
+// A WriteCanvas's DONE: the revision the write became.
+message CanvasWritten {
+  uint64 revision = 1;
+}
+
+// A ReadCanvas's DONE.
+message CanvasRead {
+  uint64 revision = 1;
+  CanvasDocument document = 2;
 }
 
 message ImageStored {
@@ -1960,6 +2049,26 @@ message Pane {
   // prompt holds something typed and not sent". Absent while no wake for it is held at its
   // prompt. Derived from the doorbell's last look, never persisted.
   optional string wake_held = 32;
+  // Since 1.17. The pane is a canvas (`PaneRequest.CreateCanvas`): it holds a document and has
+  // no terminal, so `command`, `agent` and every field about an agent or a program stay unset,
+  // and `cwd` is empty. Absent for a pane with a terminal. Never the document itself, which a
+  // view reads with ReadCanvas when `revision` moves.
+  Canvas canvas = 33;
+}
+
+// What a pane's record says of the document it holds. Since 1.17.
+message Canvas {
+  // Counts the document's writes from 1, which CreateCanvas's is. Written to the canvas's file
+  // with the document, so it goes on from where it was after a restart or a handoff.
+  uint64 revision = 1;
+  CanvasKind kind = 2;
+  string title = 3;
+  // The document's length in bytes.
+  uint64 bytes = 4;
+  // The pane that asked for the canvas, when a pane did. It says who may write to the canvas
+  // without naming it, and nothing else: a canvas is nobody's helper, and stays open when this
+  // pane closes.
+  optional string opened_by = 5;
 }
 
 // The compaction thresholds applying to one pane (`Pane.compaction`).
@@ -2432,10 +2541,15 @@ enum DetachReason {
 // Never on the daemon's socket. The old daemon starts the new one with one end of a socket pair
 // as the descriptor `--handoff` names, and they speak Handoff frames over it, framed as every
 // connection is. A frame that brings descriptors follows a single byte that carries them as
-// SCM_RIGHTS. In order: Offer; Accept or Refused; Session, bringing the listening socket and
-// the lock file; for each pane, Pane bringing its PTY master, then its replay in replay_piece
-// frames; Ready; Commit; Serving. Until Serving the old daemon keeps its own copy of every
-// descriptor, so a new daemon that fails at any point takes no pane with it.
+// SCM_RIGHTS. Offer and Accept or Refused come first. Session brings the listening socket and
+// lock file. Each terminal sends a Pane with its PTY master, then its replay_piece frames.
+// Each canvas then sends a Pane containing only its record. Session's state identifies canvas
+// panes, whose documents stay in their files. Ready, Commit and Serving follow.
+// A successor must speak protocol 1.17 or later if the session holds a live or remembered
+// canvas. If both daemons speak 1.17 or later, the predecessor replies to Serving with Serving
+// to confirm the handoff. The successor waits for confirmation or for the predecessor to exit
+// before accepting connections. It logs a timeout and serves if neither arrives in time.
+// Until Serving the predecessor keeps its copy of every descriptor.
 message Handoff {
   oneof message {
     Offer offer = 1;

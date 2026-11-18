@@ -32,9 +32,12 @@
                         "pane.close",
                         "pane.compact",
                         "pane.new",
+                        "pane.new_canvas",
+                        "pane.read_canvas",
                         "pane.reopen",
                         "pane.restart",
-                        "pane.send"
+                        "pane.send",
+                        "pane.write_canvas"
                       ],
                       "topics": ["TOPIC_PANES", "TOPIC_MACHINES", "TOPIC_MESSAGES", "TOPIC_ATTENTION", "TOPIC_PLACES"],
                       "options": ["msg.post.answer_in_words", "msg.post.recommended", "msg.post.no_reply"]

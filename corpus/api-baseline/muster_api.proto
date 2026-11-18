@@ -144,6 +144,9 @@
 // repeat. Only a harness's own word sets it, never `context_used` falling, so a harness that does
 // not say gets none: `muster docs api` says which do.
 //
+// Since 0.6, a canvas carries Pane.canvas in the snapshot and pane events. A successful write
+// publishes the new revision before answering. Read the document itself with pane.read_canvas.
+//
 // ## Reading a pane
 //
 // `api.read_pane` answers one page of a pane's text, at most 4 MiB, the pages `muster pane read`
@@ -354,6 +357,12 @@ message PaneRequest {
     ReopenPane reopen = 6;
     // "pane.clear", since 0.5: answered DONE once the clear is queued.
     ClearAgent clear = 7;
+    // "pane.new_canvas", since 0.6: answered with MadePane.
+    NewCanvas new_canvas = 8;
+    // "pane.write_canvas", since 0.6: answered with CanvasWritten.
+    WriteCanvas write_canvas = 9;
+    // "pane.read_canvas", since 0.6: answered with CanvasRead.
+    ReadCanvas read_canvas = 10;
   }
 }
 
@@ -380,6 +389,83 @@ message NewPane {
   // Raises nothing for the person: no notification. Unset is quiet for a helper, whose maker is
   // told when it needs somebody, and not quiet for any other pane.
   optional bool quiet = 8;
+}
+
+// Makes a canvas in a visible tab of its own or beside a pane on this daemon.
+message NewCanvas {
+  // Required. See Operation ids in the header.
+  string operation = 1;
+  optional string name = 2;
+  CanvasDocument document = 3;
+  // Optional pane id that opened this canvas. One to 64 printable ASCII characters without
+  // spaces. That pane's `muster canvas write` can use it to find the canvas without naming it.
+  optional string opened_by = 4;
+  // Required. Omission or an unknown placement is refused INVALID.
+  oneof placement {
+    NewTab new_tab = 5;
+    Beside beside = 6;
+  }
+
+  message NewTab {}
+
+  message Beside {
+    // The existing pane's id. A missing pane is refused NOT_FOUND.
+    string pane = 1;
+    // Required. An unspecified or unrecognized value is refused INVALID.
+    Side side = 2;
+    // The fraction kept by the existing pane, strictly between 0 and 1. Omit for half.
+    optional float ratio = 3;
+  }
+
+  enum Side {
+    SIDE_UNSPECIFIED = 0;
+    SIDE_LEFT = 1;
+    SIDE_RIGHT = 2;
+    SIDE_UP = 3;
+    SIDE_DOWN = 4;
+  }
+}
+
+// Replaces the whole document. Each successful write advances the revision. A missing pane
+// is refused NOT_FOUND. A terminal or invalid document is refused INVALID. If the file was
+// replaced and its durability could not be confirmed, the answer is UNKNOWN. The daemon
+// never retries a write for the client. A late repeat can replace another client's document.
+message WriteCanvas {
+  string pane = 1;
+  CanvasDocument document = 2;
+}
+
+// Reads a canvas's current revision and document. A missing pane is refused NOT_FOUND and
+// a terminal is refused INVALID. A file that cannot be read is refused with the reason.
+message ReadCanvas {
+  string pane = 1;
+}
+
+// A canvas document. The daemon refuses an unspecified or unknown kind, a body over 4 MiB,
+// invalid UTF-8 in text, and a title over 256 UTF-8 bytes or with a control character.
+message CanvasDocument {
+  CanvasKind kind = 1;
+  bytes body = 2;
+  // For images, image/png, image/jpeg, image/gif, image/webp, or image/svg+xml. The bytes must
+  // match their declared type. Empty for text.
+  string image_type = 3;
+  string title = 4;
+}
+
+enum CanvasKind {
+  CANVAS_KIND_UNSPECIFIED = 0;
+  CANVAS_KIND_MARKDOWN = 1;
+  CANVAS_KIND_HTML = 2;
+  CANVAS_KIND_IMAGE = 3;
+}
+
+message CanvasWritten {
+  uint64 revision = 1;
+}
+
+message CanvasRead {
+  uint64 revision = 1;
+  CanvasDocument document = 2;
 }
 
 // What a pane.new made.
@@ -550,6 +636,8 @@ message Answer {
     Posted posted = 15;
     // "pane.close", when the pane can be reopened.
     ClosedPane closed = 16;
+    CanvasWritten canvas_written = 17;
+    CanvasRead canvas_read = 18;
   }
 }
 
@@ -723,6 +811,18 @@ message Pane {
   // and not who chose it: a person's rename in the harness reads the same. False while `name` is
   // empty.
   bool name_from_session = 18;
+  // Since 0.6. Present for a canvas pane.
+  Canvas canvas = 19;
+}
+
+// A canvas's metadata. Use ReadCanvas for its document.
+message Canvas {
+  // Revision 1 is the original document. Each replacement advances it by one.
+  uint64 revision = 1;
+  CanvasKind kind = 2;
+  string title = 3;
+  uint64 bytes = 4;
+  optional string opened_by = 5;
 }
 
 // One change to an agent's context, which its harness told its daemon of.
