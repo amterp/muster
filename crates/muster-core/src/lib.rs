@@ -1,15 +1,15 @@
 //! Muster's headless core: what a keystroke means, what an agent is doing, what happened.
 //!
-//! No OS types, no windowing, no rendering. The shell above decides *that* something
-//! happened and this decides what it means (MIP-1, `docs/architecture.md`). Everything
-//! here is reachable by a test without a daemon, a window, or a running app, and the
-//! cases it answers to live in `corpus/conformance/` rather than in this language.
+//! The core has no OS types or windowing (MIP-1, `docs/architecture.md`). The shell reports
+//! what happened, and the core decides what it means. The core can be tested without a
+//! daemon, window, or running app. Its cases live in `corpus/conformance/`.
 
 pub mod agent_state;
 pub mod attention;
 pub mod banners;
 pub mod bridge_link;
 pub mod callsigns;
+pub mod canvas;
 pub mod compaction;
 pub mod composition;
 pub mod config;

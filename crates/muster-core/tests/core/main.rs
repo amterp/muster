@@ -4,6 +4,7 @@ mod agent_state;
 mod attention;
 mod banners;
 mod bindings;
+mod canvas;
 mod change_consequences;
 mod chord;
 mod composition;

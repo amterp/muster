@@ -1,0 +1,46 @@
+:root {
+    color-scheme: light dark;
+    background: var(--muster-background, Canvas);
+}
+
+body {
+    margin: 0;
+}
+
+#actual-size {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    clip-path: inset(50%);
+}
+
+label {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    place-items: center;
+    min-block-size: 100vh;
+    cursor: zoom-in;
+}
+
+img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100vh;
+    object-fit: scale-down;
+}
+
+#actual-size:checked + label {
+    inline-size: max-content;
+    min-inline-size: 100%;
+    cursor: zoom-out;
+}
+
+#actual-size:checked + label img {
+    inline-size: auto;
+    block-size: auto;
+}
+
+#actual-size:focus-visible + label {
+    outline: 2px solid var(--muster-accent, Highlight);
+    outline-offset: -2px;
+}

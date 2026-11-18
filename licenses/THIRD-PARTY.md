@@ -12,7 +12,7 @@ The Rust set is every crate reachable along a normal dependency edge from `muste
 only run at build time or under `cargo test` are not here, because they are not
 redistributed.
 
-**64 Rust crates** and **1 Swift package(s)**.
+**66 Rust crates** and **1 Swift package(s)**.
 
 ## What is in the binaries
 
@@ -26,6 +26,7 @@ redistributed.
 | anstyle-parse | 1.0.0 | MIT OR Apache-2.0 | https://github.com/rust-cli/anstyle.git |
 | anstyle-query | 1.1.5 | MIT OR Apache-2.0 | https://github.com/rust-cli/anstyle.git |
 | anyhow | 1.0.104 | MIT OR Apache-2.0 | https://github.com/dtolnay/anyhow |
+| base64 | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | bitflags | 2.13.1 | MIT OR Apache-2.0 | https://github.com/bitflags/bitflags |
 | block-buffer | 0.10.4 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | bytes | 1.12.1 | MIT | https://github.com/tokio-rs/bytes |
@@ -55,6 +56,7 @@ redistributed.
 | prost | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | prost-derive | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | pulldown-cmark | 0.13.5 | MIT | https://github.com/raphlinus/pulldown-cmark |
+| pulldown-cmark-escape | 0.11.0 | MIT | https://github.com/raphlinus/pulldown-cmark |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
 | regex | 1.13.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
@@ -320,9 +322,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### bitflags 2.13.1 and 15 others - LICENSE, LICENSE-APACHE
+### base64 0.22.1 and 16 others - LICENSE, LICENSE-APACHE
 
-bitflags 2.13.1, cfg-if 1.0.4, either 1.17.0, errno 0.3.14, filetime 0.2.29, heck 0.5.0, itertools 0.13.0, prost 0.14.4, prost-derive 0.14.4, regex 1.13.1, regex-automata 0.4.18, regex-syntax 0.8.11, rustix 1.1.4, tar 0.4.46, unicase 2.9.0, unicode-width 0.2.2
+base64 0.22.1, bitflags 2.13.1, cfg-if 1.0.4, either 1.17.0, errno 0.3.14, filetime 0.2.29, heck 0.5.0, itertools 0.13.0, prost 0.14.4, prost-derive 0.14.4, regex 1.13.1, regex-automata 0.4.18, regex-syntax 0.8.11, rustix 1.1.4, tar 0.4.46, unicase 2.9.0, unicode-width 0.2.2
 
 ```
 Apache License
@@ -1083,6 +1085,34 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
+### pulldown-cmark 0.13.5 and 1 others - LICENSE
+
+pulldown-cmark 0.13.5, pulldown-cmark-escape 0.11.0
+
+```
+The MIT License
+
+Copyright 2015 Google Inc. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
 ### aho-corasick 1.1.5 and 1 others - UNLICENSE
 
 aho-corasick 1.1.5, memchr 2.8.3
@@ -1528,6 +1558,32 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
+### base64 0.22.1 - LICENSE-MIT
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2015 Alice Maz
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
 ### errno 0.3.14 - LICENSE-MIT
 
 ```
@@ -1752,32 +1808,6 @@ SOFTWARE.
 The MIT License
 
 Copyright (c) 2025 Alexander Terp
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### pulldown-cmark 0.13.5 - LICENSE
-
-```
-The MIT License
-
-Copyright 2015 Google Inc. All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

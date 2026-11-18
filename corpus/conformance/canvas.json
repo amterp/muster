@@ -1,0 +1,96 @@
+{
+  "concept": "canvas.render",
+  "source": "authored",
+  "citation": "The owner's canvas decision (Fencil canvas-web-view@4fmgx5mh) and the canvas document contract in proto/muster_daemon.proto.",
+  "why": "The core hands every shell the page to load and the same web-view policy.",
+  "cases": [
+    {
+      "name": "Markdown keeps tables, tasks, code and raw HTML",
+      "why": "A plan can carry a table, a checklist, a code sample and authored markup in one page.",
+      "given": {"kind": "markdown", "body": "# Plan\n\n| Step | Owner |\n| --- | --- |\n| Test | Ana |\n\n- [x] Draft\n- [ ] Ship\n\n```js\nif (x < y) run();\n```\n\n<div data-slide=\"2\">Raw <em>HTML</em></div>\n", "title": "Plan & review"},
+      "expect": {
+        "html": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Plan &amp; review</title><style></style></head><body><h1>Plan</h1>\n<table><thead><tr><th>Step</th><th>Owner</th></tr></thead><tbody>\n<tr><td>Test</td><td>Ana</td></tr>\n</tbody></table>\n<ul>\n<li><input disabled=\"\" type=\"checkbox\" checked=\"\"/>\nDraft</li>\n<li><input disabled=\"\" type=\"checkbox\"/>\nShip</li>\n</ul>\n<pre><code class=\"language-js\">if (x &lt; y) run();\n</code></pre>\n<div data-slide=\"2\">Raw <em>HTML</em></div>\n</body></html>",
+        "policy": {"load_schemes": ["data", "blob", "about"], "external_link_schemes": ["http", "https", "mailto"], "scripts_enabled": false}
+      }
+    },
+    {
+      "name": "HTML fragments get a UTF-8 document",
+      "why": "A fragment can be supplied by itself, and the canvas title is text even when it contains markup.",
+      "given": {"kind": "html", "body": "<section><h1>Today</h1><p>Résumé</p></section>", "title": "Draft </title"},
+      "expect": {
+        "html": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Draft &lt;/title</title></head><body><section><h1>Today</h1><p>Résumé</p></section></body></html>",
+        "policy": {"load_schemes": ["data", "blob", "about"], "external_link_schemes": ["http", "https", "mailto"], "scripts_enabled": false}
+      }
+    },
+    {
+      "name": "whole HTML keeps its original bytes",
+      "why": "The author supplies their own head and body, and a BOM, whitespace and comments can precede them.",
+      "given": {"kind": "html", "body": "\ufeff\n<!-- Dashboard -->\n<!DoCtYpE html>\n<HTML lang=\"en\"><head><title>Own title</title></head><body>Dashboard</body></HTML>\n", "title": "Pane title"},
+      "expect": {
+        "html": "\ufeff\n<!-- Dashboard -->\n<!DoCtYpE html>\n<HTML lang=\"en\"><head><title>Own title</title></head><body>Dashboard</body></HTML>\n",
+        "policy": {"load_schemes": ["data", "blob", "about"], "external_link_schemes": ["http", "https", "mailto"], "scripts_enabled": false}
+      }
+    },
+    {
+      "name": "an explicit HTML root needs no doctype",
+      "why": "An existing document also keeps its markup when it begins with the root element.",
+      "given": {"kind": "html", "body": " <!-- First -->\n<!-- Second -->\n<HtMl lang=\"en\"><p>Plan</p></HtMl>", "title": ""},
+      "expect": {
+        "html": " <!-- First -->\n<!-- Second -->\n<HtMl lang=\"en\"><p>Plan</p></HtMl>",
+        "policy": {"load_schemes": ["data", "blob", "about"], "external_link_schemes": ["http", "https", "mailto"], "scripts_enabled": false}
+      }
+    },
+    {
+      "name": "a custom element whose name begins with html is a fragment",
+      "why": "The document check matches complete HTML tag names.",
+      "given": {"kind": "html", "body": "<html-panel>Details</html-panel>", "title": ""},
+      "expect": {
+        "html": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title></title></head><body><html-panel>Details</html-panel></body></html>",
+        "policy": {"load_schemes": ["data", "blob", "about"], "external_link_schemes": ["http", "https", "mailto"], "scripts_enabled": false}
+      }
+    },
+    {
+      "name": "binary PNG is embedded in one image",
+      "why": "The web view can show binary image bytes without a file or network load.",
+      "given": {"kind": "png", "body": [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0, 58, 126, 155, 85, 0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 248, 15, 0, 1, 1, 1, 0, 177, 56, 246, 20, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130], "title": "Diagram"},
+      "expect": {
+        "html": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Diagram</title><style></style></head><body><input type=\"checkbox\" id=\"actual-size\" aria-label=\"Show image at actual size\"><label for=\"actual-size\"><img alt=\"Canvas image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP4DwABAQEAsTj2FAAAAABJRU5ErkJggg==\"></label></body></html>",
+        "policy": {"load_schemes": ["data", "blob", "about"], "external_link_schemes": ["http", "https", "mailto"], "scripts_enabled": false}
+      }
+    },
+    {
+      "name": "an SVG with only a viewBox is embedded as an image",
+      "why": "The browser draws the SVG through an image element, outside the page's DOM.",
+      "given": {"kind": "svg", "body": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 600\"><rect width=\"800\" height=\"600\"/></svg>", "title": "Diagram"},
+      "expect": {
+        "html": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Diagram</title><style></style></head><body><input type=\"checkbox\" id=\"actual-size\" aria-label=\"Show image at actual size\"><label for=\"actual-size\"><img alt=\"Canvas image\" src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIvPjwvc3ZnPg==\"></label></body></html>",
+        "policy": {"load_schemes": ["data", "blob", "about"], "external_link_schemes": ["http", "https", "mailto"], "scripts_enabled": false}
+      }
+    },
+    {
+      "name": "empty Markdown makes a blank page with the canvas policy",
+      "why": "A canvas can be opened before the agent has written content.",
+      "given": {"kind": "markdown", "body": "", "title": ""},
+      "expect": {
+        "html": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title></title><style></style></head><body></body></html>",
+        "policy": {"load_schemes": ["data", "blob", "about"], "external_link_schemes": ["http", "https", "mailto"], "scripts_enabled": false}
+      }
+    },
+    {
+      "name": "invalid UTF-8 in markdown is an error",
+      "why": "The daemon protocol requires UTF-8 for text documents and the renderer reports a violation.",
+      "given": {"kind": "markdown", "body": [65, 255, 66], "title": ""},
+      "expect": {
+        "invalid_utf8_at": 1
+      }
+    },
+    {
+      "name": "invalid UTF-8 in html is an error",
+      "why": "The daemon protocol requires UTF-8 for text documents and the renderer reports a violation.",
+      "given": {"kind": "html", "body": [65, 255, 66], "title": ""},
+      "expect": {
+        "invalid_utf8_at": 1
+      }
+    }
+  ]
+}

@@ -5,9 +5,10 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64 = "0.22"
 flexid.workspace = true
 libc.workspace = true
-pulldown-cmark.workspace = true
+pulldown-cmark = { workspace = true, features = ["html"] }
 toml.workspace = true
 
 [dev-dependencies]
