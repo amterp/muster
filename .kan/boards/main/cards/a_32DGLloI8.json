@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-content-security",
+  "alias_explicit": false,
+  "area": [
+    "renderer"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1795036722930,
+  "creator": "Alexander Terp",
+  "description": "Measured on 2026-11-18 (macOS 26.4.1, WebKit 21624.1.16.11.4): with the production web view and the shipped policy, no page construct opened a connection. The barriers are the content rule list and the navigation delegate. A `\u003cmeta http-equiv=\"Content-Security-Policy\"\u003e` first in the head (`default-src data: blob:; style-src data: blob: 'unsafe-inline'; form-action 'none'; base-uri 'none'`) stopped forms, ping, base and every subresource by itself in the control runs, though not a meta refresh, a link navigation or a preconnect hint.\n\nIt would be a second barrier the core states, so a shell on another platform gets it for nothing. The cost is placing it in an HTML document the agent wrote without changing how that document parses (a meta before the doctype puts the page in quirks mode).\n\nA sandboxed `srcdoc` frame is not an option: WebKit never loads a srcdoc document while page scripts are off.\n\nLeft `ai-proposed`: no failure was observed, so it fails the first test. Recommendation: do it when a second shell or a WebKit change gives a reason.",
+  "id": "a_32DGLloI8",
+  "position": "b3G",
+  "provenance": "ai-proposed",
+  "title": "A Content-Security-Policy in every canvas page, as a second barrier",
+  "type": "enhancement",
+  "updated_at_millis": 1795036722930,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795036722930}
+  ]
+}

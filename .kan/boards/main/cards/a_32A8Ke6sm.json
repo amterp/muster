@@ -5,17 +5,18 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1795029264891,
   "creator": "Alexander Terp",
   "description": "`./dev --contract`'s `a_pane_that_does_not_exist_says_why` failed twice on 2026-11-18 with `adapter.refresh.failed`, reason `signal: 15 (SIGTERM)`, on a branch that touched none of it. The test stops the app as soon as `app.ready` appears, which sends SIGTERM to the whole process group; the background adapter refresh is still waiting on its CLI child, logs the child's end as a warning, and the test rejects any warning. The Swift `SurfaceGUITests` run after the launch checks, so they did not run either.\n\nKeep the check asserting that no unexpected warning appears; give it a way to let the adapter refresh finish, or to stop the app without that refresh logging its own child's SIGTERM as a failure.\n\nAgent-approved under the first test as a defect fix: a flaky check in a tier's suite. It changes nothing a user sees and adds no interface.",
   "id": "a_32A8Ke6sm",
-  "position": "b1y",
+  "position": "Zz",
   "provenance": "agent-approved",
   "title": "The contract check for a missing pane fails when the app is stopped mid adapter refresh",
   "type": "bug",
-  "updated_at_millis": 1795029264891,
+  "updated_at_millis": 1795036247385,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1795029264891}
+    {"field":"column","value":"backlog-hi","at":1795029264891},
+    {"field":"column","value":"in-progress","at":1795036247385}
   ]
 }

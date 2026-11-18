@@ -5,17 +5,18 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1795031029276,
   "creator": "Alexander Terp",
   "description": "`lifecycle::a_spawned_daemon_answers_its_first_request_within_budget` failed the gate on 2026-11-18: the fastest of five starts took 42 ms against the 25 ms budget (all five: 50, 70, 42, 60, 101 ms), at a load average of 16 on 6 performance cores while two other worktrees ran builds. It passed alone three times straight afterward at load 13, and the commits under test add nothing to the daemon's startup path.\n\nThe test's comment says it measured 3.9 ms at a load of 30, so the fastest of five was expected to hold under contention, and it did not. Either the budget needs a measurement that contention cannot move (CPU time rather than wall time, or a comparison against a bare process spawned in the same run), or the test belongs in `--perf`, which already refuses to run on a busy machine.\n\nAgent-approved under the first test as a defect fix: a flaky check in the default gate. It changes nothing a user sees and adds no interface.",
   "id": "a_32AsETWcJ",
-  "position": "b1z",
+  "position": "Zy",
   "provenance": "agent-approved",
   "title": "The daemon's first-answer budget test fails when the gate shares the machine",
   "type": "bug",
-  "updated_at_millis": 1795031029276,
+  "updated_at_millis": 1795036320382,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1795031029276}
+    {"field":"column","value":"backlog-hi","at":1795031029276},
+    {"field":"column","value":"in-progress","at":1795036320382}
   ]
 }
