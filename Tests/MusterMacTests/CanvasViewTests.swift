@@ -1,6 +1,7 @@
 import AppKit
 import MusterRenderer
 import Testing
+import WebKit
 
 @testable import MusterMac
 
@@ -435,6 +436,48 @@ struct CanvasViewTests {
     #expect(throws: (any Error).self) {
       try WKCanvasBrowser.ruleJSON(allowing: ["*"])
     }
+  }
+
+  @Test("WebKit compiles the generated load rules without opening a window")
+  func compilesRealContentRules() async throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let store = try #require(WKContentRuleListStore(url: folder))
+    let json = try WKCanvasBrowser.ruleJSON(allowing: canvasPolicy.loadSchemes)
+    let rules = try await store.compileContentRuleList(
+      forIdentifier: "canvas", encodedContentRuleList: json)
+    #expect(rules?.identifier == "canvas")
+  }
+
+  @Test("a stopped web process reloads the current revision once")
+  func reloadsAfterContentLoss() async throws {
+    let recorder = seam(RecordingDispatcher())
+    let source = TestCanvasSource()
+    let browser = TestCanvasBrowser()
+    let canvas = makeCanvas(source, browser)
+    defer { canvas.tearDown() }
+
+    await until("the first canvas request") { source.requested == [1] }
+    try source.answer(1, with: page(1))
+    await until("the canvas to display the first page") { canvas.title == "Page 1" }
+
+    browser.onContentLost?()
+    #expect(browser.view.isHidden)
+    #expect(!recorder.requests.contains { $0.logRecord.event == "canvas.failed" })
+    await until("the current page to be requested again") { source.requested == [1, 1] }
+    try source.answer(1, with: page(1))
+    await until("the recovered page to be shown") { !browser.view.isHidden }
+    #expect(browser.loads.map(\.revision) == [1, 1])
+
+    browser.onContentLost?()
+    #expect(browser.view.isHidden)
+    #expect(recorder.requests.contains { $0.logRecord.event == "canvas.failed" })
+    source.notify(2)
+    await until("the next revision to be fetched") { source.requested == [1, 1, 2] }
+    try source.answer(2, with: page(2))
+    await until("the next revision to replace the error") { canvas.title == "Page 2" }
+    #expect(!browser.view.isHidden)
   }
 
   private func makeCanvas(

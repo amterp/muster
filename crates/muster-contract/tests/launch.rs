@@ -16,6 +16,8 @@
 //! log under `<MUSTER_CONTRACT_ROOT>/<check>/`, because that log is what a failure is read from.
 
 use std::collections::BTreeSet;
+use std::io::ErrorKind;
+use std::net::TcpListener;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -428,6 +430,107 @@ fn a_bare_launch_opens_a_usable_window() {
         "a bare `muster` came up with nothing to type into, so double-clicking the app gives a \
          window that ignores the keyboard: {ready}"
     );
+}
+
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn a_canvas_renders_and_updates_while_hidden() {
+    let scratch = Scratch::new("canvas");
+    let daemon = holding_one_pane();
+    scratch.point_at(&daemon);
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback listener opens");
+    listener.set_nonblocking(true).expect("the listener can be checked without waiting");
+    let address = listener.local_addr().expect("the loopback listener has a port");
+
+    let first = scratch.root.join("canvas.md");
+    let second = scratch.root.join("replacement.html");
+    let html = format!(
+        r#"<!doctype html>
+        <html><head><title>Second</title></head><body>
+        <p>Second page</p>
+        <img src="http://{address}/image.png" alt="external image">
+        <svg width="32" height="32"><image href="http://{address}/svg.png"
+          width="32" height="32"/></svg>
+        </body></html>"#
+    );
+    std::fs::write(&first, "# Canvas\n\nThis is the first page.\n").unwrap();
+    std::fs::write(&second, &html).unwrap();
+
+    let mut app = Running::start(&built_app(), &scratch, &[], &[PANE]);
+    app.until_settled();
+    let canvas = muster(
+        &scratch,
+        &["canvas", "open", first.to_str().unwrap(), "--pane", PANE, "--title", "First", "--focus"],
+    );
+    app.until_event("canvas.loaded", "WebKit never finished loading the canvas opened by the CLI");
+    let records = read_log(&app.log);
+    let load = expect_event(&records, "canvas.loaded", "the canvas did not render");
+    assert_eq!(field(load, "revision").as_deref(), Some("1"), "{load}");
+    let id = field(load, "pane").expect("canvas.loaded names the canvas");
+
+    let expect_on_screen = |count| {
+        until(
+            &format!("the shell to apply a roster with {count} panes on screen"),
+            || {
+                of(&read_log(&app.log), "roster.received")
+                    .last()
+                    .is_some_and(|roster| field(roster, "on_screen").as_deref() == Some(count))
+            },
+            || events_seen(&read_log(&app.log)),
+        );
+    };
+    expect_on_screen("2");
+    muster(&scratch, &["pane", "hide", "--pane", &canvas]);
+    expect_on_screen("1");
+    muster(
+        &scratch,
+        &["canvas", "write", second.to_str().unwrap(), "--pane", &canvas, "--title", "Second"],
+    );
+    let no_requests = || {
+        assert_eq!(
+            listener
+                .accept()
+                .expect_err("a canvas image connected to the loopback listener")
+                .kind(),
+            ErrorKind::WouldBlock,
+            "the listener must be able to report a connection"
+        );
+    };
+    let replacement = |load: &Value| {
+        field(load, "pane").as_deref() == Some(&id)
+            && field(load, "revision").as_deref() == Some("2")
+    };
+    until(
+        "WebKit to load the replacement canvas while it is hidden",
+        || {
+            no_requests();
+            of(&read_log(&app.log), "canvas.loaded").any(replacement)
+        },
+        || events_seen(&read_log(&app.log)),
+    );
+    muster(&scratch, &["pane", "show", "--pane", &canvas, "--focus"]);
+    until(
+        "the restored canvas to hold the shell's keyboard",
+        || {
+            of(&read_log(&app.log), "view.received")
+                .last()
+                .is_some_and(|view| field(view, "keyboard").as_deref() == Some(&id))
+        },
+        || events_seen(&read_log(&app.log)),
+    );
+    let records = app.stop();
+    no_requests();
+    let load = of(&records, "canvas.loaded").find(|load| replacement(load)).unwrap();
+    assert_eq!(
+        field(load, "bytes"),
+        Some(html.len().to_string()),
+        "WebKit did not receive the complete HTML document that includes the image URLs"
+    );
+    assert!(
+        !values(&records, "surface.create", "pane").contains(&id),
+        "the canvas started a terminal surface"
+    );
+    expect_nothing_wrong(&records, &[]);
 }
 
 #[test]

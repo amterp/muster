@@ -1,6 +1,7 @@
 import AppKit
 import MusterRenderer
 import Testing
+import WebKit
 import os
 
 @testable import MusterMac
@@ -1013,4 +1014,192 @@ private func press(
     with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
     windowNumber: window.windowNumber, context: nil, characters: characters,
     charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode)!
+}
+
+extension SurfaceGUITests {
+  @MainActor
+  @Test("a canvas leaves shortcuts to AppKit and enables Copy for selected text", .ownsTheSeam)
+  func aCanvasHandlesReadingKeys() async throws {
+    let fixture = try await CanvasGUI(
+      html: "<p>Copy from the canvas</p><div style='height: 2000px'></div>")
+    defer { fixture.close() }
+    let (window, canvas, browser, webView) = fixture.views
+    var routed: [NSEvent.EventType] = []
+    canvas.sendKey = { event in
+      routed.append(event.type)
+      return true
+    }
+
+    let target = CanvasMenuTarget()
+    let menu = AppMenu.build(
+      target: target, bindings: [.init(action: "split_right", key: "KeyA", modifiers: ["super"])])
+    let split = press("a", keyCode: 0, flags: .command, in: window)
+    #expect(!window.performKeyEquivalent(with: split))
+    #expect(menu.performKeyEquivalent(with: split))
+    #expect(target.splits == 1)
+    #expect(routed.isEmpty)
+
+    window.sendEvent(press("\u{F701}", keyCode: 125, flags: [], in: window))
+    try await answered("an unbound Down key to scroll the web view") {
+      (await browser.scrollPosition()?.y ?? 0) > 0
+    }
+    let release = try #require(
+      NSEvent.keyEvent(
+        with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: window.windowNumber, context: nil, characters: "\u{F701}",
+        charactersIgnoringModifiers: "\u{F701}", isARepeat: false, keyCode: 125))
+    window.sendEvent(release)
+    #expect(routed == [.keyDown, .keyUp])
+
+    canvas.perform(.selectAll)
+    try await answered("canvas text to be selected") {
+      (try? await fixture.javascript("return window.getSelection().toString();") as? String)?
+        .contains("Copy from the canvas") == true
+    }
+    let responder = try #require(window.firstResponder as? NSView)
+    #expect(responder === webView || responder.isDescendant(of: webView))
+    let action = #selector(NSText.copy(_:))
+    let copy = try #require(
+      menu.items.compactMap(\.submenu).flatMap(\.items).first {
+        $0.action == action
+      })
+    #expect(responder.responds(to: action))
+    copy.target = responder
+    copy.menu?.update()
+    #expect(copy.isEnabled)
+
+    // WebKit's AppKit Services export uses the legacy string type.
+    let textType = NSPasteboard.PasteboardType("NSStringPboardType")
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    #expect((webView as AnyObject).writeSelection?(to: pasteboard, types: [textType]) == true)
+    #expect(pasteboard.string(forType: textType)?.contains("Copy from the canvas") == true)
+  }
+
+  @MainActor
+  @Test("canvas mouse and keyboard links open externally and navigation is refused", .ownsTheSeam)
+  func aCanvasKeepsNavigationOutside() async throws {
+    let recorder = seam(RecordingDispatcher())
+    var opened: [URL] = []
+    let fixture = try await CanvasGUI(
+      html: """
+        <p><a id="mouse" href="mailto:mouse@example.invalid">Mouse link</a></p>
+        <p><a id="keyboard" href="mailto:key@example.invalid">Keyboard link</a></p>
+        <form><button>Submit</button></form>
+        """,
+      open: { opened.append($0) })
+    defer { fixture.close() }
+    let (window, _, _, webView) = fixture.views
+    let submission = try await fixture.javascript(
+      """
+      return document.querySelector('form')
+        .dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+      """)
+    #expect(submission as? Bool == false)
+
+    _ = try await fixture.javascript("document.querySelector('#keyboard').focus();")
+    window.sendEvent(press("\r", keyCode: 36, flags: [], in: window))
+    try await answered("the keyboard link to reach the external opener") { opened.count == 1 }
+
+    let raw = try await fixture.javascript(
+      """
+      const box = document.querySelector('#mouse').getBoundingClientRect();
+      return [box.left + box.width / 2, box.top + box.height / 2];
+      """)
+    let point = try #require(raw as? [Double])
+    try #require(point.count == 2)
+    let y = webView.isFlipped ? point[1] : webView.bounds.height - point[1]
+    let location = webView.convert(NSPoint(x: point[0], y: y), to: nil)
+    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+      let event = try #require(
+        NSEvent.mouseEvent(
+          with: type, location: location, modifierFlags: [],
+          timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: window.windowNumber, context: nil, eventNumber: 1,
+          clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0))
+      if type == .leftMouseDown {
+        webView.mouseDown(with: event)
+      } else {
+        webView.mouseUp(with: event)
+      }
+    }
+    try await answered("the mouse link to reach the external opener") { opened.count == 2 }
+    #expect(
+      opened.map(\.absoluteString) == [
+        "mailto:key@example.invalid", "mailto:mouse@example.invalid",
+      ])
+
+    webView.load(URLRequest(url: try #require(URL(string: "about:blank"))))
+    try await answered("a second navigation to be refused") {
+      recorder.requests.contains {
+        $0.logRecord.event == "canvas.blocked" && $0.logRecord.fields["scheme"] == "about"
+      }
+    }
+    #expect(opened.count == 2)
+  }
+}
+
+@MainActor
+private final class CanvasMenuTarget: NSObject {
+  var splits = 0
+  @objc func splitRight(_ sender: Any?) { splits += 1 }
+}
+
+@MainActor
+private struct CanvasGUI {
+  let views:
+    (
+      window: KeyboardWindow, canvas: CanvasView, browser: WKCanvasBrowser, webView: WKWebView
+    )
+
+  init(html: String, open: @escaping (URL) -> Void = { _ in }) async throws {
+    let browser = WKCanvasBrowser()
+    let canvas = CanvasView(
+      pane: PaneKey(daemon: "local", pane: "canvas"), revision: 1, title: "Loading",
+      source: CanvasGUISource(html: html), terminalAppearance: Appearance(), browser: browser,
+      openLink: open)
+    let window = KeyboardWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
+      backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = canvas
+    window.makeKeyAndOrderFront(nil)
+    canvas.focus(in: window)
+    do {
+      try await answered("WebKit to render the canvas") { canvas.title == "Canvas" }
+      let webView = try #require(browser.focusTarget as? WKWebView)
+      views = (window, canvas, browser, webView)
+    } catch {
+      canvas.tearDown()
+      window.close()
+      throw error
+    }
+  }
+
+  func javascript(_ source: String) async throws -> Any? {
+    try await views.webView.callAsyncJavaScript(
+      source, arguments: [:], in: nil, contentWorld: .world(name: "Muster Canvas GUI Test"))
+  }
+
+  func close() {
+    views.canvas.tearDown()
+    views.window.close()
+  }
+}
+
+private struct CanvasGUISource: CanvasPageSource {
+  let html: String
+
+  @MainActor
+  func observeRevisions(
+    for pane: PaneKey, receive: @escaping (UInt64, Bool) -> Void
+  ) -> @MainActor () -> Void { {} }
+
+  func page(for pane: PaneKey, revision: UInt64) async throws -> CanvasPage {
+    CanvasPage(
+      revision: revision, kind: .html, title: "Canvas", html: html,
+      policy: CanvasPolicy(
+        loadSchemes: ["data", "blob", "about"], scriptsEnabled: false,
+        externalLinkSchemes: ["http", "https", "mailto"]))
+  }
 }

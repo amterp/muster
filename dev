@@ -608,9 +608,9 @@ SKIPPED_SUITES = [
       "note": "reach the network and spend model turns; ./dev --codex runs them" },
     { "language": "Rust", "suite": "muster-daemon's live OpenCode checks", "skipped": 2,
       "note": "reach the network on a free model; ./dev --opencode runs them" },
-    { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 17,
+    { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 18,
       "note": "need a logged-in session; ./dev --contract runs them" },
-    { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 23,
+    { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 25,
       "note": "need a logged-in session; ./dev --contract runs them" },
 ]
 
