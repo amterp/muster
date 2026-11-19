@@ -5,16 +5,26 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
+  "comments": [
+    {
+      "id": "c_32l9AxgI0",
+      "body": "2026-11-19: agent-approved - it fixes a defect (test flakes under load), test-side only. Started.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795117478595
+    }
+  ],
   "created_at_millis": 1794288492866,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-09 ~22:30 in a worker's ./dev -t with the load average at 25-27 on 6 fast cores; each passed when run alone: muster-daemon detection::a_dialog_answered_reads_working..., muster-seam surface_input (three tests), muster-seam unreachable::a_quiet_helper_asks... . Same family as the other under-load cards: find which deadline each waits on and whether it can wait on an event instead.",
   "id": "a_2x9JT5cld",
-  "position": "b1g",
+  "position": "Zx",
+  "provenance": "agent-approved",
   "title": "Detection and seam surface_input tests time out under heavy load",
   "type": "bug",
-  "updated_at_millis": 1794288492866,
+  "updated_at_millis": 1795117478595,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794288492866}
+    {"field":"column","value":"backlog-hi","at":1794288492866},
+    {"field":"column","value":"in-progress","at":1795117478457}
   ]
 }

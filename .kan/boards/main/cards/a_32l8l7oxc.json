@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "a-pane-s-agent-can",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795117462638,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-19 in a full ./dev -tl: doorbell::an_agent_whose_stop_hook_waits_is_told_there_and_not_rung failed with the pane's screen showing '[1]+ Stopped(SIGTTIN) .../home/.muster/bin/claude' - the test's fake claude, forked by the pane's job-control shell (sh -l -i -c), landed outside the terminal's foreground group and stopped on its first read. The rerun was green. This is the macOS setpgid race diagnosed on a_2nSLy8B6Y (about 1 fork in 1000), hitting an agent rather than a test program's stty. A real agent starts the same way, so a real pane could be left showing a stopped agent at launch.\n\nThe Fencil decision pane-command-job-control (owner: keep the job-control wrapper) says to revisit if a real agent pane is seen stopped at launch. This is a fake agent in a test, not a real pane, so it does not meet that condition by itself; it is the closest evidence so far.\n\nQuestion for the owner: does this meet the decision's revisit condition? Recommendation: not yet - keep the wrapper, and have the daemon notice a pane whose foreground job is stopped (state, or a continue) if a real one is ever seen. Test-side, the doorbell tests could exec their fake agent rather than fork it.",
+  "id": "a_32l8l7oxc",
+  "labels": [
+    "blocked"
+  ],
+  "position": "ao",
+  "provenance": "ai-proposed",
+  "title": "A pane's agent can be stopped at launch by SIGTTIN when its job-control shell's fork loses the setpgid race",
+  "type": "bug",
+  "updated_at_millis": 1795117462638,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795117462638}
+  ]
+}

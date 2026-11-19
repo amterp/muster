@@ -5,7 +5,7 @@
   "area": [
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2nTjhkpfi",
@@ -78,20 +78,26 @@
       "body": "2026-11-19: agent-approved - it fixes a defect (a test flake), test-side only, within the owner's decision to keep the wrapper. Started.",
       "author": "Alexander Terp",
       "created_at_millis": 1795115440703
+    },
+    {
+      "id": "c_32l9BVtUj",
+      "body": "2026-11-19: fixed test-side. A retrying stty helper in muster-harness used by every pane program that sets raw mode (e6ca7d1d, 344c84df, 84dfe002), and the kitty-Return tests say ready from a non-shell before exec'ing head (d38ec637), a second race from 8d0a8aa8. The card's typing:: loop went 3/120 -\u003e 0/120. Raised a_32l8l7oxc for a fake agent seen stopped by SIGTTIN at launch.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795117478937
     }
   ],
   "created_at_millis": 1792856237685,
   "creator": "Alexander Terp",
   "description": "Seen once 2026-10-24 in a full ./dev on main (8042bdfb) on the Mac mini at load ~14: the raw reader's file held \"\" after 20 s, so not even the second send's 'after' arrived. Passed 2 of 2 alone. The test is old (cf222f95), but the writer changed today: c784999a marks a keyed Return or Esc before writing it and nudges the reader, and this test's first send has enter: true with an unknown key. Check that path for a stall under contention before reading it as starvation.",
   "id": "a_2nSLy8B6Y",
-  "position": "Zy",
+  "position": "Ysv",
   "provenance": "agent-approved",
   "related": [
     "a_2k7D9rlWP"
   ],
   "title": "🎲 Input sent to a pane just after it prints ready is sometimes never read (typing tests, ~3% under load)",
   "type": "bug",
-  "updated_at_millis": 1795115440703,
+  "updated_at_millis": 1795117478938,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792856237685},
     {"field":"column","value":"next","at":1792860389186},
@@ -99,6 +105,7 @@
     {"field":"column","value":"next","at":1792944675478},
     {"field":"column","value":"uncommitted","at":1793143875650},
     {"field":"column","value":"backlog-hi","at":1794094635410},
-    {"field":"column","value":"in-progress","at":1795115440574}
+    {"field":"column","value":"in-progress","at":1795115440574},
+    {"field":"column","value":"done","at":1795117478788}
   ]
 }
