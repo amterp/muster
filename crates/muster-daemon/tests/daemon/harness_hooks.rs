@@ -121,15 +121,13 @@ fn reported_in(shell: &str, command: &str, scratch: &Scratch) -> String {
     )
     .unwrap();
     std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let hook = Command::new(shell)
-        .args(["-c", command])
+    let mut hook = Command::new(shell);
+    hook.args(["-c", command])
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("MUSTER_DAEMON", &daemon)
-        .stdin(Stdio::null())
-        .spawn()
-        .unwrap();
-    let ran = muster_harness::until_exit(&format!("the hook `{command}`"), hook);
+        .stdin(Stdio::null());
+    let ran = muster_harness::until_exit(&format!("the hook `{command}`"), &mut hook);
     assert!(ran.success(), "a hook never fails a session: {command}");
     std::fs::read_to_string(&arguments).unwrap_or_default()
 }

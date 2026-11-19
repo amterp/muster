@@ -919,16 +919,14 @@ fn claude_codes_hooks_report_working_blocked_and_idle() {
     for (event, matcher, state) in events {
         let (matched, command) = claude_code_hook(event);
         assert_eq!(matched.as_deref(), matcher, "{event}'s matcher");
-        let hook = std::process::Command::new("/bin/sh")
-            .args(["-c", &command])
+        let mut hook = std::process::Command::new("/bin/sh");
+        hook.args(["-c", &command])
             .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
             .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
             .env("MUSTER_PANE", "p1")
             // The working hooks read their stdin to its end, and the test's own may never end.
-            .stdin(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
-        let ran = muster_harness::until_exit(&format!("{event}'s hook"), hook);
+            .stdin(std::process::Stdio::null());
+        let ran = muster_harness::until_exit(&format!("{event}'s hook"), &mut hook);
         assert!(ran.success(), "{event}'s hook");
         until_detected(&mut control, "p1", Some("claude"), state);
         assert!(state_reported(&mut control), "{event} is the agent's own word");

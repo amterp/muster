@@ -11,8 +11,9 @@
 //! against herdr and muster-daemon both, and one copy was the point.
 
 use std::cell::RefCell;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Child, ExitStatus};
+use std::process::{Command, ExitStatus};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
@@ -134,19 +135,23 @@ pub fn until_some<T>(what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
     panic!("timed out after {PATIENCE:?} waiting for {what}, which never arrived");
 }
 
-/// Waits for a process a test started to exit, and hands back how it exited.
+/// Starts `command` and waits for it to exit, handing back how it exited.
 ///
 /// `Child::wait` has no deadline, so a child that never exits stalls the whole suite at no CPU
 /// and says nothing: a hook blocked reading a stdin nobody closes sat that way for 70 minutes.
-pub fn until_exit(what: &str, child: Child) -> ExitStatus {
-    until_exit_within(what, PATIENCE, child)
+pub fn until_exit(what: &str, command: &mut Command) -> ExitStatus {
+    until_exit_within(what, PATIENCE, command)
 }
 
 /// The same, for a process that genuinely needs longer or shorter than [`PATIENCE`].
 ///
-/// A child still running at the deadline is killed before the wait fails, so it does not outlive
-/// the test holding whatever it was blocked on.
-pub fn until_exit_within(what: &str, allowance: Duration, child: Child) -> ExitStatus {
+/// The command runs in a process group of its own, and a group still running at the deadline is
+/// killed before the wait fails. The whole group, because killing a shell leaves the `cat` it
+/// started for `$(cat)` blocked on the same stdin, and holding any pipe it inherited.
+pub fn until_exit_within(what: &str, allowance: Duration, command: &mut Command) -> ExitStatus {
+    let child = command.process_group(0).spawn().unwrap_or_else(|error| {
+        panic!("{what} could not start: {error}");
+    });
     let child = RefCell::new(child);
     let mut status = None;
     until_within(
@@ -158,7 +163,8 @@ pub fn until_exit_within(what: &str, allowance: Duration, child: Child) -> ExitS
         },
         || {
             let mut child = child.borrow_mut();
-            let _ = child.kill();
+            // SAFETY: killpg only sends a signal, to the group `process_group(0)` made for it.
+            unsafe { libc::killpg(child.id() as libc::pid_t, libc::SIGKILL) };
             let _ = child.wait();
             format!(
                 "It was still running and has been killed (pid {}).\n  Check what it reads \
