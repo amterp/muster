@@ -5,16 +5,33 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_32jcrNOg4",
+      "body": "2026-11-19: agent-approved - it fixes a defect, adds no public interface, format or dependency, and changes nothing outside this repo. Started in a parallel round ahead of the next minor release.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795113853097
+    },
+    {
+      "id": "c_32kI9WBnH",
+      "body": "2026-11-19: the leak was already fixed in a784efef. Landed a deadline on every test wait for a hook (until_exit in muster-harness, killing the hook's whole process group on timeout): 6b6f2551, 1481a257, 8d1318ce.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795115440385
+    }
+  ],
   "created_at_millis": 1794290320151,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-09 ~22:40 in a worker's ./dev -tl at load 14: detection::claude_codes_hooks_report_working_blocked_and_idle sat 70 minutes until killed. A hook's sh was waiting in `cat` for stdin (`case \"$(cat)\"`), the test daemon idle, no deadlock. It passed alone in 8 s. A hook stdin that never closes stalls the whole suite with no timeout; find who holds the write end, and give the test a deadline so it fails instead of hanging.",
   "id": "a_2xA50KFqH",
-  "position": "b1h",
+  "position": "Ysw",
+  "provenance": "agent-approved",
   "title": "A daemon test hangs for an hour when a Claude Code hook's stdin never closes",
   "type": "bug",
-  "updated_at_millis": 1794290320151,
+  "updated_at_millis": 1795115440385,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794290320151}
+    {"field":"column","value":"backlog-hi","at":1794290320151},
+    {"field":"column","value":"in-progress","at":1795113852994},
+    {"field":"column","value":"done","at":1795115440274}
   ]
 }
