@@ -4919,8 +4919,9 @@ fn nothing_numbered(roster: &Roster, numbering: &Numbering, place: usize) -> Str
 /// Announces rather than only forgetting, because forgetting moves the numbers back onto the
 /// tabs and the sidebar is drawing them. Most of the requests that land here - a keystroke, a
 /// close, a drag - never publish, so an arm dropped silently would leave a list of numbers
-/// nothing can press. It runs at most once per armed chord: the second call finds nothing.
-pub(crate) fn disarm(window: WindowId) {
+/// nothing can press. It runs at most once per armed chord: the second call finds nothing, and
+/// answers false.
+pub(crate) fn disarm(window: WindowId) -> bool {
     let held = {
         let mut session = poison::lock(&SESSION, "session");
         session.windows[window].armed.take().is_some()
@@ -4928,6 +4929,7 @@ pub(crate) fn disarm(window: WindowId) {
     if held {
         announce_roster(window);
     }
+    held
 }
 
 /// [`announce_roster`] for every open window, after something changed what every roster says.

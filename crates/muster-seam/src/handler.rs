@@ -125,7 +125,8 @@ fn handle(mut request: Request, origin: Origin) -> Response {
 
     // A numbered chord is armed by one request and spent by the next, so the rule that
     // ends it is stated here rather than at every caller that could: **a request that only
-    // reads keeps it, and anything that changes something clears it.** So the second press
+    // reads keeps it, and anything that changes something clears it** - apart from the few
+    // things nobody chose, which `leaves_the_chord_armed` names. So the second press
     // uses it, and a keystroke into a pane, an Escape, another action, a click or a divider
     // drag all take it away. One rule a person can hold, in the one place every request
     // passes through - a list of callers would be a list somebody eventually forgets to add
@@ -142,9 +143,10 @@ fn handle(mut request: Request, origin: Origin) -> Response {
     // path, for every one of them. Skipping it when nothing can be armed would mean reading
     // whether anything is, which is the same lock.
     if !leaves_the_chord_armed(&payload) {
-        session::disarm(resolved.from);
-        if resolved.to != resolved.from {
-            session::disarm(resolved.to);
+        let took = session::disarm(resolved.from)
+            | (resolved.to != resolved.from && session::disarm(resolved.to));
+        if took {
+            log_disarm(&payload);
         }
     }
 
@@ -505,7 +507,7 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         // here because an arm reading `Response::ok()` alone would look like a request that
         // does nothing, and the second call is free: `disarm` takes the arm and finds none.
         request::Payload::EndNumberedChord(_) => {
-            session::disarm(window);
+            let _ = session::disarm(window);
             Response::ok()
         }
     }
@@ -514,13 +516,38 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
 /// Whether a request leaves an armed numbered chord alone.
 ///
 /// A question does, which is `muster_proto::only_reads` and is shared with the CLI, where the
-/// same distinction decides whether a command may be asked of every window at once. One entry
-/// here is not a question and still leaves the chord alone: `PressNumberedChord` is the second
-/// press itself, the one request whose whole job is to spend what the first one armed. It is stated
-/// here rather than folded into the shared list because it is a fact about this rule - a CLI
-/// that fanned it out would move the keyboard in every window somebody had open.
+/// same distinction decides whether a command may be asked of every window at once. The other
+/// entries are not questions and still leave the chord alone, and are stated here rather than
+/// folded into the shared list because they are facts about this rule - a CLI that fanned
+/// `PressNumberedChord` out would move the keyboard in every window somebody had open.
+///
+/// - `PressNumberedChord` is the second press itself, the one request whose whole job is to
+///   spend what the first one armed.
+/// - Pointer motion is nobody choosing anything. A first press that brings a tab on screen puts
+///   a new pane under a pointer that has not moved, and the shell reports motion from it within
+///   a couple of hundred milliseconds - before the second press, which it used to take back
+///   (kan a_2tu4NR8WV). A drag is motion too, and its press has already taken the chord.
+/// - A key coming up is the end of a press that has already done whatever taking back it was
+///   owed. Its own press, and the first press's 1, are both behind it.
 fn leaves_the_chord_armed(payload: &request::Payload) -> bool {
-    muster_proto::only_reads(payload) || matches!(payload, request::Payload::PressNumberedChord(_))
+    muster_proto::only_reads(payload)
+        || match payload {
+            request::Payload::PressNumberedChord(_) | request::Payload::KeyUp(_) => true,
+            request::Payload::Mouse(mouse) => mouse.action == "motion",
+            _ => false,
+        }
+}
+
+/// Says which request took a numbered chord back, so a chord that ends early can be explained
+/// from the run log.
+///
+/// The request's kind and never its contents: a keystroke or a paste carries what somebody
+/// typed. Only reached when an arm was actually taken, so the formatting costs nothing on an
+/// ordinary keystroke.
+fn log_disarm(payload: &request::Payload) {
+    let described = format!("{payload:?}");
+    let kind = described.split('(').next().unwrap_or_default();
+    log::info("chord.disarmed", fields! { "by" => kind.to_string() });
 }
 
 /// Hands back what a pane has printed.

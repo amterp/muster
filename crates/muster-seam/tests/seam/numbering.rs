@@ -16,8 +16,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use muster::proto::{
-    EndNumberedChord, Event, FocusPaneAt, OpenWindow, PressNumberedChord, Request, Response,
-    RosterChanged, Startup, ViewChanged, WindowFocus, event, request, response,
+    EndNumberedChord, Event, FocusPaneAt, KeyEvent, KeyUp, Mouse, OpenWindow, PressNumberedChord,
+    Request, Response, RosterChanged, Startup, ViewChanged, WindowFocus, event, request, response,
     roster_changed::Counting,
 };
 use muster_daemon_proto::{Placement, Side};
@@ -279,6 +279,66 @@ fn anything_between_the_two_presses_takes_the_first_one_back() {
     until(
         "the first tab's only pane to have the keyboard",
         || showing(&named(VISIBLE)),
+        || format!("the view still shows {:?}", shown()),
+    );
+}
+
+/// ⌘1 that brings a tab on screen puts a new pane under a pointer that has not moved, and the
+/// shell reports that pane's pointer motion within the next 200 ms - before a person's second
+/// press. Both that and the release of the first press's key reach the core between the two
+/// presses, and neither is somebody doing something.
+#[test]
+fn pointer_motion_and_a_key_release_leave_the_first_press_armed() {
+    let _turn = a_fresh_window();
+    let daemon = Daemon::start_built();
+    a_session_of_two_tabs_the_second_holding_two(&daemon);
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the roster to arrive with all three panes in it",
+        || roster().is_some_and(|roster| rows(&roster).len() == 3),
+        || format!("the roster holds {:?}", roster().map(|held| places(&held))),
+    );
+
+    let inner_first = named(INNER_FIRST);
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
+    until(
+        "the second tab to be on screen and named",
+        || showing(&inner_first) && armed_tabs() == vec![2],
+        || format!("the view shows {:?} and the armed tabs carry {:?}", shown(), armed_tabs()),
+    );
+
+    // As the shell sends them: motion with no button over the pane now on screen, and the 1
+    // coming up while ⌘ is still held.
+    let _ = answer(request::Payload::Mouse(Mouse {
+        pane_id: inner_first.clone(),
+        action: "motion".into(),
+        button: "none".into(),
+        x: 40.0,
+        y: 40.0,
+        ..Mouse::default()
+    }));
+    let _ = answer(request::Payload::KeyUp(KeyUp {
+        key: Some(KeyEvent {
+            action: "release".into(),
+            key: "Digit1".into(),
+            modifiers: vec!["super".into()],
+            ..KeyEvent::default()
+        }),
+        ..KeyUp::default()
+    }));
+    once_quiet();
+    assert_eq!(armed_tabs(), vec![2], "pointer motion or a key release took the first press back");
+
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
+    until(
+        "the second pane of the second tab to have the keyboard",
+        || showing(&named(INNER_SECOND)),
         || format!("the view still shows {:?}", shown()),
     );
 }
