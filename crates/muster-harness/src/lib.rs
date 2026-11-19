@@ -23,4 +23,6 @@ pub use daemon::{
 pub use input::Input;
 pub use relay::{AnswerGate, Holding, Pump, Relay};
 pub use stream::Stream;
-pub use until::{Detail, PATIENCE, until, until_file, until_some, until_within};
+pub use until::{
+    Detail, PATIENCE, until, until_exit, until_exit_within, until_file, until_some, until_within,
+};

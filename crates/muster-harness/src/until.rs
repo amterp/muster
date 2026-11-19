@@ -10,7 +10,9 @@
 //! In the neutral harness rather than beside a daemon, because it was written while tests ran
 //! against herdr and muster-daemon both, and one copy was the point.
 
+use std::cell::RefCell;
 use std::path::Path;
+use std::process::{Child, ExitStatus};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
@@ -130,6 +132,42 @@ pub fn until_some<T>(what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
     }
     note(what, started.elapsed(), PATIENCE);
     panic!("timed out after {PATIENCE:?} waiting for {what}, which never arrived");
+}
+
+/// Waits for a process a test started to exit, and hands back how it exited.
+///
+/// `Child::wait` has no deadline, so a child that never exits stalls the whole suite at no CPU
+/// and says nothing: a hook blocked reading a stdin nobody closes sat that way for 70 minutes.
+pub fn until_exit(what: &str, child: Child) -> ExitStatus {
+    until_exit_within(what, PATIENCE, child)
+}
+
+/// The same, for a process that genuinely needs longer or shorter than [`PATIENCE`].
+///
+/// A child still running at the deadline is killed before the wait fails, so it does not outlive
+/// the test holding whatever it was blocked on.
+pub fn until_exit_within(what: &str, allowance: Duration, child: Child) -> ExitStatus {
+    let child = RefCell::new(child);
+    let mut status = None;
+    until_within(
+        &format!("{what} to exit"),
+        allowance,
+        || {
+            status = child.borrow_mut().try_wait().ok().flatten();
+            status.is_some()
+        },
+        || {
+            let mut child = child.borrow_mut();
+            let _ = child.kill();
+            let _ = child.wait();
+            format!(
+                "It was still running and has been killed (pid {}).\n  Check what it reads \
+                 that never ends: an inherited stdin is the usual one, so give it Stdio::null().",
+                child.id()
+            )
+        },
+    );
+    status.expect("until_within returns only once the child has exited")
 }
 
 /// Waits for a file something in a pane was asked to write.
