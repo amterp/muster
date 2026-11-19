@@ -5,26 +5,33 @@
   "area": [
     "testing"
   ],
-  "column": "in-progress",
+  "column": "backlog-hi",
   "comments": [
     {
       "id": "c_32l9AxgI0",
       "body": "2026-11-19: agent-approved - it fixes a defect (test flakes under load), test-side only. Started.",
       "author": "Alexander Terp",
       "created_at_millis": 1795117478595
+    },
+    {
+      "id": "c_32lxKxVQu",
+      "body": "2026-11-19: no fix landed. The wheel and click surface_input tests start with stty raw, so they are very likely the SIGTTOU race fixed today (e6ca7d1d, 344c84df on a_2nSLy8B6Y). A loop of surface_input::, unreachable:: and detection::a_dialog_answered, 3 x 40 runs at load 6-10, failed 0 times. The fake-agent tests (detection, unreachable) start the agent as a forked job and may be a_32l8l7oxc's race; read a future failure's screen for Stopped(SIGTT...) before calling it slowness. The third surface_input test the card counts is unnamed and unexplained. Back to backlog-hi until it fails again with a message.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795119406799
     }
   ],
   "created_at_millis": 1794288492866,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-09 ~22:30 in a worker's ./dev -t with the load average at 25-27 on 6 fast cores; each passed when run alone: muster-daemon detection::a_dialog_answered_reads_working..., muster-seam surface_input (three tests), muster-seam unreachable::a_quiet_helper_asks... . Same family as the other under-load cards: find which deadline each waits on and whether it can wait on an event instead.",
   "id": "a_2x9JT5cld",
-  "position": "Zx",
+  "position": "Zp",
   "provenance": "agent-approved",
   "title": "Detection and seam surface_input tests time out under heavy load",
   "type": "bug",
-  "updated_at_millis": 1795117478595,
+  "updated_at_millis": 1795119406799,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794288492866},
-    {"field":"column","value":"in-progress","at":1795117478457}
+    {"field":"column","value":"in-progress","at":1795117478457},
+    {"field":"column","value":"backlog-hi","at":1795119406692}
   ]
 }
