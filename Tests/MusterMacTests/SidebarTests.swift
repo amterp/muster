@@ -1313,7 +1313,10 @@ struct SidebarTests {
     sidebar.layoutSubtreeIfNeeded()
     sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), agents: [:])
 
-    #expect(sidebar.drawnRows.allSatisfy { $0.width == SidebarModel.width })
+    let drawn = sidebar.drawnRows
+    #expect(
+      drawn.allSatisfy { $0.width == SidebarModel.width },
+      "rows drawn at \(drawn.map(\.width)), the list is \(SidebarModel.width) wide")
   }
 
   @Test("every row of a window holding one tab takes that tab along when dragged")
@@ -2287,20 +2290,14 @@ private func expectSame(
 }
 
 /// A row click chooses a pane, and the keyboard has to stay with that pane: a list that took it
-/// spent the pane's keys on type-select whenever the core had nothing to publish.
+/// spent the pane's keys on type-select whenever the core had nothing to publish. A click asks
+/// the view under it this before anything else; a view that says yes and then refuses has
+/// already cost the pane the keyboard.
 @Test @MainActor func theAgentListNeverTakesTheKeyboard() throws {
   let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
-  let window = NSWindow(
-    contentRect: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400),
-    styleMask: [.titled], backing: .buffered, defer: true)
-  window.contentView?.addSubview(sidebar)
   let table = try #require(tableView(in: sidebar))
 
-  // Asked rather than read off the answer: a window whose candidate refuses keeps the keyboard
-  // itself and still answers true.
-  window.makeFirstResponder(table)
-
-  #expect(window.firstResponder !== table)
+  #expect(!table.acceptsFirstResponder)
 }
 
 @MainActor

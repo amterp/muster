@@ -824,7 +824,7 @@ which no daemon could produce, because no daemon knows the others exist.
 across every attached daemon, and every pane a place within its tab. ⌘1 to ⌘9 name a tab, and the next press, made
 with the modifier still held, names a pane inside it. The core holds the half-typed chord, because on macOS a chord
 is a menu item and the round trip into the core is the only place both presses meet; anything that changes something
-takes it back - apart from pointer motion and a key coming up, which nobody chooses - and so does the shell reporting
+takes it back - apart from moving the pointer with no button held and a key coming up, which nobody chooses - and so does the shell reporting
 that the modifier came up. A window of one tab numbers its panes
 instead, because there a first press carries no information. Each row carries the whole chord that reaches it, built
 from the same functions that resolve a press, so the digits drawn and the keys pressed cannot disagree.

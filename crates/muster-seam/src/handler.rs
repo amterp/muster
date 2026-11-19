@@ -523,17 +523,20 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
 ///
 /// - `PressNumberedChord` is the second press itself, the one request whose whole job is to
 ///   spend what the first one armed.
-/// - Pointer motion is nobody choosing anything. A first press that brings a tab on screen puts
-///   a new pane under a pointer that has not moved, and the shell reports motion from it within
-///   a couple of hundred milliseconds - before the second press, which it used to take back
-///   (kan a_2tu4NR8WV). A drag is motion too, and its press has already taken the chord.
+/// - Pointer motion with no button held is nobody choosing anything. A first press that brings
+///   a tab on screen puts a new pane under a pointer that has not moved, and the shell reports
+///   motion from it within a couple of hundred milliseconds - before the second press, which it
+///   used to take back (kan a_2tu4NR8WV). A drag is still somebody doing something, and may
+///   have begun before the first press, so it takes the chord back like a click.
 /// - A key coming up is the end of a press that has already done whatever taking back it was
 ///   owed. Its own press, and the first press's 1, are both behind it.
 fn leaves_the_chord_armed(payload: &request::Payload) -> bool {
     muster_proto::only_reads(payload)
         || match payload {
             request::Payload::PressNumberedChord(_) | request::Payload::KeyUp(_) => true,
-            request::Payload::Mouse(mouse) => mouse.action == "motion",
+            request::Payload::Mouse(mouse) => {
+                mouse.action == "motion" && matches!(mouse.button.as_str(), "none" | "")
+            }
             _ => false,
         }
 }
