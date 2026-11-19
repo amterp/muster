@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "with-a-mouse",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795119886651,
+  "creator": "Alexander Terp",
+  "description": "Found 2026-11-19 while settling a sidebar width test. With a mouse attached, macOS prefers legacy scrollers, and the agent list's scroll view (Sources/MusterMac/Sidebar.swift, hasVerticalScroller = true) then always shows a 17-point scroller, so rows are 183 wide in a 200-point list even when the list does not overflow. autohidesScrollers = true would give the room back until the list overflows. Not changed: it is a visible change to how the list looks, so it is the owner's call.",
+  "id": "a_32m9oopCQ",
+  "position": "ap",
+  "provenance": "ai-proposed",
+  "title": "With a mouse attached, the agent list loses 17 points to a scrollbar that shows even when nothing scrolls",
+  "type": "enhancement",
+  "updated_at_millis": 1795119886651,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795119886651}
+  ]
+}

@@ -2,7 +2,7 @@
   "_v": 4,
   "alias": "a-numbered-chord",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2tu4sVS7U",
@@ -21,19 +21,26 @@
       "body": "2026-11-19: agent-approved - it fixes a defect, adds no public interface, format or dependency, and changes nothing outside this repo. Started in a parallel round ahead of the next minor release.",
       "author": "Alexander Terp",
       "created_at_millis": 1795113852581
+    },
+    {
+      "id": "c_32m9oLcSI",
+      "body": "2026-11-19: fixed in 94df4207 and 1192f722. Pointer motion with no button held and key releases leave a chord armed; a drag still ends it. The cause (motion from the newly shown pane) was read from the run log, not watched: the run log now records chord.disarmed with the request kind, so a recurrence says what took the chord.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795119886296
     }
   ],
   "created_at_millis": 1793808873488,
   "creator": "Alexander Terp",
   "description": "Seen on 0.21 in a window of two tabs, the first holding two panes. Press ⌘1, release 1 while still holding ⌘, press 2: the keyboard goes to tab 2 rather than tab 1's second pane, though the pane badges were drawn after ⌘1.\n\nThe run log shows it each time: the ⌘1 roster.published says numbering 'panes in \u003ctab\u003e', about 70 ms later a roster.numbering 'tabs' line appears (which only disarm() writes), then ⌘2 publishes the other tab. 70 ms is how long the 1 key is held.\n\nCause: the menu consumes the ⌘1 keyDown, but AppKit still delivers the keyUp of 1 to the focused SurfaceView, whose keyUp(with:) sends Core.send(keyUp:) whenever the pane is typeable. In handler.rs, KeyUp is neither in muster_proto::only_reads nor in leaves_the_chord_armed, so the release counts as 'a request that changes something' and calls session::disarm before the second press. Only a ⌘2 pressed while 1 is still down (key rollover) survives.\n\nLikely fix: a key release should leave the chord armed (the key's press already did whatever disarming it was owed), for example KeyUp in leaves_the_chord_armed. Worth a seam test that sends PressNumberedChord, KeyUp, PressNumberedChord and expects the pane inside the first tab.",
   "id": "a_2tu4NR8WV",
-  "position": "a0",
+  "position": "Ysu",
   "provenance": "agent-approved",
   "title": "⌨️ A numbered chord that switches tabs is disarmed before its second press, so ⌘1 ⌘2 lands on tab 2",
   "type": "bug",
-  "updated_at_millis": 1795113852581,
+  "updated_at_millis": 1795119886296,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793808873488},
-    {"field":"column","value":"in-progress","at":1795113852476}
+    {"field":"column","value":"in-progress","at":1795113852476},
+    {"field":"column","value":"done","at":1795119885991}
   ]
 }
