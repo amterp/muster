@@ -1632,6 +1632,10 @@ public final class SidebarView: NSView {
   /// Where the list of agents is, beside the strip and the problems.
   var listFrame: CGRect { scroll.frame }
 
+  /// How wide the list's rows can be: its width less a scroller, when the system shows one
+  /// beside the rows rather than over them.
+  var rowSpace: CGFloat { scroll.contentSize.width }
+
   required init?(coder: NSCoder) {
     fatalError("muster builds its views in code")
   }

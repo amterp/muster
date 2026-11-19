@@ -1313,10 +1313,18 @@ struct SidebarTests {
     sidebar.layoutSubtreeIfNeeded()
     sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), agents: [:])
 
+    // Against the room the scroll view leaves rather than the list's width: with a mouse
+    // attached AppKit puts a legacy scroller beside the rows and they are 17 points narrower.
+    // A test process starts out reporting overlay scrollers and switches once the run loop
+    // has turned, so a 200 here passed alone and failed in the full suite.
+    let legacyScroller = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+    #expect(sidebar.listFrame.width == SidebarModel.width)
+    #expect(sidebar.rowSpace >= SidebarModel.width - legacyScroller)
     let drawn = sidebar.drawnRows
+    #expect(!drawn.isEmpty)
     #expect(
-      drawn.allSatisfy { $0.width == SidebarModel.width },
-      "rows drawn at \(drawn.map(\.width)), the list is \(SidebarModel.width) wide")
+      drawn.allSatisfy { $0.width == sidebar.rowSpace },
+      "rows drawn at \(drawn.map(\.width)), the list leaves \(sidebar.rowSpace) for them")
   }
 
   @Test("every row of a window holding one tab takes that tab along when dragged")
