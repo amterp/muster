@@ -673,7 +673,7 @@ fn a_program_whose_stty_is_stopped_once_still_reads_its_input() {
     let heard = daemon.root().join("home/heard");
     let create = proto::pane_request::Create {
         command: Some(format!(
-            "PATH='{}':$PATH; {}; printf ready; head -c 1 > {}",
+            "PATH='{}':$PATH; {}; printf ready; exec head -c 1 > {}",
             bin.display(),
             muster_harness::stty("raw -echo"),
             heard.display()
