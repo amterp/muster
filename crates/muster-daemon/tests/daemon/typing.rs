@@ -574,6 +574,19 @@ fn a_sends_return_submits_at_a_shell_left_in_the_kitty_keyboard_protocol() {
     until("the shell to run what was sent", || marker.exists(), ());
 }
 
+/// A program that says `ready` on the terminal, then turns into `head -c <bytes>`, copying that
+/// much of its input to its output.
+///
+/// Not the shell's own `printf ready` before it: a Return the test sends on seeing `ready` would
+/// then be encoded while the shell is still in front, and a shell in front gets a plain carriage
+/// return, which is one byte of the several the program waits for.
+fn ready_then_reads(bytes: usize) -> String {
+    format!(
+        "perl -e 'open my $tty, \">\", \"/dev/tty\" or die; syswrite $tty, \"ready\"; \
+         exec \"head\", \"-c\", \"{bytes}\"'"
+    )
+}
+
 /// A program the pane's command `exec`s keeps the shell's pid, and kitty keys it asked for
 /// itself are honored: its Return arrives as the program asked, not as a carriage return.
 #[test]
@@ -583,8 +596,9 @@ fn a_sends_return_reaches_an_execd_program_in_the_kitty_keys_it_asked_for() {
     let heard = daemon.root().join("home/heard");
     let create = proto::pane_request::Create {
         command: Some(format!(
-            "{}; printf '\\033[>15u'; printf ready; exec head -c 5 > {}",
+            "{}; printf '\\033[>15u'; exec {} > {}",
             muster_harness::stty("raw -echo"),
+            ready_then_reads(5),
             heard.display()
         )),
         ..create("p1", in_new_tab("t1"))
@@ -634,7 +648,8 @@ fn a_sends_return_reaches_a_shells_child_in_the_kitty_keys_it_asked_for() {
     let heard = daemon.root().join("home/heard");
     let create = proto::pane_request::Create {
         command: Some(format!(
-            "set +m; stty raw -echo; printf '\\033[>15u'; printf ready; head -c 5 > {}",
+            "set +m; stty raw -echo; printf '\\033[>15u'; {} > {}",
+            ready_then_reads(5),
             heard.display()
         )),
         ..create("p1", in_new_tab("t1"))
