@@ -281,7 +281,10 @@ fn a_send_the_daemon_could_not_queue_is_refused() {
     make(
         &mut daemon.connect(),
         pane_request::Create {
-            command: Some("sh -c 'stty raw -echo; printf ready; sleep 120'".to_string()),
+            command: Some(format!(
+                "{}; printf ready; sleep 120",
+                muster_harness::stty("raw -echo")
+            )),
             ..create("p1", in_new_tab("t1"))
         },
     );

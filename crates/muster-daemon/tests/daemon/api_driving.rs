@@ -77,8 +77,12 @@ fn a_client_makes_a_shell_types_into_it_reads_the_confirmation_and_closes_it() {
 
 /// Turns echo off, reads one line, prints its first 600 characters, and reads nothing again.
 /// The pane shows `taking-42` only once echo is off, since the command as typed says `$((6*7))`.
-const TAKES_THE_START_OF_A_LINE: &str =
-    r#"stty -echo; echo taking-$((6*7)); IFS= read -r line; printf '%.600s\n' "$line"; sleep 600"#;
+fn takes_the_start_of_a_line() -> String {
+    format!(
+        r#"{}; echo taking-$((6*7)); IFS= read -r line; printf '%.600s\n' "$line"; sleep 600"#,
+        muster_harness::stty("-echo")
+    )
+}
 
 /// A pane that takes only the start of a line shows only that much of it: the confirmed send is
 /// refused for it, while one not asked to confirm is done once it is handed to the pane, whatever
@@ -94,7 +98,10 @@ fn a_confirmed_send_the_pane_does_not_take_is_refused() {
     make(&mut control, create("p1", in_new_tab("t1")));
     until_text(&mut control, "p1", "$");
     let mut api = daemon.api();
-    assert_eq!(api.ask(send("p1", TAKES_THE_START_OF_A_LINE, false)).outcome(), api::Outcome::Done);
+    assert_eq!(
+        api.ask(send("p1", &takes_the_start_of_a_line(), false)).outcome(),
+        api::Outcome::Done
+    );
     until_text(&mut control, "p1", "taking-42");
 
     let long = format!("{}end", "x".repeat(700));

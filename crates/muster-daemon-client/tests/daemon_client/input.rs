@@ -63,7 +63,12 @@ fn events_arrive_in_the_order_they_were_sent() {
     let ready = daemon.root().join("ready");
     // Raw before anything is sent: a terminal in canonical mode holds about a kilobyte of an
     // unfinished line and discards the rest.
-    let command = format!("stty raw -echo; echo > {}; cat > {}", ready.display(), out.display());
+    let command = format!(
+        "{}; echo > {}; cat > {}",
+        muster_harness::stty("raw -echo"),
+        ready.display(),
+        out.display()
+    );
     make(&mut control, running("p1", &command));
     muster_harness::until_file(&ready, "the program to be ready");
     let input = open(&daemon);

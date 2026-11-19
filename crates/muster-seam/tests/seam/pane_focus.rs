@@ -42,7 +42,8 @@ fn a_window_focused_on_a_program_that_asked() -> (Daemon, std::path::PathBuf) {
         &mut control,
         pane_request::Create {
             command: Some(format!(
-                "stty raw -echo; printf '\\033[?1004h'; echo ready; cat > {}",
+                "{}; printf '\\033[?1004h'; echo ready; cat > {}",
+                muster_harness::stty("raw -echo"),
                 heard.display()
             )),
             ..create("p1", in_new_tab("t1"))

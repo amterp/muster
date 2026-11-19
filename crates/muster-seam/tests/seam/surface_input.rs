@@ -36,7 +36,7 @@ fn a_press_says_whether_the_pane_got_it() {
 #[test]
 fn a_wheel_over_a_full_screen_program_reaches_it_as_arrows() {
     let _turn = muster::testing::fresh_session();
-    let daemon = daemon_running(Some(&format!("printf '\\033[?1049h'; {HEX}")));
+    let daemon = daemon_running(Some(&format!("printf '\\033[?1049h'; {}", hex())));
     let pane = open_on(&daemon, "scroll_multiplier = 2");
     until("the program to take the terminal", || read(&pane).contains("READY"), || read(&pane));
 
@@ -59,7 +59,7 @@ fn a_wheel_over_a_full_screen_program_reaches_it_as_arrows() {
 #[test]
 fn a_click_reaches_a_program_that_asked_for_the_mouse() {
     let _turn = muster::testing::fresh_session();
-    let daemon = daemon_running(Some(&format!("printf '\\033[?1000h'; {HEX}")));
+    let daemon = daemon_running(Some(&format!("printf '\\033[?1000h'; {}", hex())));
     let pane = open_on(&daemon, "");
     until("the program to take the terminal", || read(&pane).contains("READY"), || read(&pane));
 
@@ -139,7 +139,12 @@ fn a_denied_clipboard_write_goes_nowhere() {
 
 /// Takes the terminal raw, says READY, and prints each byte it reads in hex, unbuffered: `cat
 /// -v` holds what it read until a newline, and the escape sequences under test have none.
-const HEX: &str = "stty raw -echo; exec perl -e '$|=1; print \"READY \"; while (sysread STDIN, $c, 1) { printf \"%02x \", ord $c }'";
+fn hex() -> String {
+    format!(
+        "{}; exec perl -e '$|=1; print \"READY \"; while (sysread STDIN, $c, 1) {{ printf \"%02x \", ord $c }}'",
+        muster_harness::stty("raw -echo")
+    )
+}
 
 /// A daemon holding one pane, running `program` in its shell when there is one.
 ///

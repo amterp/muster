@@ -277,8 +277,9 @@ fn a_program_that_asked_is_told_when_the_appearance_turns() {
     expect(&mut control, set_palette(0, proto::ColorScheme::Dark), proto::Outcome::Done);
     let out = daemon.root().join("scheme");
     let command = format!(
-        "printf '\\033[?2031h'; echo ready; stty raw -echo min 0 time 100; \
+        "printf '\\033[?2031h'; echo ready; {}; \
          dd bs=64 count=1 of={} 2>/dev/null",
+        muster_harness::stty("raw -echo min 0 time 100"),
         out.display()
     );
     make(&mut control, running("p1", "t1", command));
@@ -446,8 +447,9 @@ fn clear_screen_on_the_alternate_screen_sends_the_program_the_key() {
     let mut control = daemon.connect();
     let heard = daemon.root().join("heard");
     let script = format!(
-        "printf 'before\\n\\033[?1049h\\033[>1uvim'; stty raw -echo min 1 time 0; \
+        "printf 'before\\n\\033[?1049h\\033[>1uvim'; {}; \
          dd bs=64 count=1 of={} 2>/dev/null; sleep 30",
+        muster_harness::stty("raw -echo min 1 time 0"),
         heard.display()
     );
     make(&mut control, running("p1", "t1", script));
@@ -477,7 +479,8 @@ fn clear_screen_at_a_prompt_clears_everything_and_asks_the_shell_to_redraw() {
     // Output past the screen's height, then a prompt marked as shell integration marks one.
     let script = format!(
         "i=0; while [ $i -lt 40 ]; do echo old$i; i=$((i+1)); done; printf '\\033]133;A\\007$ '; \
-         stty raw -echo min 1 time 0; dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+         {}; dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+        muster_harness::stty("raw -echo min 1 time 0"),
         heard.display()
     );
     make(&mut control, running("p1", "t1", script));
@@ -508,7 +511,8 @@ fn clear_screen_away_from_a_prompt_keeps_the_cursor_row_and_tells_nobody() {
     let heard = daemon.root().join("heard");
     let script = format!(
         "i=0; while [ $i -lt 40 ]; do echo old$i; i=$((i+1)); done; printf 'here'; \
-         stty raw -echo min 0 time 20; dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+         {}; dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+        muster_harness::stty("raw -echo min 0 time 20"),
         heard.display()
     );
     make(&mut control, running("p1", "t1", script));

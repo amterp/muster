@@ -71,7 +71,8 @@ pub fn process_state(pid: &str) -> String {
 /// fails, at the test's patience.
 pub fn answer_to(query: &str, out: &Path) -> String {
     format!(
-        "stty raw -echo min 1 time 0; printf '{query}'; dd bs=4096 count=1 of={} 2>/dev/null",
+        "{}; printf '{query}'; dd bs=4096 count=1 of={} 2>/dev/null",
+        muster_harness::stty("raw -echo min 1 time 0"),
         out.display()
     )
 }

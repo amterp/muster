@@ -1001,8 +1001,9 @@ fn clear_screen_on_the_alternate_screen_during_a_handoff_that_fails_sends_the_ke
     let mut control = daemon.connect();
     let heard = daemon.root().join("heard");
     let script = format!(
-        "printf '\\033[?1049hvim'; stty raw -echo min 1 time 0; \
+        "printf '\\033[?1049hvim'; {}; \
          dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+        muster_harness::stty("raw -echo min 1 time 0"),
         heard.display()
     );
     let vim = pane_request::Create { command: Some(script), ..create("p1", in_new_tab("t1")) };

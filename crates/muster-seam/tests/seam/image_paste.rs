@@ -40,7 +40,11 @@ fn capture(daemon: &Daemon, pane: &str) -> std::path::PathBuf {
     make(
         &mut daemon.connect(),
         pane_request::Create {
-            command: Some(format!("stty raw -echo; echo READY; cat > {}", path.display())),
+            command: Some(format!(
+                "{}; echo READY; cat > {}",
+                muster_harness::stty("raw -echo"),
+                path.display()
+            )),
             ..create(pane, in_new_tab(pane))
         },
     );

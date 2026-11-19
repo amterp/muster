@@ -27,8 +27,9 @@ fn clear_screen_on_the_alternate_screen_hands_the_program_its_key() {
         &mut control,
         pane_request::Create {
             command: Some(format!(
-                "printf '\\033[?1049h\\033[>1uvim'; stty raw -echo min 1 time 0; \
+                "printf '\\033[?1049h\\033[>1uvim'; {}; \
                  dd bs=64 count=1 of={} 2>/dev/null; sleep 30",
+                muster_harness::stty("raw -echo min 1 time 0"),
                 heard.display()
             )),
             ..create("p1", in_new_tab("t1"))
