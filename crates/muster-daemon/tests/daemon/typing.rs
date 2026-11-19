@@ -29,7 +29,8 @@ const GRID: proto::Grid = proto::Grid { cols: 80, rows: 24, width_px: 800, heigh
 fn receiving(control: &mut Control, daemon: &Daemon, name: &str, modes: &[u8]) -> PathBuf {
     let out = daemon.root().join(name);
     let command = format!(
-        "stty raw -echo; printf '{}'; echo ready; cat > {}",
+        "{}; printf '{}'; echo ready; cat > {}",
+        muster_harness::stty("raw -echo"),
         printf_format(modes),
         out.display()
     );
@@ -582,7 +583,8 @@ fn a_sends_return_reaches_an_execd_program_in_the_kitty_keys_it_asked_for() {
     let heard = daemon.root().join("home/heard");
     let create = proto::pane_request::Create {
         command: Some(format!(
-            "stty raw -echo; printf '\\033[>15u'; printf ready; exec head -c 5 > {}",
+            "{}; printf '\\033[>15u'; printf ready; exec head -c 5 > {}",
+            muster_harness::stty("raw -echo"),
             heard.display()
         )),
         ..create("p1", in_new_tab("t1"))
@@ -646,4 +648,48 @@ fn a_sends_return_reaches_a_shells_child_in_the_kitty_keys_it_asked_for() {
         std::fs::read(&heard).ok().filter(|read| read.len() >= 5)
     });
     assert_eq!(read, b"\x1b[13u", "the Return the program asked for");
+}
+
+/// A program whose first `stty` is stopped by SIGTTOU, as about one fork in a thousand of the
+/// pane's job-control shell is on macOS, still reads what is typed once it says it is ready: the
+/// harness's `stty` runs again. Here the stop is forced, by an `stty` that stops itself once.
+#[test]
+fn a_program_whose_stty_is_stopped_once_still_reads_its_input() {
+    use std::os::unix::fs::PermissionsExt;
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let bin = daemon.root().join("home/stops-once");
+    std::fs::create_dir_all(&bin).unwrap();
+    let stty = bin.join("stty");
+    std::fs::write(
+        &stty,
+        format!(
+            "#!/bin/sh\n[ -e '{0}' ] || {{ : > '{0}'; kill -TTOU $$; }}\nexec /bin/stty \"$@\"\n",
+            bin.join("stopped").display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&stty, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let heard = daemon.root().join("home/heard");
+    let create = proto::pane_request::Create {
+        command: Some(format!(
+            "PATH='{}':$PATH; {}; printf ready; head -c 1 > {}",
+            bin.display(),
+            muster_harness::stty("raw -echo"),
+            heard.display()
+        )),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(&mut control, create);
+    until_text(&mut control, "p1", "ready");
+    assert!(bin.join("stopped").exists(), "the first stty was never stopped");
+    let mut input = Input::connect(daemon.socket_path());
+    input.send(
+        "p1",
+        Event::Send(input_event::Send { text: "x".to_string(), keys: vec![], enter: false }),
+    );
+    let read = until_some("the program to read the key", || {
+        std::fs::read(&heard).ok().filter(|read| !read.is_empty())
+    });
+    assert_eq!(read, b"x");
 }

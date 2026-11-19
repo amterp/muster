@@ -10,6 +10,7 @@ mod relay;
 mod relay_daemon;
 pub mod requests;
 mod stream;
+mod terminal;
 mod until;
 
 pub use api_client::{
@@ -23,6 +24,7 @@ pub use daemon::{
 pub use input::Input;
 pub use relay::{AnswerGate, Holding, Pump, Relay};
 pub use stream::Stream;
+pub use terminal::stty;
 pub use until::{
     Detail, PATIENCE, until, until_exit, until_exit_within, until_file, until_some, until_within,
 };
