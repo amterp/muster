@@ -448,6 +448,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation, PaneContent {
   // which both read from the same bytes.
 
   public override func mouseDown(with event: NSEvent) {
+    takeKeyboard()
     onClick?()
     let point = flipped(event)
     refreshCapturedLink(at: point, modifiers: event.modifierFlags)
@@ -503,8 +504,21 @@ public final class SurfaceView: NSView, NSMenuItemValidation, PaneContent {
       return nil
     }
     guard let menu = onMenu?() else { return nil }
+    takeKeyboard()
     onClick?()
     return menu
+  }
+
+  /// Takes the keyboard from whatever view had it, as Ghostty's own surface view does on a click.
+  ///
+  /// `onClick` asks the core for this pane, and the core moves the keyboard here when it
+  /// publishes the change - but a click on the pane that already has it changes nothing, so
+  /// nothing is published, and a keyboard the agent list or a banner had taken stayed there
+  /// (kan a_2vDjJE0Sg). Keys reach the pane the core names whichever surface is first
+  /// responder, so taking it ahead of the core cannot send them anywhere else.
+  private func takeKeyboard() {
+    guard let window, window.firstResponder !== self else { return }
+    window.makeFirstResponder(self)
   }
 
   public override func rightMouseUp(with event: NSEvent) {

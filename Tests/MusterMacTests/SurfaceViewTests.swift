@@ -810,3 +810,20 @@ private func button(_ type: CGEventType, _ button: CGMouseButton) -> NSEvent {
   let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
   view.setFontSizeOffset(3)
 }
+
+@Test(.ownsTheSeam) @MainActor func aClickTakesTheKeyboardBackFromWhateverHadIt() {
+  // The agent list kept the keyboard after a click on the row of the pane that already had it,
+  // since the core had nothing to publish, and clicking the pane did not get it back.
+  let pane = paneOnTheSeam(RecordingSurface(), RecordingDispatcher())
+  let elsewhere = NSTableView(frame: NSRect(x: 100, y: 0, width: 100, height: 100))
+  let window = holding(pane)
+  window.contentView?.addSubview(elsewhere)
+  window.makeFirstResponder(elsewhere)
+  var clicked = false
+  pane.onClick = { clicked = true }
+
+  pane.mouseDown(with: click(at: NSPoint(x: 10, y: 90)))
+
+  #expect(window.firstResponder === pane)
+  #expect(clicked, "the click stopped asking the core for this pane")
+}

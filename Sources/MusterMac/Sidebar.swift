@@ -1790,6 +1790,14 @@ public final class SidebarView: NSView {
 final class SidebarTable: NSTableView {
   var rowMenu: ((Int) -> NSMenu?)?
 
+  /// A row click chooses a pane, and the keyboard belongs to that pane. A table that took it
+  /// kept it whenever the core had nothing to publish, and type-select spent the keys meant for
+  /// the pane moving the highlight. The list has no use for keys of its own.
+  ///
+  /// Refused here rather than through `refusesFirstResponder`, which a table ignores, or
+  /// `acceptsFirstResponder`, which also changes how wide a table lays its rows out.
+  override func becomeFirstResponder() -> Bool { false }
+
   override func menu(for event: NSEvent) -> NSMenu? {
     rowMenu?(row(at: convert(event.locationInWindow, from: nil)))
   }
