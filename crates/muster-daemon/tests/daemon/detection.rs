@@ -117,7 +117,7 @@ fn detected(control: &mut Control, pane: &str) -> (Option<String>, proto::AgentS
 /// screen: a test waits for the same state several times, and a pending wait in the facts or a
 /// report still counting is what tells those apart. The screen is for the wait that never sees
 /// an agent at all, which under a loaded gate has been the one nothing else explained.
-fn until_detected(
+pub(super) fn until_detected(
     control: &mut Control,
     pane: &str,
     agent: Option<&str>,

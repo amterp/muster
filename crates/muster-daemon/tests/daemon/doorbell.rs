@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use crate::detection::until_detected;
 use crate::persistence::{stop, until_restored, until_saved};
 use crate::support::*;
 use muster_harness::Input;
@@ -405,6 +406,70 @@ fn a_blocked_agent_is_never_rung_and_is_rung_once_it_is_idle() {
             agent.pair("p1")
         )]
     );
+}
+
+#[test]
+fn codexs_rate_limit_dialog_holds_a_wake_while_the_agent_declares_a_wait() {
+    use proto::AgentState::{Blocked, Idle, Working};
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut agent = Agent::to_come();
+    let home = agent.daemon.root().join("home");
+    let binary = home.join("codex");
+    let fixture =
+        include_str!("../../../../corpus/codex-0.167.2/rate-limit-selector-reconstructed.txt");
+    let (_, selector) = fixture.split_once("\n\n").unwrap();
+    std::fs::write(home.join("selector"), selector).unwrap();
+    std::fs::write(
+        &binary,
+        r#"#!/bin/sh
+stty -echo
+printf '\033[2J\033[H› '
+while IFS= read -r line; do
+    printf '%s\n' "$line" >>"$HOME/fake-agent-heard"
+    case "$line" in
+        work) printf '\033[2J\033[HWorking (0s)\n› ' ;;
+        show) printf '\033[2J\033[H'; cat "$HOME/selector" ;;
+        *) printf '\033[2J\033[H› ' ;;
+    esac
+done
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+    agent.until_shows("$");
+    agent.daemon.type_into("p1", binary.to_str().unwrap());
+    until_detected(&mut agent.control, "p1", Some("codex"), Idle);
+    agent.type_in("work", true);
+    until_detected(&mut agent.control, "p1", Some("codex"), Working);
+
+    let mut report = proto::pane_request::Report {
+        pane: "p1".into(),
+        agent: "codex".into(),
+        waiting: Some("a build".into()),
+        ..Default::default()
+    };
+    report.set_state(Idle);
+    expect(
+        &mut agent.control,
+        pane(proto::pane_request::Request::Report(report)),
+        proto::Outcome::Done,
+    );
+    agent.type_in("show", true);
+    until_detected(&mut agent.control, "p1", Some("codex"), Blocked);
+    let record = snapshot(&mut agent.control).panes.remove(0);
+    assert_eq!(record.shown_state(), proto::PaneState::Blocked);
+    assert_eq!(record.facts.and_then(|facts| facts.waiting).as_deref(), Some("a build"));
+
+    let posted = agent.post("p1", "a brief");
+    let reached = &posted.reached[0];
+    assert_eq!(reached.reach(), msg_answer::Reach::Deferred);
+    assert_eq!(reached.activity(), msg_answer::Activity::Blocked);
+    assert!(reached.held.as_deref().is_some_and(|why| why.contains("dialog")), "{reached:?}");
+    assert_eq!(agent.unread(), ["p1: it is at a dialog, waiting for somebody to answer it"]);
+    assert!(agent.rung().is_empty());
+    agent.type_in("keep current", true);
+    agent.until_rung(1);
 }
 
 /// A renamed pane is posted to by its callsign, which its row still shows in blue and which an

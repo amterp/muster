@@ -1,0 +1,10 @@
+Reconstructed from the rate-limit selector report. The layout follows the recorded
+/new selector and agrees with the popup snapshot in the Codex 0.167.2 source.
+
+  Approaching rate limits
+
+› 1. Switch to gpt-6-luna
+  2. Keep current model
+  3. Keep current model (never show again)
+
+  enter select · esc back

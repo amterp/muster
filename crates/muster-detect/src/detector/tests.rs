@@ -1442,6 +1442,32 @@ fn codex_keeps_an_idle_report_until_its_working_spinner_ends() {
 }
 
 #[test]
+fn codexs_idle_report_gives_way_to_its_rate_limit_dialog() {
+    let mut run = Run::new();
+    run.manifests = Manifests::built_in();
+    run.processes.agent = "codex";
+    run.pane.group = Some(AGENT_GROUP);
+    run.tick();
+    run.settle();
+    run.paint("Working (0s)\n› ");
+    let working = run.until_published(Duration::from_secs(1)).unwrap().1;
+    assert_eq!(working.state, State::Working);
+    run.detector.report(Agent::new("codex"), State::Idle, run.now);
+
+    let fixture =
+        include_str!("../../../../corpus/codex-0.167.2/rate-limit-selector-reconstructed.txt");
+    let (_, selector) = fixture.split_once("\n\n").unwrap();
+    let agent = Agent::new("codex");
+    let input = Input { screen: selector, ..Input::default() };
+    assert_eq!(run.manifests.detect(Some(&agent), input).state, State::Blocked);
+    assert_eq!(run.manifests.prompt(&agent, input, selector), None);
+    run.paint(selector);
+    let states = run.run_for(Duration::from_secs(8), None);
+    let last = states.last().expect("the screen changed what the pane shows");
+    assert_eq!((last.state, last.reported), (State::Blocked, false), "{states:?}");
+}
+
+#[test]
 fn an_idle_report_still_outranks_a_spinner_without_the_manifest_opt_in() {
     let mut run = Run::new();
     run.tick();
