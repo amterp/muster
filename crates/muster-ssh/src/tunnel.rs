@@ -517,8 +517,7 @@ fn check_tunnel(forward: &Forward, child: &Mutex<Child>) -> Result<(), Unanswere
     // The original master has ExitOnForwardFailure. Once it exits, another master answering
     // at that control path may have inherited the forward or started without one.
     if let Ok(Some(status)) = status
-        && let Err(error) = probe_forward(&forward.local_socket)
-        && matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused)
+        && let Err(error) = forward_refuses(&forward.local_socket)
     {
         return Err(Unanswered::Failed(format!(
             "ssh exited ({status}) and a master still answers on {}, but the forward at {} \
@@ -527,6 +526,33 @@ fn check_tunnel(forward: &Forward, child: &Mutex<Child>) -> Result<(), Unanswere
         )));
     }
     Ok(())
+}
+
+/// How long a full accept queue is given to drain before a refusal is believed.
+const REFUSED_AGAIN_AFTER: Duration = Duration::from_millis(250);
+
+/// The error that says nothing is listening at `path`, or `Ok` when something may be.
+///
+/// macOS answers `ECONNREFUSED` for a live listener whose accept queue is full, where Linux
+/// answers `EAGAIN`, so one refusal is asked again: ending a master that still carries the
+/// forward drops every pane's connection.
+fn forward_refuses(path: &str) -> io::Result<()> {
+    let gone = |error: &io::Error| {
+        error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(libc::ENOTSOCK)
+    };
+    match probe_forward(path) {
+        Err(error) if gone(&error) => Err(error),
+        Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => {
+            std::thread::sleep(REFUSED_AGAIN_AFTER);
+            match probe_forward(path) {
+                Err(again) if gone(&again) || again.kind() == io::ErrorKind::ConnectionRefused => {
+                    Err(again)
+                }
+                _ => Ok(()),
+            }
+        }
+        _ => Ok(()),
+    }
 }
 
 fn probe_forward(path: &str) -> io::Result<()> {

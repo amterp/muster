@@ -176,11 +176,12 @@ said once as an error and not tried again, since the same attempt would fail the
 keeps trying: a host that does not resolve is also a laptop whose VPN is down.
 
 **The supervisor checks the control path and probes the forward if the child has exited.** `ControlPersist=no`
-keeps ssh in the foreground by default. If ssh forks, the original child exits and the background process can
+keeps ssh in the foreground unless a config sets `ForkAfterAuthentication`. If ssh forks, the original child exits and the background process can
 still carry the forward (kan a_2J1KZ9FbM). If a different master takes over the control path after the child
 exits, `ssh -O check` can still succeed while every pane's connection is refused (kan a_32xp8grzh). The supervisor
-then probes the local socket without waiting for a connection. A missing socket or a refused connection sends
-the tunnel through its usual retry. The probe works before the remote daemon starts because ssh owns the local
+then probes the local socket without waiting for a connection. A missing socket, a path that is not a socket,
+or a connection refused twice a quarter second apart sends the tunnel through its usual retry; twice, because
+macOS also refuses a live listener whose accept queue is full. The probe works before the remote daemon starts because ssh owns the local
 listener.
 
 Muster sends `ssh -O exit -S <path>` on reopen and on drop. This ends whichever master owns that path, including

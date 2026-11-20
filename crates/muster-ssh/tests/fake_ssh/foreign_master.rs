@@ -47,10 +47,29 @@ fn a_master_that_keeps_its_forward_after_forking_stays_up() {
     let _listener = UnixListener::bind(&local).expect("the local socket can be bound");
     fake::replace_master(&control);
 
-    fake::until("two checks of the background master", &control, Duration::from_secs(10), || {
-        fake::count(&control, "foreign check") >= 2
+    // Three, because the first can be asked before the child is seen dead and the last is
+    // counted before its probe runs: only the one between is sure to have probed.
+    fake::until("three checks of the background master", &control, Duration::from_secs(10), || {
+        fake::count(&control, "foreign check") >= 3
     });
     assert_eq!(fake::count(&control, "control exit"), 0);
     assert_eq!(fake::count(&control, "master"), 1);
+    drop(tunnel);
+}
+
+#[test]
+fn a_master_whose_forward_is_a_plain_file_is_ended_and_replaced() {
+    let scratch = fake::Scratch::new();
+    let forward = fake::forward(scratch.path());
+    let control = forward.control_path.clone();
+    let tunnel = fake::open(forward);
+
+    // The fake's placeholder for the forward is a plain file, which no connection can reach.
+    fake::replace_master(&control);
+
+    fake::until("a confirmed replacement master", &control, Duration::from_secs(10), || {
+        fake::count(&control, "run") >= 1
+    });
+    assert!(fake::count(&control, "control exit") >= 1);
     drop(tunnel);
 }
