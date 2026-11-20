@@ -35,8 +35,15 @@ default_column = "backlog-lo"
   name = "in-progress"
   color = "#10b981"
   description = "Actively being worked on, agents in parallel included. What matters is movement, not count: a card sitting here untouched is stalled work, not work in flight."
-  limit = 6
+  limit = 24
   category = "active"
+
+[[columns]]
+  name = "review"
+  color = "#ec4899"
+  description = "Built and waiting for the owner's sign-off, including work a factory run built. The last comment says what was built and what to check. Agents put cards here and wait; the owner moves them to done."
+  limit = 0
+  category = "review"
 
 [[columns]]
   name = "done"
@@ -102,7 +109,6 @@ default_column = "backlog-lo"
       description = "A stage-gate check from docs/origin.md: failing it questions the whole approach"
   [custom_fields.provenance]
     type = "enum"
-    wanted = false
     description = "Who raised this card and how far it has been vetted. An agent may write production code ONLY for 'approved' and 'agent-approved'. Agent-created cards start as 'ai-proposed'. The test for the bottom two values is narrow: did the owner state this want in their own words, or did an agent derive, decompose, or invent it?\n\nAGENTS.md, 'Repo conventions', says when an agent may promote a card: to 'agent-approved' under four tests, to 'approved' for work the owner asked to have built, and to 'approved' for a spike that spends nothing. Every other promotion is the owner's. When in doubt the card stays 'ai-proposed' with the needs-decision label."
 
     [[custom_fields.provenance.options]]
