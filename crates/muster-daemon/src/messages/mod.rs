@@ -567,10 +567,13 @@ pub(crate) fn handle_caused(
         return Handled::Reply(peer::hold(shared, &peer.name, &peer.socket, hung_up));
     }
     let panes = Panes::of(shared);
-    // Only where the pane would have decided who is asking: a caller that names itself, or
-    // holds an inbox of its own, is that sender whatever became of the pane.
+    // Only where the pane would have decided who is asking: a caller that names itself, with
+    // `--as` or a join's `--name`, or holds an inbox of its own, is that sender whatever became
+    // of the pane.
+    let names_itself =
+        caller.as_name.is_some() || matches!(&asked, Asked::Join(join) if join.name.is_some());
     if let Some(pane) = pane_of_caller(&caller)
-        && caller.as_name.is_none()
+        && !names_itself
         && caller.inbox.is_none()
         && !panes.exists(pane)
     {

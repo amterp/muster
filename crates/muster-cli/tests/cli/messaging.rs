@@ -783,6 +783,8 @@ fn a_closed_panes_environment_cannot_post_or_read_as_the_human() {
         "a sender that names itself is not the pane: {named:?}"
     );
     assert!(log().contains("named"));
+    let joined = from_closed_pane(&["msg", "join", "--name", "worker", "--group", group]);
+    assert_eq!(joined.status.code(), Some(0), "a join that names itself: {joined:?}");
 }
 
 /// A `muster msg` run under an agent's server is refused, saying which server and what to do: the
