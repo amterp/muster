@@ -840,6 +840,60 @@ fn keys_are_pressed_without_a_window(here: &Here) {
     assert!(refused.contains("nothing was sent"), "{refused}");
 }
 
+fn delayed_menu() -> Here {
+    let here = Here::new(Daemon::start_built());
+    let mut control = here.daemon.connect();
+    // Switch cursor modes at each redraw so a key sent during the redraw carries the old mode.
+    let menu = r#"
+        normal=$(printf '\033[B')
+        application=$(printf '\033OB')
+        expected=$normal
+        printf '\033[?1lselected option 1'
+        for selection in 2 3 4; do
+            key=$(dd bs=1 count=3 2>/dev/null)
+            if [ "$key" != "$expected" ]; then
+                printf '\r\033[2Kkey sent before redraw'
+                break
+            fi
+            sleep 0.18
+            if [ "$expected" = "$normal" ]; then
+                expected=$application
+                mode=h
+            else
+                expected=$normal
+                mode=l
+            fi
+            printf '\033[?1%s\r\033[2Kselected option %s' "$mode" "$selection"
+        done
+        cat >/dev/null
+    "#;
+    let command = format!("{}; {menu}", muster_harness::stty("raw -echo"));
+    make(
+        &mut control,
+        proto::pane_request::Create { command: Some(command), ..create("p1", in_new_tab("t1")) },
+    );
+    until_text(&mut control, "p1", "selected option 1");
+    here
+}
+
+#[test]
+fn a_read_right_after_a_key_shows_the_moved_selection() {
+    let here = delayed_menu();
+    ok(&here.muster(&["pane", "send", "--pane", "p1", "--key", "down"]));
+    let screen = ok(&here.muster(&["pane", "read", "--pane", "p1"]));
+    assert!(screen.contains("selected option 2"), "{screen}");
+}
+
+#[test]
+fn three_separate_down_commands_follow_each_redraw() {
+    let here = delayed_menu();
+    for _ in 0..3 {
+        ok(&here.muster(&["pane", "send", "--pane", "p1", "--key", "down"]));
+    }
+    let screen = ok(&here.muster(&["pane", "read", "--pane", "p1"]));
+    assert!(screen.contains("selected option 4"), "{screen}");
+}
+
 #[test]
 fn only_a_missing_window_is_answered_by_the_daemon() {
     let here = Here::new(Daemon::start_built());
