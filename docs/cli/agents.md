@@ -176,7 +176,10 @@ modes. `--key shift+tab` is how one agent cycles another Claude Code's permissio
 
 After a send with `--key`, Muster allows time for the gaps between keys. It then waits for a
 visible text change followed by 100 ms of quiet. If no change appears, it returns after 300 ms.
-Continuous changes have a one-second limit after the key gaps.
+Continuous changes have a one-second limit after the key gaps. The wait watches the pane's
+visible text and cannot tell which key a change answers: in a send of several keys, a late redraw
+from an earlier key can end it before the last key has drawn. Send one key per command when each
+must land before the next.
 Read the pane after moving a selection to check where it landed.
 
 Whether Return submits is the receiving harness's to decide, and exit 0 says the daemon took the
