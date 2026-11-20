@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "a-post-from-a-closed",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_32xppeHaz",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147717666
+    }
+  ],
+  "created_at_millis": 1795147692251,
+  "creator": "Alexander Terp",
+  "description": "A launcher's exit handler ran `muster msg post --to pollen` after its helper pane (jigsaw) had been closed with `pane close`. The message arrived in `@human+pollen` from `@human`, not in `jigsaw+pollen` from the helper. Posting as the person when the pane named by `MUSTER_PANE` is gone puts words in the owner's mouth.\n\nRefuse posts whose `MUSTER_PANE` names a closed pane, or keep the closed pane's identity. From tooling feedback a_30ZbKPQ6t.",
+  "id": "a_32xpAYj1j",
+  "position": "ZoV",
+  "provenance": "agent-approved",
+  "title": "A post from a closed pane's environment is attributed to @human",
+  "type": "bug",
+  "updated_at_millis": 1795147741245,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795147692251}
+  ]
+}

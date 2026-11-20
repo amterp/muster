@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "a-new-canvas-pane",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_32xpqLKEM",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147718097
+    }
+  ],
+  "created_at_millis": 1795147693412,
+  "creator": "Alexander Terp",
+  "description": "On 0.28.0, `muster canvas open red.png --pane \u003cpane\u003e` splits at once (the CLI returns in 0.02 s), but the pane stays black for a noticeable moment before the image draws, from a shell as well. Likely the web view starting or loading after the pane is placed; drawing the pane's background in the canvas theme, or placing the pane once the document is ready, would hide it. From tooling feedback a_32HZ2rDHg.",
+  "id": "a_32xpCRW5D",
+  "position": "b3P",
+  "provenance": "agent-approved",
+  "title": "A new canvas pane shows black for a moment before its image",
+  "type": "bug",
+  "updated_at_millis": 1795147718097,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795147693412}
+  ]
+}

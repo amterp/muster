@@ -1,0 +1,32 @@
+{
+  "_v": 4,
+  "alias": "codex-s-rate-limit",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_32xpocHb1",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147717021
+    }
+  ],
+  "created_at_millis": 1795147690618,
+  "creator": "Alexander Terp",
+  "description": "Codex's in-session \"Approaching rate limits\" selector (Switch to a smaller model / Keep current model / Keep current model, never show again; \"enter select · esc back\") is not read as a dialog. `muster window` showed the pane waiting (it had declared a wait) or idle, and posts to it were held as \"its prompt holds something typed and not sent\". Wakes and assignments sat until the orchestrator pressed Down and Return. Seen on at least four panes in one session.\n\nRead it as blocked, let blocked take precedence over a declared wait, and describe a held wake as waiting on a dialog rather than a draft. Related: a_2xf7BoaPK (the /new worktree dialog). From tooling feedback a_2xwCOXIfO.",
+  "id": "a_32xp7v4Xw",
+  "position": "Zol",
+  "provenance": "agent-approved",
+  "related": [
+    "a_2xf7BoaPK"
+  ],
+  "title": "Codex's rate-limit model selector reads waiting or idle, and holds wakes as a draft",
+  "type": "bug",
+  "updated_at_millis": 1795147741400,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795147690618}
+  ]
+}

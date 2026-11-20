@@ -1,0 +1,32 @@
+{
+  "_v": 4,
+  "alias": "agent-panes-inherit",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "comments": [
+    {
+      "id": "c_32xps1wJ5",
+      "body": "2026-11-19 re-triage: ai-proposed, fails the second and third tests (changes every pane's environment). Question for the owner: should Muster start agent panes with an allowlisted environment? Recommendation: first move secrets out of the exported login environment (outside Muster); an allowlist in Muster risks breaking tools agents rely on.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147719133
+    }
+  ],
+  "created_at_millis": 1795147694418,
+  "creator": "Alexander Terp",
+  "description": "A Codex helper ran a tool that printed its whole environment; the pane had inherited the owner's login environment, about twenty API keys none of which the task needed, and their values went into the vendor conversation and the transcript.\n\nProposal from the report: start agent panes with an allowlisted environment (PATH, HOME, the harness's own variables, MUSTER_*), with a flag or brief adding named variables. Part of this is outside Muster: the owner's launchers, and keeping secrets in files rather than exported. It changes what every pane gets, so it needs the owner's call. From tooling feedback a_30fCNdc8F.",
+  "id": "a_32xpE3xBi",
+  "labels": [
+    "blocked"
+  ],
+  "position": "ar",
+  "provenance": "ai-proposed",
+  "title": "Agent panes inherit every credential in the shell's environment",
+  "type": "feature",
+  "updated_at_millis": 1795147719133,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795147694418}
+  ]
+}

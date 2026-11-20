@@ -1,0 +1,32 @@
+{
+  "_v": 4,
+  "alias": "pointer-input-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_32xpq0VgA",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147717884
+    }
+  ],
+  "created_at_millis": 1795147692949,
+  "creator": "Alexander Terp",
+  "description": "Codex panes on a remote Linux machine read `stuck` (\"... has not read 1831 bytes of input\") at an idle composer or mid-turn, on 0.27 and 0.28. FIONREAD confirmed the bytes were queued; a drain found ~200 SGR wheel reports among 2,446 bytes, and the daemon logged dropped pointer events. Codex drains the queue on the next focus change or click, so it is not hung.\n\nCount only keys, pastes and doorbell rings toward `stuck`, not pointer input: the writer already tags it (`is_pointer`). A false stuck erodes the states the window exists to show. From tooling feedback a_32ClWs5gP.",
+  "id": "a_32xpBgrr9",
+  "position": "Zo",
+  "provenance": "agent-approved",
+  "related": [
+    "a_32xpC43j3"
+  ],
+  "title": "Pointer input a program has not read makes an idle Codex pane read stuck",
+  "type": "bug",
+  "updated_at_millis": 1795147742174,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795147692949}
+  ]
+}

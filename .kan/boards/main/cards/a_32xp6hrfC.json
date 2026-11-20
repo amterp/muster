@@ -1,0 +1,32 @@
+{
+  "_v": 4,
+  "alias": "report-until-message",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_32xpoQQ4U",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147716904
+    }
+  ],
+  "created_at_millis": 1795147689858,
+  "creator": "Alexander Terp",
+  "description": "Seen twice (2026-11-11, 0.25-0.26). An agent asked the owner a question over `muster msg`, then ran `\"$MUSTER_DAEMON\" report --waiting ... --until-message-from @human`, and then with the owner's name. Both were refused: \"nobody here or on a machine linked to this one is called @human\", though `muster msg who` lists the person as `@human`. A wait on the person's answer is the most common wait an agent declares, and the session-start hook tells agents to name the sender.\n\nAccept `@human` (and the person's name) as a sender, the way `msg post --to` does. From tooling feedback a_2xuR6Uxfk and a_2xw1HCBmf.",
+  "id": "a_32xp6hrfC",
+  "position": "ZozV",
+  "provenance": "agent-approved",
+  "related": [
+    "a_32xp74fGx"
+  ],
+  "title": "report --until-message-from refuses the human, so a pane cannot declare it waits on the person",
+  "type": "bug",
+  "updated_at_millis": 1795147742019,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795147689858}
+  ]
+}

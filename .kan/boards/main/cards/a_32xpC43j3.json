@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "the-stuck-label",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_32xpqBQCx",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147717991
+    }
+  ],
+  "created_at_millis": 1795147693182,
+  "creator": "Alexander Terp",
+  "description": "A Codex pane started through a Rad wrapper read `(rad has not read 1831 bytes of input)`: `said_unread` in crates/muster-daemon/src/pane.rs names the foreground group's leader, which is the wrapper. Name the agent detection already knows, or the group's process holding the terminal that is not just waiting on a child, before falling back to the leader. From tooling feedback a_32F2hP8xT.",
+  "id": "a_32xpC43j3",
+  "position": "b3O",
+  "provenance": "agent-approved",
+  "title": "The stuck label names a wrapper script, not the agent it runs",
+  "type": "bug",
+  "updated_at_millis": 1795147717992,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795147693182}
+  ]
+}

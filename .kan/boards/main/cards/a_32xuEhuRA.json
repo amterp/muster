@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-wake-carries-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1795147887030,
+  "creator": "Alexander Terp",
+  "description": "From the owner's note (2026-11-18), read back to him and confirmed: when a wake reaches an agent (`[muster] @human+squid: 1 new (#8) ... Read: muster msg read ...`), include the message itself when it is short enough, saving the agent a round trip. Open for the builder: the length threshold, and whether an inlined message counts as read.",
+  "id": "a_32xuEhuRA",
+  "position": "b3Q",
+  "provenance": "approved",
+  "title": "A wake carries a short message's text, so the agent need not run msg read",
+  "type": "enhancement",
+  "updated_at_millis": 1795147887030,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795147887030}
+  ]
+}

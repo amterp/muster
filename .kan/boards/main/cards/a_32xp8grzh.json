@@ -1,0 +1,34 @@
+{
+  "_v": 4,
+  "alias": "a-foreign-ssh-master",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "comments": [
+    {
+      "id": "c_32xpoxtiI",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147717238
+    }
+  ],
+  "created_at_millis": 1795147691087,
+  "creator": "Alexander Terp",
+  "description": "On 0.26.0 every devenv pane sat `unreachable` for 10+ minutes. The window's own ssh master died (`daemon.control.ended`, then `daemon.start_again.waiting`), and in the same second a different master appeared on Muster's control path `$TMPDIR/muster-\u003cpid\u003e-devenv.ctl`: ppid 1 (a ControlPersist fork), no `-L` (the forwarded `.sock` refused, os error 61) and no `-R`. Because `-O check` answered `Master running`, the supervisor logged no `tunnel.down` and never respawned; instead `daemon.remote.starting` ran every ~30 s and failed with \"another daemon is already serving\" while the far daemon was healthy. Nothing in crates/muster-ssh or muster-daemon was found that would create that master; the user's ssh config had `ControlMaster auto` / `ControlPersist 10m` for the host.\n\nFix: stop treating \"something answers `-O check`\" as our tunnel being up - also watch the spawned child, or probe the forward itself, and on a mismatch `-O exit` whatever holds the path and respawn. A start refused with \"already serving\" over and over is a second sign the tunnel, not the daemon, is broken. Minor: the devenv's daemon directory held ~30 stale `window-release-*.sock` files.\n\nWhere: crates/muster-ssh/src/tunnel.rs (`master_answers`, the supervise loop), crates/muster-seam/src/session/starting_again.rs. Related: a_2J1KZ9FbM, a_2shK7DirB. From tooling feedback a_2ydQrEjuc (high).",
+  "id": "a_32xp8grzh",
+  "position": "Zt",
+  "provenance": "agent-approved",
+  "related": [
+    "a_2J1KZ9FbM",
+    "a_2shK7DirB"
+  ],
+  "title": "A foreign ssh master on the tunnel's control path holds every devenv pane unreachable",
+  "type": "bug",
+  "updated_at_millis": 1795147752167,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795147691087},
+    {"field":"column","value":"next","at":1795147740614}
+  ]
+}

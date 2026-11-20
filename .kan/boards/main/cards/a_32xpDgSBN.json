@@ -1,0 +1,32 @@
+{
+  "_v": 4,
+  "alias": "close-a-pane-once",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "comments": [
+    {
+      "id": "c_32xprh2tC",
+      "body": "2026-11-19 re-triage: ai-proposed, fails the third test (a new CLI option). Question for the owner: should Muster offer close-after-turn? Recommendation: yes, as `pane close --after-turn`, held by the daemon.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147718932
+    }
+  ],
+  "created_at_millis": 1795147694183,
+  "creator": "Alexander Terp",
+  "description": "A Codex agent asked to finish its turn and close its own pane tried a detached `pane wait --until idle` followed by `pane close`; the pane stayed open, cause unknown. A daemon-held close-on-idle (say `pane close --after-turn`) would let an agent finish its reply and close its pane in one command. New interface, so an idea until the owner takes it up. From tooling feedback a_32FvAUBy1.",
+  "id": "a_32xpDgSBN",
+  "labels": [
+    "blocked"
+  ],
+  "position": "aq",
+  "provenance": "ai-proposed",
+  "title": "Close a pane once its agent's turn ends",
+  "type": "feature",
+  "updated_at_millis": 1795147718932,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795147694183}
+  ]
+}

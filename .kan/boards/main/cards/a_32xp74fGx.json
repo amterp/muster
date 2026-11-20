@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "report-until-message-from",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_32xpr2wtD",
+      "body": "2026-11-19 re-triage: ai-proposed - it fails the third test: it changes what a command accepts or does, which is a public interface. Recommend building it; the owner decides the shape.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147718523
+    }
+  ],
+  "created_at_millis": 1795147690154,
+  "creator": "Alexander Terp",
+  "description": "An orchestrator started six helpers and declared `--until-message-from apple,algae,castle,...`; it was refused as one name nobody holds, so it named only the first, and a report from any other helper does not end the wait. Waiting on several helpers is the usual case for an integrator. Accepting a comma-separated list, as `msg post --to` does, or repeating the flag would fit. Adds to a flag's grammar, so ai-proposed. From tooling feedback a_2xu3fNcit.",
+  "id": "a_32xp74fGx",
+  "position": "b3H",
+  "provenance": "ai-proposed",
+  "title": "report --until-message-from takes one pane, so an integrator cannot wait on several helpers",
+  "type": "enhancement",
+  "updated_at_millis": 1795147718524,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795147690154}
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "_v": 4,
+  "alias": "muster-pings-a-group",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795147886750,
+  "creator": "Alexander Terp",
+  "description": "From the owner's note (2026-11-13), read back to him and confirmed: when a group, or a maker with helpers, starts work, an agent tells Muster the work is in progress and later that it is done. If Muster sees no activity for a while before \"done\", it pings: first the coordinator, then the helpers one by one if nobody answers, asking whether the work is still going or finished, and to say so if finished. A ping nobody answers is a warning that something is stuck. Some action should then unstick the group, such as nudging the coordinator.\n\nMuster already sends a stall notice once a group is held up on a member; this extends that with declared work, a done verb and escalating pings. Raised as \"I wonder if\", so an idea until the owner commits to it.",
+  "id": "a_32xuEEeru",
+  "position": "as",
+  "provenance": "human-raised",
+  "related": [
+    "a_2z7ZZXk4j",
+    "a_2xmxqHbeY"
+  ],
+  "title": "Muster pings a group that has gone quiet on declared work, escalating from its coordinator to its helpers",
+  "type": "feature",
+  "updated_at_millis": 1795147887688,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795147886750}
+  ]
+}

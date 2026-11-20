@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "an-upgrade-s-daemon",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_32xpomnLI",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147717129
+    }
+  ],
+  "created_at_millis": 1795147690854,
+  "creator": "Alexander Terp",
+  "description": "`muster upgrade` from 0.25.0 to 0.26.0 in a window holding local panes and panes on a linked Linux devenv: after the relaunch and the devenv daemon's handoff, every local pane was in tab 1 and each devenv pane alone in its own tab (\"Tab 3\" ... \"Tab 7\"), with one `[[region]]` per devenv pane in `window-\u003cn\u003e.toml`. That matches 0.26.0's \"a removed or unreachable pane comes back in a tab of its own\" path, so the devenv probably read as unreachable during the handoff.\n\nA daemon handoff during an upgrade should not count as a machine leaving, and a pane that comes back should return to its saved place. From tooling feedback a_2xx6GmX3f.",
+  "id": "a_32xp8JJJS",
+  "position": "Zox",
+  "provenance": "agent-approved",
+  "title": "An upgrade's daemon handoff puts each devenv pane in a tab of its own",
+  "type": "bug",
+  "updated_at_millis": 1795147741707,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795147690854}
+  ]
+}

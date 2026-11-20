@@ -1,0 +1,33 @@
+{
+  "_v": 4,
+  "alias": "restarting-a-codex-pane",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_32xpqgyTy",
+      "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147718309
+    }
+  ],
+  "created_at_millis": 1795147693948,
+  "creator": "Alexander Terp",
+  "description": "On 0.28.0 a stuck Codex 0.170.0 pane on remote Linux was restarted; the daemon launched `codex resume` with the original id. Before any prompt in the resumed session, `muster window --json` showed `adapter: silent`, `session: null`, `resume: null`, and Restart Agent was grayed out (the menu gates on `resumesAs` in Sources/MusterMac/MusterWindow.swift). The first submitted prompt produced `session.id.reported` and filled both.\n\nKeep the verified session id and resume command through an explicit restart until the resumed harness reports a new identity or exits. Test two consecutive restarts with the second before any prompt. Related: a_2uStCtx9Q, and the stuck card filed with this one. From tooling feedback a_32h3YfcNY.",
+  "id": "a_32xpDCgAL",
+  "position": "Zoz",
+  "provenance": "agent-approved",
+  "related": [
+    "a_32xpBgrr9",
+    "a_2uStCtx9Q"
+  ],
+  "title": "Restarting a Codex pane clears its session until its first prompt, leaving Restart Agent disabled",
+  "type": "bug",
+  "updated_at_millis": 1795147741863,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795147693948}
+  ]
+}

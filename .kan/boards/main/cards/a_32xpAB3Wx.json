@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "a-one-shot-claude-p",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_32xprNI6v",
+      "body": "2026-11-19 re-triage: ai-proposed - it fails the third test: it changes what a command accepts or does, which is a public interface. Recommend building it; the owner decides the shape.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147718733
+    }
+  ],
+  "created_at_millis": 1795147692018,
+  "creator": "Alexander Terp",
+  "description": "A hidden helper ran a bounded `claude -p` review. While it ran, `muster window --json` showed its session and resume command; after it exited, `pane restart` said it \"has nothing to resume: its agent has reported no session\", and the agent had to resume by hand from an id saved earlier. Keep the last resumable identity after a one-shot agent exits, or say why restart cannot use it. From tooling feedback a_30XLjRBB9.",
+  "id": "a_32xpAB3Wx",
+  "position": "b3L",
+  "provenance": "ai-proposed",
+  "title": "A one-shot claude -p pane loses its session once the process exits, so pane restart cannot resume it",
+  "type": "enhancement",
+  "updated_at_millis": 1795147718733,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795147692018}
+  ]
+}

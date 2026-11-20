@@ -1,0 +1,32 @@
+{
+  "_v": 4,
+  "alias": "muster-skill-the",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_32xpqrglR",
+      "body": "2026-11-19 re-triage: agent-approved - upkeep that corrects two wrong instructions in the shipped skill; no decision, interface, format or dependency changes.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795147718416
+    }
+  ],
+  "created_at_millis": 1795147692483,
+  "creator": "Alexander Terp",
+  "description": "Two errors in extras/skill/SKILL.md:\n\n- It shows `muster pane compact \u003cfocus\u003e --then ...` for compacting yourself; for Codex the CLI refuses a focus (\"/compact takes nothing to keep\"). Show a focus-free Codex form.\n- Its adapter check, `muster window --json | jq -r '.panes[] | select(.pane == env.MUSTER_PANE) | .adapter'`, prints nothing from a hidden helper, whose row is under `.hidden[].panes[]`. Search `(.panes[], .hidden[]?.panes[]?)`.\n\nRelated: a_2xA54AFYT. From tooling feedback a_30cbt4xpR and a_31r14hChl.",
+  "id": "a_32xpAvS56",
+  "position": "b3M",
+  "provenance": "agent-approved",
+  "related": [
+    "a_2xA54AFYT"
+  ],
+  "title": "Muster skill: the self-compaction example gives Codex a focus, and the adapter check misses hidden panes",
+  "type": "docs",
+  "updated_at_millis": 1795147719929,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795147692483}
+  ]
+}

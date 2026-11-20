@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-harness-neutral",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795147887307,
+  "creator": "Alexander Terp",
+  "description": "From the owner's note (2026-11-19), read back to him and confirmed: Claude Code has a Monitor tool that wakes the agent when a command's output matches; Codex has no such concept. Muster could offer a verb that subscribes an agent to something - a build's exit, a file, another pane's state - and wakes it through the daemon when it happens, for any harness. Related: `report --waiting --until-exits` and `pane wait` cover parts of this. Filed as an idea: the note did not say to build it.",
+  "id": "a_32xuF9J98",
+  "position": "at",
+  "provenance": "human-raised",
+  "title": "A harness-neutral way for an agent to subscribe to something and be woken when it happens",
+  "type": "feature",
+  "updated_at_millis": 1795147887307,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795147887307}
+  ]
+}
