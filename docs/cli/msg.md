@@ -41,8 +41,9 @@ Every verb works out who is asking, in this order:
   shell in an open pane with no agent in it. On a devenv the laptop has linked to, that is you as the
   laptop's member, `@human@<laptop>` (below).
 
-If `$MUSTER_PANE` names a closed pane or one this daemon does not know, the daemon refuses the
-request before choosing an identity.
+If `$MUSTER_PANE` names a closed pane or one this daemon does not know, a request without `--as` is
+refused rather than taken as yours: a script that outlives its pane does not post as the person.
+`--as NAME` still asks as NAME.
 
 `--as @human` acts as the human for that command. The agent keeps its pane and inbox, so later
 commands without `--as` still act as the agent.

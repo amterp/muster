@@ -775,6 +775,14 @@ fn a_closed_panes_environment_cannot_post_or_read_as_the_human() {
         let said = complained(&output);
         assert!(said.contains("MUSTER_PANE") && said.contains("p1") && said.contains("closed"));
     }
+
+    let named = from_closed_pane(&["msg", "--as", "lead", "post", "--group", group, "named"]);
+    assert_eq!(
+        named.status.code(),
+        Some(0),
+        "a sender that names itself is not the pane: {named:?}"
+    );
+    assert!(log().contains("named"));
 }
 
 /// A `muster msg` run under an agent's server is refused, saying which server and what to do: the

@@ -567,7 +567,11 @@ pub(crate) fn handle_caused(
         return Handled::Reply(peer::hold(shared, &peer.name, &peer.socket, hung_up));
     }
     let panes = Panes::of(shared);
+    // Only where the pane would have decided who is asking: a caller that names itself, or
+    // holds an inbox of its own, is that sender whatever became of the pane.
     if let Some(pane) = pane_of_caller(&caller)
+        && caller.as_name.is_none()
+        && caller.inbox.is_none()
         && !panes.exists(pane)
     {
         let outcome = if matches!(asked, Asked::Post(_)) {
@@ -576,7 +580,8 @@ pub(crate) fn handle_caused(
             "The request was refused."
         };
         let reason = format!(
-            "the pane named by MUSTER_PANE ({pane}) is closed or unknown to this daemon. {outcome}"
+            "the pane named by MUSTER_PANE ({pane}) is closed or unknown to this daemon, so \
+             this would have been the person's. {outcome} `muster msg --as NAME` asks as NAME."
         );
         return Handled::Reply(refused_as("", "pane_closed", &reason));
     }
