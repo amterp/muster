@@ -53,15 +53,20 @@ rules do not read yet counts only once the screen has sat still for a second: `P
 fires while the spinner still runs, before its prompt draws or when none will. Return or Esc at a
 prompt that reads waiting on you reads working until the screen shows what came of it, so the
 waiting on you it answered is not read a moment after. `SubagentStart` and `SubagentStop`
-count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
-`/clear` runs. `SessionStart` also reports the session's id, however the session started, which is
-what lets the pane come back running this session after a daemon restart or a reboot
-(`docs/configuration.md`, `resume_agents`). The report reads the id from the hook's own input, so
-the hook needs no JSON tool. `PreCompact` for a compaction Claude Code starts by itself (`auto`)
-tells Muster of it, and when that compaction is the whole of a turn nothing typed began, as an idle
-Claude Code's is before its prompt cache expires, the turn is not the agent going to work, so a
-helper is not reported to its maker as having gone idle without posting. A compaction that comes
-when the context fills partway through a turn leaves that turn work.
+count sub-agents.
+
+`SessionStart` forgets the last session's facts when a new one starts or `/clear` runs. It also
+reports the session's id for reopening a closed pane or resuming after a daemon restart or reboot
+(`docs/configuration.md`, `resume_agents`). The main session's `Stop` hook reports the id again
+at the end of a turn, so Muster can still resume the session if it missed the startup report.
+Both reports read the id from the hook input. If the startup report fails, the session continues.
+Run Claude Code with `--debug` to see the report's error and exit status in its debug log.
+
+`PreCompact` for a compaction Claude Code starts by itself (`auto`) tells Muster of it, and when
+that compaction is the whole of a turn nothing typed began, as an idle Claude Code's is before its
+prompt cache expires, the turn is not the agent going to work, so a helper is not reported to its
+maker as having gone idle without posting. A compaction that comes when the context fills partway
+through a turn leaves that turn work.
 
 `SessionStart`'s `source` and `PostCompact` tell Muster the agent's context was cleared or compacted,
 which the API gives a client on the pane (`muster docs api`). `PostCompact` also fires for a

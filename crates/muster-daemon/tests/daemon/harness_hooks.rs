@@ -42,7 +42,7 @@ const CLAUDE_CODE: Harness = Harness {
         ("Notification", "[report][--agent][claude][--state][blocked]"),
         ("PreCompact", "[report][--agent][claude][--compacting]"),
         ("PostCompact", "[report][--agent][claude][--from][compacted-in=/transcript_path]"),
-        ("Stop", "[report][--agent][claude][--state][idle]"),
+        ("Stop", "[report][--agent][claude][--from][session-id=/session_id][--state][idle]"),
         ("StopFailure", "[report][--agent][claude][--state][idle]"),
     ],
     turn_ends: &["Stop", "StopFailure"],

@@ -905,6 +905,8 @@ fn claude_codes_hooks_report_working_blocked_and_idle() {
     run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
     until_detected(&mut control, "p1", Some("claude"), Idle);
 
+    let hook_input = daemon.root().join("hook-input.json");
+    std::fs::write(&hook_input, "{}").unwrap();
     let events = [
         ("UserPromptSubmit", None, Working),
         ("PermissionRequest", None, Blocked),
@@ -924,8 +926,7 @@ fn claude_codes_hooks_report_working_blocked_and_idle() {
             .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
             .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
             .env("MUSTER_PANE", "p1")
-            // The working hooks read their stdin to its end, and the test's own may never end.
-            .stdin(std::process::Stdio::null());
+            .stdin(std::fs::File::open(&hook_input).unwrap());
         let ran = muster_harness::until_exit(&format!("{event}'s hook"), &mut hook);
         assert!(ran.success(), "{event}'s hook");
         until_detected(&mut control, "p1", Some("claude"), state);
