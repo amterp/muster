@@ -34,17 +34,19 @@ mkdir -p "$state"
 echo "$mode $op" >> "$state/log"
 case "$mode" in
   master)
-    : > "$near"; : > "$ctl"; echo $$ > "$state/master"
+    echo $$ > "$state/master"; : > "$ctl"; : > "$near"
     exec sleep 600 ;;
   control)
     case "$op" in
       check)
         slow=$(cat "$state/slow" 2>/dev/null || echo 0)
         if [ "$slow" -gt 0 ]; then echo $((slow - 1)) > "$state/slow"; exec sleep 30; fi
+        if [ -e "$state/foreign" ]; then echo "foreign check" >> "$state/log"; exit 0; fi
         if [ -e "$ctl" ] && kill -0 "$(cat "$state/master")" 2>/dev/null; then exit 0; fi
         echo "Control socket connect($ctl): No such file or directory" >&2
         exit 255 ;;
       exit)
+        if [ -e "$state/foreign" ]; then rm -f "$state/foreign" "$ctl"; exit 0; fi
         kill "$(cat "$state/master")" 2>/dev/null; rm -f "$ctl"; exit 0 ;;
       *) exit 0 ;;
     esac ;;
@@ -126,6 +128,16 @@ pub(crate) fn slow_checks(control_path: &str, count: u32) {
     let state = format!("{control_path}.d");
     std::fs::create_dir_all(&state).expect("the fake's state directory should be makeable");
     std::fs::write(format!("{state}/slow"), count.to_string()).expect("slow should be writable");
+}
+
+/// Ends the spawned master and gives its control path to one without a forward.
+pub(crate) fn replace_master(control_path: &str) {
+    let state = format!("{control_path}.d");
+    let pid = std::fs::read_to_string(format!("{state}/master")).expect("the fake wrote its pid");
+    std::fs::write(format!("{state}/foreign"), "").expect("the replacement marker is writable");
+    let killed =
+        std::process::Command::new("kill").args(["-KILL", pid.trim()]).status().expect("kill runs");
+    assert!(killed.success(), "the spawned master can be killed");
 }
 
 /// Every line the stand-in logged for this control path, in order.

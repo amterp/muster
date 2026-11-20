@@ -7,5 +7,6 @@
 //! oracle.
 
 mod fake;
+mod foreign_master;
 mod left_behind;
 mod slow_check;
