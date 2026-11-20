@@ -567,6 +567,19 @@ pub(crate) fn handle_caused(
         return Handled::Reply(peer::hold(shared, &peer.name, &peer.socket, hung_up));
     }
     let panes = Panes::of(shared);
+    if let Some(pane) = pane_of_caller(&caller)
+        && !panes.exists(pane)
+    {
+        let outcome = if matches!(asked, Asked::Post(_)) {
+            "The message was not sent."
+        } else {
+            "The request was refused."
+        };
+        let reason = format!(
+            "the pane named by MUSTER_PANE ({pane}) is closed or unknown to this daemon. {outcome}"
+        );
+        return Handled::Reply(refused_as("", "pane_closed", &reason));
+    }
     // Before the request too, so that a pair group it makes is named by what panes are called now.
     shared.messages().service.called(&panes);
     let carriable = carry::may_carry(&shared.messages().service, &caller, &asked, &panes);

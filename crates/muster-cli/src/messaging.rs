@@ -60,7 +60,8 @@ as usual, and a helper of yours that reads it and stops is not reported as idle 
 Who you are: `--as NAME` if given, else the Claude Code session you run in (from \
 $CLAUDE_CODE_MESSAGING_SOCKET), else the agent in the pane you run in (from $MUSTER_PANE), else \
 you are the human. A session that never joined under a \
-name is named after its working directory.
+name is named after its working directory. If $MUSTER_PANE names a closed pane or one this daemon \
+does not know, the daemon refuses the request before choosing an identity.
 
 A message to @human notifies the person at the Muster window, and choosing the notification \
 shows the group's conversation in the window, as `muster msg open --group G` does. On a machine \

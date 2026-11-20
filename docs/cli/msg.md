@@ -38,8 +38,11 @@ Every verb works out who is asking, in this order:
   sets in every command a session runs.
 - The pane it runs in, from `$MUSTER_PANE`, once the daemon has found an agent there.
 - Otherwise the human: a person's own shell has no agent identity, and is `@human`. So is a
-  shell in a pane with no agent in it. On a devenv the laptop has linked to, that is you as the
+  shell in an open pane with no agent in it. On a devenv the laptop has linked to, that is you as the
   laptop's member, `@human@<laptop>` (below).
+
+If `$MUSTER_PANE` names a closed pane or one this daemon does not know, the daemon refuses the
+request before choosing an identity.
 
 `--as @human` acts as the human for that command. The agent keeps its pane and inbox, so later
 commands without `--as` still act as the agent.
