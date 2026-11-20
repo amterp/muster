@@ -20,6 +20,7 @@ fn daemon() -> Daemon {
 fn running(control: &mut Control, pane: &str, script: &str) {
     let create = proto::pane_request::Create {
         command: Some(format!("sh -c '{script}'")),
+        grid: Some(proto::Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 }),
         ..create(pane, in_new_tab(&format!("t-{pane}")))
     };
     make(control, create);
@@ -108,6 +109,45 @@ fn half_a_line_typed_is_not_input_left_unread() {
     until_text(&mut control, "p1", "got");
     send(&mut input, "p1", "two, half typed", false);
     never_stopped(&mut control, "p1", Duration::from_secs(4));
+}
+
+#[test]
+fn unread_pointer_reports_do_not_count_as_stuck_input() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    running(
+        &mut control,
+        "p1",
+        "stty raw -echo; printf \"\\033[?1000h\\033[?1006hready\"; \
+         head -c 1 >/dev/null; printf took; \
+         while [ ! -f \"$HOME/drain\" ]; do sleep 1; done; cat >\"$HOME/heard\"",
+    );
+    send(&mut input, "p1", "x", false);
+    until_text(&mut control, "p1", "took");
+    std::thread::sleep(Duration::from_millis(1500));
+
+    let wheel =
+        || Event::Wheel(input_event::Wheel { dy: 1.0, x: 15.0, y: 25.0, ..Default::default() });
+    input.send("p1", wheel());
+    never_stopped(&mut control, "p1", Duration::from_secs(3));
+
+    let typed = "hello";
+    send(&mut input, "p1", typed, false);
+    input.send("p1", wheel());
+    let stopped = until_some("unread keys to make p1 stuck", || unread(&mut control, "p1"));
+    assert_eq!(stopped.bytes as usize, typed.len(), "{stopped:?}");
+
+    std::fs::write(daemon.root().join("home/drain"), "").unwrap();
+    let heard = daemon.root().join("home/heard");
+    until_some("p1 to read wheel reports on both sides of the keys", || {
+        let read = std::fs::read_to_string(&heard).ok()?;
+        let (before, after) = read.split_once(typed)?;
+        (before.contains("\x1b[<") && after.contains("\x1b[<")).then_some(())
+    });
+    until_some("p1 to be published reading again", || {
+        unread(&mut control, "p1").is_none().then_some(())
+    });
 }
 
 /// Pointer input for a program that has stopped reading never reaches it: neither what was
