@@ -214,6 +214,10 @@ them. What already sits in the pane's terminal stays there too, pointer reports 
 nothing can pick those out of it; `muster pane restart` throws all of it away before it ends the
 program.
 
+On Linux, about 4 KiB of pointer reports queued after unread keys can hide those keys from the
+count Muster uses to detect a stuck pane. Muster can miss the hang until a fresh keystroke
+leaves typed input at the end of the queue.
+
 ## A restart types its resume at the pane's shell
 
 `muster pane restart` types the resume into the shell the agent leaves, so it needs that shell to

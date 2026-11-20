@@ -35,7 +35,7 @@ const STUCK_AFTER_SAID: &str = "MUSTER_DAEMON_STUCK_MS";
 /// noticed within a second of [`STUCK_AFTER`], and a pane that reads again is cleared as soon.
 const LOOK_EVERY: Duration = Duration::from_secs(1);
 
-/// More bytes than FIONREAD can see on either platform (4095 on Linux, 1024 on macOS).
+/// More than either platform reports in one FIONREAD sample. Linux can accept more than it reports.
 const HISTORY_BYTES: u32 = 8192;
 
 /// The kinds of bytes the writer has passed to the PTY, in write order. It stores lengths only.
@@ -332,6 +332,24 @@ mod tests {
         assert_eq!(typed(&mut writes, 7), 2);
         assert_eq!(typed(&mut writes, 6), 1);
         assert_eq!(typed(&mut writes, 5), 0);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_saturated_pointer_tail_hides_earlier_keys_until_another_key() {
+        let mut writes = Writes::default();
+        let typed = |writes: &mut Writes, bytes| writes.queued(raw(bytes).queued.unwrap()).bytes;
+        let full = 4095;
+        let pointer = vec![b'p'; 5000];
+
+        writes.written(b"hello", true);
+        assert_eq!(typed(&mut writes, 5), 5);
+        writes.written(&pointer, false);
+        assert_eq!(typed(&mut writes, full), 0);
+        assert_eq!(typed(&mut writes, full), 0);
+
+        writes.written(b"x", true);
+        assert_eq!(typed(&mut writes, full), 1);
     }
 
     #[test]

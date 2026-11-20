@@ -239,8 +239,9 @@ One entry per pane every followed daemon holds, on screen or not.
   reports nothing until it is first prompted, so a fresh agent is not called silent. An agent
   that changes or leaves takes it with it.
 - `unread_input` - the pane's program has stopped reading its input: `{"bytes", "since",
-  "program", "pid"}`, what waits unread when it stopped, since when, and the program holding the
-  terminal. `null` while it reads. Set on any pane; on an agent's, the state is `stuck`.
+  "program", "pid"}`, a lower bound on the typed bytes that were unread when it stopped, since
+  when, and the program holding the terminal. `null` until Muster detects a stop. Set on any pane;
+  on an agent's, the state is `stuck`.
 - `session` - the id the agent's adapter reported for its session, which the harness's own
   commands take (`claude --resume <id>`); `null` until it reports one, and once the agent leaves.
 - `resume` - what the pane's daemon runs, in the pane's directory, to start that session again
@@ -436,10 +437,11 @@ that fallback after the startup grace, since no match is their normal idle scree
 `stuck` is an agent that was reading and has left typed input unread for 5 seconds without reading
 more of it. Keys, pastes and doorbell rings count as typed input. Pointer reports can wait unread
 while the agent is idle. The agent's screen may still look as it did before it stopped.
-`unread_input` names the program and counts the unread typed bytes. The state clears when the
-program reads again. Interrupting it or resuming the session with `muster pane restart` can free it.
-An agent that is still starting has to read input before Muster can call it stuck. While a pane is
-stuck, Muster drops clicks and wheel turns (`muster docs limits`).
+`unread_input` names the program and gives a lower bound on the unread typed bytes. The state clears
+when the program reads again. Interrupting it or resuming the session with `muster pane restart`
+can free it. An agent that is still starting has to read input before Muster can call it stuck.
+While a pane is stuck, Muster drops clicks and wheel turns. On Linux, queued pointer reports can
+hide unread keys (see `muster docs limits`).
 
 `unreachable` is a pane on a machine the window cannot reach: a dropped VPN, or a devenv that
 rebooted and took its agents with it. What its daemon last said is a guess about the present, so
