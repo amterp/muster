@@ -1,8 +1,8 @@
 //! Whether a pane's program has stopped reading its input.
 //!
 //! A program that stops reading leaves what is sent to it in its terminal, where the daemon can
-//! count it ([`crate::pty::queued`]). The pane then looks like any other quiet one - it paints
-//! nothing because it is not reading, not because nothing reached it - and a window blamed its
+//! count it ([`crate::pty::queued`]). Only typed input counts toward `stuck`. The pane then looks
+//! like any other quiet one - it paints nothing because it is not reading - and a window blamed its
 //! bridge, `muster window` called it idle, and a message rang it for an answer that never came
 //! (GitHub issue #1).
 //!
@@ -15,8 +15,9 @@
 //! in the foreground, and goes when another takes its place, so a shell that read lends nothing
 //! to the agent it starts.
 //!
-//! Pure: the probe and the clock arrive as arguments, so every rule here is a unit test.
+//! The decision takes the probe and clock as arguments, so its rules can be tested without a PTY.
 
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use crate::pty::Queued;
@@ -33,6 +34,103 @@ const STUCK_AFTER_SAID: &str = "MUSTER_DAEMON_STUCK_MS";
 /// How often a pane is looked at while it has anything to say: often enough that a stop is
 /// noticed within a second of [`STUCK_AFTER`], and a pane that reads again is cleared as soon.
 const LOOK_EVERY: Duration = Duration::from_secs(1);
+
+/// More bytes than FIONREAD can see on either platform (4095 on Linux, 1024 on macOS).
+const HISTORY_BYTES: u32 = 8192;
+
+/// The kinds of bytes the writer has passed to the PTY, in write order. It stores lengths only.
+#[derive(Debug, Default)]
+pub(crate) struct Writes {
+    recent: VecDeque<Run>,
+    recent_bytes: u32,
+    inherited: bool,
+    pub(crate) typed_at: Option<Instant>,
+    pub(crate) lines: u64,
+    ignored_bytes: u64,
+    ignored_at_line_end: u64,
+    ignored_through_read_line: u64,
+}
+
+#[derive(Debug)]
+struct Run {
+    bytes: u32,
+    typed: bool,
+}
+
+impl Writes {
+    pub(crate) fn new(inherited: bool) -> Self {
+        Self { inherited, ..Self::default() }
+    }
+
+    pub(crate) fn flushed(&mut self) {
+        *self = Self { lines: self.lines, typed_at: self.typed_at, ..Self::default() };
+    }
+
+    pub(crate) fn written(&mut self, written: &[u8], typed: bool) {
+        if written.is_empty() {
+            return;
+        }
+        let len = written.len() as u64;
+        if typed {
+            self.typed_at = Some(Instant::now());
+        }
+        if let Some(end) = written.iter().rposition(|&byte| byte == b'\r' || byte == b'\n') {
+            self.lines += u64::from(typed);
+            self.ignored_at_line_end = self.ignored_bytes + if typed { 0 } else { end as u64 + 1 };
+        }
+        if !typed {
+            self.ignored_bytes += len;
+        }
+
+        let bytes = u32::try_from(len).unwrap_or(HISTORY_BYTES).min(HISTORY_BYTES);
+        self.recent_bytes += bytes;
+        if let Some(last) = self.recent.back_mut().filter(|run| run.typed == typed) {
+            last.bytes += bytes;
+        } else {
+            self.recent.push_back(Run { bytes, typed });
+        }
+        while self.recent_bytes > HISTORY_BYTES {
+            let first = self.recent.front_mut().expect("some bytes are recorded");
+            let removed = first.bytes.min(self.recent_bytes - HISTORY_BYTES);
+            first.bytes -= removed;
+            self.recent_bytes -= removed;
+            if first.bytes == 0 {
+                self.recent.pop_front();
+            }
+        }
+    }
+
+    pub(crate) fn queued(&mut self, mut queued: Queued) -> Queued {
+        if queued.bytes == 0 {
+            self.inherited = false;
+            self.ignored_through_read_line =
+                if queued.canonical { self.ignored_at_line_end } else { self.ignored_bytes };
+        } else if queued.canonical {
+            // The line discipline can edit the bytes it accepts. Subtract every ignored byte on
+            // a line that might still be queued, leaving a lower bound on typed bytes.
+            let ignored = self.ignored_at_line_end.saturating_sub(self.ignored_through_read_line);
+            queued.bytes = queued.bytes.saturating_sub(u32::try_from(ignored).unwrap_or(u32::MAX));
+        } else {
+            // Reads take bytes from the head. FIONREAD may omit bytes still moving through the
+            // kernel's buffers, but the last bytes written up to that count are still unread.
+            let mut remaining = queued.bytes;
+            let mut typed = 0;
+            for run in self.recent.iter().rev() {
+                let bytes = run.bytes.min(remaining);
+                if run.typed {
+                    typed += bytes;
+                }
+                remaining -= bytes;
+                if remaining == 0 {
+                    break;
+                }
+            }
+            // A handoff can keep a stopped pane before the new writer has seen its first byte.
+            queued.bytes = typed + if self.inherited { remaining } else { 0 };
+        }
+        queued
+    }
+}
 
 pub(crate) fn stuck_after() -> Duration {
     if cfg!(debug_assertions)
@@ -218,6 +316,37 @@ mod tests {
     /// Line by line, `lines` writes having ended a line.
     fn lines(bytes: u32, lines: u64) -> Look {
         Look { group: Some(10), queued: Some(Queued { bytes, canonical: true }), lines }
+    }
+
+    #[test]
+    fn queue_progress_removes_the_oldest_bytes_first() {
+        let mut writes = Writes::default();
+        writes.written(b"abc", true);
+        writes.written(b"pointer", false);
+        writes.written(b"de", true);
+        writes.written(b"focus", false);
+
+        let typed = |writes: &mut Writes, bytes| writes.queued(raw(bytes).queued.unwrap()).bytes;
+        assert_eq!(typed(&mut writes, 17), 5);
+        assert_eq!(typed(&mut writes, 14), 2);
+        assert_eq!(typed(&mut writes, 7), 2);
+        assert_eq!(typed(&mut writes, 6), 1);
+        assert_eq!(typed(&mut writes, 5), 0);
+    }
+
+    #[test]
+    fn a_canonical_queue_counts_only_typed_bytes_on_completed_lines() {
+        let mut writes = Writes::default();
+        writes.written(b"pointer", false);
+        writes.written(b"abc\r", true);
+        writes.written(b"another pointer", false);
+
+        let typed =
+            |writes: &mut Writes, bytes| writes.queued(lines(bytes, 0).queued.unwrap()).bytes;
+        assert_eq!(typed(&mut writes, 11), 4);
+        assert_eq!(typed(&mut writes, 0), 0);
+        writes.written(b"d\r", true);
+        assert_eq!(typed(&mut writes, 17), 2);
     }
 
     /// Looks once a second from `start`, each look with input last written at `written`,

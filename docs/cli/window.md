@@ -429,14 +429,13 @@ unmatched screens can read idle as before.
 A manifest with no idle rule leaves idle to the unmatched-screen fallback. Those harnesses keep
 that fallback after the startup grace, since no match is their normal idle screen.
 
-`stuck` is an agent whose program has stopped reading its input: having been seen to read, it has
-left what was sent to it unread for 5 seconds and read nothing since. Its screen still shows what
-it showed before it stopped, so it would otherwise read as whatever it was doing then. It lasts
-until the program reads again; interrupting it, or ending it and resuming its session with
-`muster pane restart`, frees it. `unread_input` says which program and what it left. A program
-that has not read anything yet, an agent still starting, is never called stuck. While a pane is
-stuck, clicks and wheel turns over it are dropped rather than queued for its program (`muster docs
-limits`).
+`stuck` is an agent that was reading and has left typed input unread for 5 seconds without reading
+more of it. Keys, pastes and doorbell rings count as typed input. Pointer reports can wait unread
+while the agent is idle. The agent's screen may still look as it did before it stopped.
+`unread_input` names the program and counts the unread typed bytes. The state clears when the
+program reads again. Interrupting it or resuming the session with `muster pane restart` can free it.
+An agent that is still starting has to read input before Muster can call it stuck. While a pane is
+stuck, Muster drops clicks and wheel turns (`muster docs limits`).
 
 `unreachable` is a pane on a machine the window cannot reach: a dropped VPN, or a devenv that
 rebooted and took its agents with it. What its daemon last said is a guess about the present, so

@@ -591,6 +591,7 @@ impl Writer {
     /// Encodes one input and writes it. False once the pane can take no more.
     fn write_one(&mut self, seq: u64, input: Input, master: &OwnedFd, wake: &OwnedFd) -> bool {
         let typed = input.is_typed();
+        let counts_unread = typed && !input.is_pointer();
         let someones = input.is_someones_text();
         let by = input.typed_by();
         let keyed = input.is_keyed();
@@ -607,12 +608,6 @@ impl Writer {
                 io.wrote_input(Instant::now(), someones, by);
             }
         };
-        if typed
-            && bytes.iter().any(|&byte| byte == b'\r' || byte == b'\n')
-            && let Some(io) = self.io.upgrade()
-        {
-            io.wrote_line();
-        }
         if keyed
             && answers(&bytes)
             && let Some(io) = self.io.upgrade()
@@ -623,7 +618,24 @@ impl Writer {
         // Only a restart's flush abandons a write part way: it empties the terminal's input as
         // well, so no half of an escape sequence is left for whatever reads next.
         let flushed = || self.discards.is_flushed(seq);
-        if let Err(error) = write_all(master, wake, &bytes, wrote_input, flushed) {
+        let write = |bytes: &[u8]| {
+            let io = self.io.upgrade().ok_or(io::ErrorKind::BrokenPipe)?;
+            let mut written = io.written_input();
+            if flushed() {
+                return Ok(0);
+            }
+            // SAFETY: the slice is valid for reads of its length. The master is nonblocking
+            // so the reader can sample the kernel count and this history under the same lock.
+            let took =
+                unsafe { libc::write(master.as_raw_fd(), bytes.as_ptr().cast(), bytes.len()) };
+            if took < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let took = took.cast_unsigned();
+            written.written(&bytes[..took], counts_unread);
+            Ok(took)
+        };
+        if let Err(error) = write_all(master, wake, &bytes, write, wrote_input, flushed) {
             if error.kind() != io::ErrorKind::BrokenPipe {
                 log::warn(
                     "daemon.pane.write_failed",
@@ -938,27 +950,23 @@ fn write_all(
     master: &OwnedFd,
     wake: &OwnedFd,
     mut bytes: &[u8],
+    write: impl Fn(&[u8]) -> io::Result<usize>,
     took: impl Fn(),
     abandoned: impl Fn() -> bool,
 ) -> io::Result<()> {
     while !bytes.is_empty() && !abandoned() {
-        // SAFETY: the slice is valid for reads of its length.
-        let written =
-            unsafe { libc::write(master.as_raw_fd(), bytes.as_ptr().cast(), bytes.len()) };
-        if written >= 0 {
-            bytes = &bytes[written.cast_unsigned()..];
-            took();
-            continue;
-        }
-        let error = io::Error::last_os_error();
-        match error.kind() {
-            io::ErrorKind::Interrupted => {}
-            io::ErrorKind::WouldBlock => {
+        match write(bytes) {
+            Ok(written) => {
+                bytes = &bytes[written..];
+                took();
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                 if !writable(master, wake)? {
                     return Err(io::ErrorKind::BrokenPipe.into());
                 }
             }
-            _ => return Err(error),
+            Err(error) => return Err(error),
         }
     }
     Ok(())

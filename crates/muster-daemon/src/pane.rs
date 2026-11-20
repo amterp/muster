@@ -162,6 +162,7 @@ pub(crate) struct PaneIo {
     agent_group: AtomicU32,
     /// When the writer last wrote input to the program.
     typed: Mutex<Typed>,
+    written_input: Mutex<unread::Writes>,
     begun: Begun,
     /// What the screen showed as the pane's agent last went to work.
     turn: Mutex<Option<TurnMark>>,
@@ -219,9 +220,6 @@ struct Typed {
     /// Until when a command-delivered wake may still start a turn without that turn counting
     /// as new work, allowing the harness to accept it asynchronously.
     commanded_until: Option<Instant>,
-    /// How many writes of typed input have ended a line, which a terminal reading line by line
-    /// passes on whole ([`crate::unread`]).
-    lines: u64,
 }
 
 /// Who typed a pane's input.
@@ -523,14 +521,8 @@ impl PaneIo {
         (typed.turn, typed.turn_at) = (by, at);
     }
 
-    /// Typed input holding a Return, or a newline, is about to be written.
-    pub(crate) fn wrote_line(&self) {
-        poison::lock(&self.typed, "daemon.pane.typed").lines += 1;
-    }
-
-    /// How many writes of typed input have ended a line.
-    pub(crate) fn lines_written(&self) -> u64 {
-        poison::lock(&self.typed, "daemon.pane.typed").lines
+    pub(crate) fn written_input(&self) -> MutexGuard<'_, unread::Writes> {
+        poison::lock(&self.written_input, "daemon.pane.written_input")
     }
 
     pub(crate) fn input_at(&self) -> Option<Instant> {
@@ -648,8 +640,11 @@ impl PaneIo {
     /// Empties what the program has yet to read: the daemon's queue for it, the write under
     /// way included, then the terminal's own.
     pub(crate) fn flush_input(&self) -> io::Result<()> {
+        let mut written = self.written_input();
         self.discards.discard_all();
-        pty::flush_input(self.master.as_fd())
+        pty::flush_input(self.master.as_fd())?;
+        written.flushed();
+        Ok(())
     }
 
     /// How many times a program in the pane has said which directory it is in (OSC 7), which a
@@ -1195,6 +1190,7 @@ impl Pane {
             answered: AtomicBool::new(false),
             agent_group: AtomicU32::new(0),
             typed: Mutex::default(),
+            written_input: Mutex::new(unread::Writes::new(record.unread_input.is_some())),
             begun: Begun::new(process),
             turn: Mutex::new(None),
             directories_said: AtomicU64::new(0),
@@ -1611,16 +1607,21 @@ impl Reader {
         if self.io.discards.is_restarting() {
             return;
         }
-        let input_at = self.io.input_at();
-        let change = if self.unread.due(input_at, now) {
-            let look = unread::Look {
-                group: self.io.foreground_group(),
-                queued: pty::queued(self.io.master.as_fd()).ok(),
-                lines: self.io.lines_written(),
-            };
-            self.unread.looked(look, input_at, now).map(|change| (change, look.group))
-        } else {
-            None
+        let change = {
+            let mut written = self.io.written_input();
+            let input_at = written.typed_at;
+            if self.unread.due(input_at, now) {
+                let look = unread::Look {
+                    group: self.io.foreground_group(),
+                    queued: pty::queued(self.io.master.as_fd())
+                        .ok()
+                        .map(|queue| written.queued(queue)),
+                    lines: written.lines,
+                };
+                self.unread.looked(look, input_at, now).map(|change| (change, look.group))
+            } else {
+                None
+            }
         };
         let published = change.map(|(change, group)| {
             let dropped = match change {
@@ -1816,6 +1817,7 @@ impl PaneIo {
             answered: AtomicBool::new(false),
             agent_group: AtomicU32::new(0),
             typed: Mutex::default(),
+            written_input: Mutex::default(),
             begun: Begun::new(None),
             turn: Mutex::new(None),
             directories_said: AtomicU64::new(0),
