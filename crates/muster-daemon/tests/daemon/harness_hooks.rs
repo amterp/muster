@@ -460,7 +460,11 @@ fn claude_codes_session_start_exposes_the_report_error() {
             .stdin(Stdio::null())
             .output()
             .unwrap();
-        assert_eq!(output.status.code(), Some(1), "{shell}: a non-blocking hook error");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{shell}: a hook error would be drawn in the session"
+        );
         assert!(output.stdout.is_empty(), "{shell}: stdout reaches the model");
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(stderr.contains("muster-daemon report: --from reads a JSON object"), "{stderr}");

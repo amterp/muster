@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --from session-id=/session_id >/dev/null || { report_status=$?; printf 'Muster SessionStart session ID report exited %s\\n' \"$report_status\" >&2; exit 1; }"
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --from session-id=/session_id >/dev/null || { report_status=$?; printf 'Muster SessionStart session ID report exited %s\\n' \"$report_status\" >&2; }"
           }
         ]
       }
