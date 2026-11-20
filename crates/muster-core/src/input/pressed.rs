@@ -2,6 +2,10 @@
 
 use super::{Chord, Key, KeyEvent, Modifiers};
 
+/// The gap before each paced write of a `pane send`.
+/// Claude Code could ignore keys that arrived together (corpus/claude-code-2.1.288/dialog-input.txt).
+pub const SEND_KEY_GAP: std::time::Duration = std::time::Duration::from_millis(50);
+
 /// The most keys one `pane send` presses.
 ///
 /// Each key waits out a gap after the last on the pane's one writer, so everything queued behind

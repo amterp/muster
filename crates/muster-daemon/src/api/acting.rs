@@ -159,8 +159,8 @@ fn sent(shared: &Shared, correlation: String, asked: &api::SendToPane) -> api::A
         Ok(pane_text::PaneText { text, ..Default::default() }.tail(rows).text)
     };
     let typed = || crate::input::typed(shared, pane, input).map_err(Unconfirmed::Refused);
-    let outcome =
-        pane_text::send(pane, &asked.text, asked.append, asked.confirm, prompt, read, typed);
+    let readback = pane_text::Readback::for_send(asked.confirm, asked.keys.len(), asked.enter);
+    let outcome = pane_text::send(pane, &asked.text, asked.append, readback, prompt, read, typed);
     sent_answer(correlation, outcome)
 }
 

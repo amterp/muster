@@ -2900,13 +2900,10 @@ fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
             return Response::failure(refusal);
         }
     }
-    let before = if send.confirm {
-        pane_text::before_sending(|rows| {
-            session::read_pane(&target.daemon, &pane, Scope::Newest(rows)).map(|read| read.text)
-        })
-    } else {
-        String::new()
-    };
+    let readback = pane_text::Readback::for_send(send.confirm, send.keys.len(), send.enter);
+    let before = readback.before(|rows| {
+        session::read_pane(&target.daemon, &pane, Scope::Newest(rows)).map(|read| read.text)
+    });
     let queued = session::send_to_pane(
         &target.daemon,
         &pane,
@@ -2917,30 +2914,26 @@ fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
     if let Err(refusal) = queued {
         return placed(Err(refusal), &target);
     }
-    if !send.confirm {
-        return Response::ok();
-    }
-    confirm_it_arrived(&pane, send, &before)
+    before.map_or_else(Response::ok, |before| read_back_send(&pane, send, readback, &before))
 }
 
-/// Reads the pane back and refuses if what was just sent does not show on it, against `before`.
-///
-/// How long to read and what to say is `pane_text::confirm`'s, which the CLI also uses when it
-/// sends straight to a daemon, so a caller asking for the same certainty gets the same answer.
-///
-/// **Refusal rather than a field on the answer**, because an exit code is the only part of this
-/// a script branches on without reading English, and a send that cannot be seen is exactly the
-/// case `--confirm` was asked for. A send that may have been taken all the same answers
-/// unanswered rather than refused, so the caller is told not to send it again.
-fn confirm_it_arrived(pane: &PaneId, send: &proto::SendToPane, before: &str) -> Response {
+fn read_back_send(
+    pane: &PaneId,
+    send: &proto::SendToPane,
+    readback: pane_text::Readback,
+    before: &str,
+) -> Response {
     let Some(daemon) = pane_holder(pane, &send.daemon_id) else {
+        if !send.confirm {
+            return Response::ok();
+        }
         return Response::unanswered(format!(
             "what was sent went to pane {pane}, which then went away, so nothing could be read \
              back to confirm it. Whatever was sent may well have arrived; this is the \
              confirmation going missing, not the send."
         ));
     };
-    let confirmed = pane_text::confirm(pane.as_str(), &send.text, before, |rows| {
+    let confirmed = pane_text::after_sending(readback, pane.as_str(), &send.text, before, |rows| {
         session::read_pane(&daemon, pane, Scope::Newest(rows)).map(|read| read.text)
     });
     match confirmed {

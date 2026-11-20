@@ -39,7 +39,7 @@ const READING: &str = "fixture-is-reading";
 /// Between the two numbers that matter, with room either side. The slowest an honest pane was
 /// measured taking to draw what it was handed is 54ms, so a confirmation that reads once and
 /// gives up fails this deterministically rather than occasionally; and it is well inside the
-/// budget in `confirm_it_arrived`, so a confirmation that waits passes it with margin to spare
+/// read-back budget, so a confirmation that waits passes it with margin to spare
 /// on a runner slower than the machine it was written on.
 const DRAWS_AFTER: f32 = 0.3;
 

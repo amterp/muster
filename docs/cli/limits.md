@@ -179,11 +179,11 @@ once the pane changes at all - which says the pane changed, not that the key cha
 agent at work changes its pane on its own, and a dialog changes it while it is still drawing.
 Claude Code's plan dialog has been measured ignoring a Return for up to about 100 ms after it
 draws, so a key sent as it appears can pass and be ignored; `pane wait --until blocked` answers only once a dialog has read blocked for 300 ms,
-which is past that. A send is taken before the pane can have drawn it, so
-the read is retried for up to a second rather than taken once: a pane that has already drawn the
-text answers immediately, and only a genuine miss waits the second out. What it proves is
-**arrival, not submission**: a pane draws the text whether it has been submitted or is sitting in
-an input box, so nothing readable from out here separates those.
+which is past that. A send is taken before the pane can have drawn it, so the read is retried for
+up to a second. A text-only send that is visible answers on its first read. A send with
+`--key` also waits for the pane's visible text to settle, as it does without `--confirm`.
+Confirmation proves that text reached the pane. A line waiting in the input box counts just as a
+submitted line does.
 
 **A send `--confirm` cannot see exits 1 or 4, by what the pane shows.** Exit 1 is a refusal the
 pane proves: nothing on it changed, as when a dialog ignores a paste, or only the start of the

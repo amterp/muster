@@ -1,5 +1,9 @@
 //! What a pane has printed, as it is read back, and the rules for reading it.
 
+use std::time::{Duration, Instant};
+
+use crate::input::{MAX_SENT_KEYS, SEND_KEY_GAP};
+
 /// What a pane has printed, as far back as the backend would go.
 ///
 /// Asked for rather than followed: a pane's output never enters the core (`architecture.md`, control plane and data plane), so this is the
@@ -137,10 +141,14 @@ fn times_on(pane: &str, wanted: &str) -> usize {
 /// the whole budget - a pane that has already drawn the text answers on the first read, before
 /// any sleep. A second buys about eighteen times the worst honest case for a price a caller
 /// pays only when the news is bad.
-pub const CONFIRM_WITHIN: std::time::Duration = std::time::Duration::from_secs(1);
+const CONFIRM_WITHIN: Duration = Duration::from_secs(1);
 
 /// How often the pane is re-read while waiting, matching the seam's other bounded waits.
-const CONFIRM_POLL: std::time::Duration = std::time::Duration::from_millis(25);
+const CONFIRM_POLL: Duration = Duration::from_millis(25);
+
+const KEY_NO_REDRAW: Duration = Duration::from_millis(300);
+// Claude Code's plan dialog can ignore Return for about 100 ms after it draws.
+const KEY_REDRAW_QUIET: Duration = Duration::from_millis(100);
 
 /// How far up the pane a confirmation reads, before the send and while it waits after. A sent
 /// message ends at the bottom of the screen, and a screen is shorter than this at any size
@@ -172,18 +180,72 @@ pub fn into_held_prompt(pane: &str, held: Option<&str>) -> Result<(), String> {
     ))
 }
 
-/// What a pane shows just before something is sent to it, for [`confirm`] to compare against.
-///
-/// Read only when a caller asked to confirm, and before the send rather than after it, since
-/// after is too late to know. A pane that cannot be read counts as blank, which leaves `confirm`
-/// asking only whether the text is there at all.
-pub fn before_sending(read: impl FnOnce(u32) -> Result<String, String>) -> String {
-    read(CONFIRM_ROWS).unwrap_or_default()
+/// Which checks a send makes against the pane's output.
+#[derive(Debug, Clone, Copy)]
+pub struct Readback {
+    confirm: bool,
+    key_pacing: Duration,
 }
 
-/// Reads `pane` back until what was just sent to it shows, and says why not when it does not.
+impl Readback {
+    pub fn for_send(confirm: bool, keys: usize, enter: bool) -> Readback {
+        let writes = keys.min(MAX_SENT_KEYS) + usize::from(enter && keys > 0);
+        let key_pacing = SEND_KEY_GAP * u32::try_from(writes).expect("the key count is bounded");
+        Readback { confirm, key_pacing }
+    }
+
+    fn keyed(self) -> bool {
+        !self.key_pacing.is_zero()
+    }
+
+    /// Capture the baseline before a send that will read the pane back.
+    pub fn before(self, read: impl FnOnce(u32) -> Result<String, String>) -> Option<String> {
+        (self.confirm || self.keyed()).then(|| read(CONFIRM_ROWS).unwrap_or_default())
+    }
+
+    fn observe(
+        self,
+        before: &str,
+        mut read: impl FnMut(u32) -> Result<String, String>,
+        mut complete: impl FnMut(&str) -> bool,
+    ) -> Option<String> {
+        let keyed = self.keyed();
+        let paced = Instant::now() + self.key_pacing;
+        let deadline = paced + CONFIRM_WITHIN;
+        let mut previous: Option<String> = None;
+        let mut changed_at = None;
+        loop {
+            let unreadable = match read(CONFIRM_ROWS) {
+                Ok(text) => {
+                    let complete = complete(&text);
+                    if keyed && text != previous.as_deref().unwrap_or(before) {
+                        previous = Some(text);
+                        changed_at = Some(Instant::now());
+                    }
+                    if complete
+                        && (!keyed
+                            || Instant::now()
+                                >= changed_at.map_or(paced + KEY_NO_REDRAW, |last| {
+                                    last.max(paced) + KEY_REDRAW_QUIET
+                                }))
+                    {
+                        return None;
+                    }
+                    None
+                }
+                Err(refusal) => Some(refusal),
+            };
+            if Instant::now() >= deadline {
+                return unreadable;
+            }
+            std::thread::sleep(CONFIRM_POLL);
+        }
+    }
+}
+
+/// Waits for a keyed send's redraw and checks that the send shows when asked to confirm.
 ///
-/// `before` is [`before_sending`]'s read, and `read(rows)` reads the pane's last `rows` rows, or
+/// `before` is [`Readback::before`]'s read, and `read(rows)` reads the pane's last `rows` rows, or
 /// all of it for zero. Shared by every path that sends - through a window, or from the CLI
 /// straight to a daemon when no window answers - so a caller asking for the same certainty gets
 /// the same answer, in the same words.
@@ -216,16 +278,17 @@ pub fn before_sending(read: impl FnOnce(u32) -> Result<String, String>) -> Strin
 /// or the start of the text arrived and its end did not, which is a line cut short. Text that
 /// never shows is still never confirmed, so a busy pane that loses what it was sent is no easier
 /// to confirm than it was.
-///
-/// Reading until [`CONFIRM_WITHIN`] runs out rather than once, because a send is accepted before
-/// the pane can have drawn it. A pane that has drawn it answers on the first read, so the cost
-/// falls on the miss.
-pub fn confirm(
+pub fn after_sending(
+    readback: Readback,
     pane: &str,
     sent: &str,
     before: &str,
     mut read: impl FnMut(u32) -> Result<String, String>,
 ) -> Result<(), Unconfirmed> {
+    if !readback.confirm {
+        let _ = readback.observe(before, read, |_| true);
+        return Ok(());
+    }
     let wanted = looked_for(sent);
     let shown_before = times_on(before, &wanted);
     let arrived = |after: &str| {
@@ -237,28 +300,22 @@ pub fn confirm(
     };
     let start = start_of(sent);
     let started_before = times_on(before, &start);
+    let mut confirmed = false;
     let mut changed = false;
     // Only the last read decides whether the text was cut short: a harness can draw the start
     // of a paste on its way in and then clear the whole of it on the Return.
     let mut started = false;
-    let deadline = std::time::Instant::now() + CONFIRM_WITHIN;
-    // Whatever the last read said, so a pane that could not be read at all is reported as that
-    // rather than as one that drew nothing - two different things to be told.
-    let unreadable = loop {
-        let outcome = match read(CONFIRM_ROWS) {
-            Ok(text) if arrived(&text) => return Ok(()),
-            Ok(text) => {
-                changed |= text != before;
-                started = times_on(&text, &start) > started_before;
-                None
-            }
-            Err(refusal) => Some(refusal),
-        };
-        if std::time::Instant::now() >= deadline {
-            break outcome;
+    let unreadable = readback.observe(before, &mut read, |text| {
+        if !confirmed {
+            confirmed = arrived(text);
+            changed |= text != before;
+            started = times_on(text, &start) > started_before;
         }
-        std::thread::sleep(CONFIRM_POLL);
-    };
+        confirmed
+    });
+    if confirmed {
+        return Ok(());
+    }
     if let Some(refusal) = unreadable {
         return Err(Unconfirmed::Unknown(format!(
             "what was sent to pane {pane} could not be confirmed, because reading the pane back \
@@ -315,7 +372,7 @@ pub fn confirm(
 
 /// Types `text` into `pane` as a send does from every caller that is not a window: refused
 /// before anything is typed when the prompt of the pane's agent holds something and `append`
-/// was not asked for, then typed, then confirmed by [`confirm`] when `confirmed` is asked for.
+/// was not asked for, then typed, then read back when sending keys or asked to confirm.
 ///
 /// `prompt` reads what that prompt holds, `read(rows)` reads the pane's last `rows` rows or all
 /// of it for zero, and `typed` types the send, saying why when nothing was typed or, when its
@@ -325,7 +382,7 @@ pub fn send(
     pane: &str,
     text: &str,
     append: bool,
-    confirmed: bool,
+    readback: Readback,
     prompt: impl FnOnce() -> Option<String>,
     mut read: impl FnMut(u32) -> Result<String, String>,
     typed: impl FnOnce() -> Result<(), Unconfirmed>,
@@ -333,12 +390,12 @@ pub fn send(
     if checks_prompt(text, append) {
         into_held_prompt(pane, prompt().as_deref()).map_err(Unconfirmed::Refused)?;
     }
-    let before = if confirmed { before_sending(&mut read) } else { String::new() };
+    let before = readback.before(&mut read);
     typed()?;
-    if confirmed { confirm(pane, text, &before, read) } else { Ok(()) }
+    before.map_or(Ok(()), |before| after_sending(readback, pane, text, &before, read))
 }
 
-/// Why [`confirm`] could not confirm a send, by what a caller should do next.
+/// Why the read-back could not confirm a send, by what a caller should do next.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Unconfirmed {
     /// The pane shows the send was not taken, so sending it again, or as keys, is safe.
@@ -364,8 +421,19 @@ fn squeezed(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        PaneText, Unconfirmed, before_sending, checks_prompt, confirm, into_held_prompt, send,
+        PaneText, Readback, Unconfirmed, after_sending, checks_prompt, into_held_prompt, send,
     };
+
+    const CONFIRM: Readback = Readback { confirm: true, key_pacing: std::time::Duration::ZERO };
+
+    fn confirm(
+        pane: &str,
+        sent: &str,
+        before: &str,
+        read: impl FnMut(u32) -> Result<String, String>,
+    ) -> Result<(), Unconfirmed> {
+        after_sending(CONFIRM, pane, sent, before, read)
+    }
 
     /// Text is checked against a prompt holding something; keys, Return and a lone space with
     /// Return are not, and a send told to append is not.
@@ -505,7 +573,7 @@ mod tests {
 
     #[test]
     fn a_pane_unreadable_before_the_send_leaves_only_whether_the_text_is_there() {
-        assert_eq!(before_sending(|_| Err("gone".to_string())), "");
+        assert_eq!(CONFIRM.before(|_| Err("gone".to_string())), Some(String::new()));
         assert_eq!(confirm("p1", "hello", "", |_| Ok("$ hello\n".to_string())), Ok(()));
     }
 
@@ -582,24 +650,26 @@ mod tests {
             Ok(())
         };
 
-        let held = send("p1", "hello", false, true, || Some("a draft".to_string()), read, type_it);
+        let held =
+            send("p1", "hello", false, CONFIRM, || Some("a draft".to_string()), read, type_it);
         assert!(matches!(held, Err(Unconfirmed::Refused(_))), "{held:?}");
         assert_eq!((typed.get(), reads.get()), (false, 0), "nothing typed or read");
 
-        let appended = send("p1", "hello", true, false, || panic!("not asked"), read, type_it);
+        let unchecked = Readback::for_send(false, 0, false);
+        let appended = send("p1", "hello", true, unchecked, || panic!("not asked"), read, type_it);
         assert_eq!(appended, Ok(()));
         assert_eq!((typed.get(), reads.get()), (true, 0), "typed, and not read back");
 
         typed.set(false);
         let full = || Err(Unconfirmed::Refused("full".to_string()));
-        let refused = send("p1", "hello", false, true, || None, read, full);
+        let refused = send("p1", "hello", false, CONFIRM, || None, read, full);
         assert_eq!(refused, Err(Unconfirmed::Refused("full".to_string())));
         assert_eq!(reads.get(), 1, "only the read before typing");
 
         let lost = || Err(Unconfirmed::Unknown("answer lost".to_string()));
-        let unknown = send("p1", "hello", false, true, || None, read, lost);
+        let unknown = send("p1", "hello", false, CONFIRM, || None, read, lost);
         assert_eq!(unknown, Err(Unconfirmed::Unknown("answer lost".to_string())), "never refused");
 
-        assert_eq!(send("p1", "hello", false, true, || None, read, type_it), Ok(()));
+        assert_eq!(send("p1", "hello", false, CONFIRM, || None, read, type_it), Ok(()));
     }
 }

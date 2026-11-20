@@ -494,7 +494,8 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
             refused => pane_text::Unconfirmed::Refused(refused.detail().to_string()),
         })
     };
-    match pane_text::send(pane, &send.text, send.append, send.confirm, prompt, read, typed) {
+    let readback = pane_text::Readback::for_send(send.confirm, send.keys.len(), send.enter);
+    match pane_text::send(pane, &send.text, send.append, readback, prompt, read, typed) {
         Ok(()) => ok(),
         Err(pane_text::Unconfirmed::Refused(refusal)) => failure(refusal),
         Err(pane_text::Unconfirmed::Unknown(reason)) => Response::unanswered(reason),

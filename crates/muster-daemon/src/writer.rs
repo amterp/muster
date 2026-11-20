@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
-use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers, OptionAsAlt};
+use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers, OptionAsAlt, SEND_KEY_GAP};
 use muster_vt::{
     EncoderError, KeyEncoder, KeyModes, Mode, MouseAction, MouseButton, MouseEncoder, MouseEvent,
     MouseGeometry, RawKeyEvent, Screen as Active, Terminal, encode_paste, paste_is_safe,
@@ -40,15 +40,6 @@ const DISCRETE_MULTIPLIER: f64 = 3.0;
 
 /// A cell's height when no surface has said, so a precise scroll still moves by rows.
 const FALLBACK_CELL: f64 = 16.0;
-
-/// The least time between a pane's last write and a key that `pane send` presses.
-///
-/// A key is a write of its own so that the program reads it alone: Claude Code took a line of
-/// keys arriving in one write as nothing at all (corpus/claude-code-2.1.288/dialog-input.txt).
-/// And it waits a moment after the last, as a person's next key does, so a dialog has drawn
-/// what one key did before it reads the next - a Return that arrives with the arrow before it is
-/// at the mercy of the program reading both before it redraws.
-const KEY_GAP: Duration = Duration::from_millis(50);
 
 /// Something for a pane's program to read.
 #[derive(Debug)]
@@ -71,7 +62,7 @@ pub(crate) enum Input {
         keys: Vec<KeyEvent>,
         enter: bool,
     },
-    /// One key of a send, written on its own a moment after the pane's last write (`KEY_GAP`).
+    /// One key of a send, paced so the program reads it on its own (`SEND_KEY_GAP`).
     Press(KeyEvent),
     /// What the doorbell's thread types for somebody's work - a wake, the prompt a compaction is
     /// followed by - or its Return pressed again: written as a send is, and told apart from it
@@ -174,7 +165,7 @@ impl Input {
         )
     }
 
-    /// What is written for this input, in order, and whether each waits out `KEY_GAP` first.
+    /// What is written for this input, in order, and whether each waits out `SEND_KEY_GAP` first.
     ///
     /// A send with no keys is one write, its text and its Return together, which is how a
     /// harness has been measured taking a slash command at its prompt; one with keys is its
@@ -208,7 +199,7 @@ fn answers(bytes: &[u8]) -> bool {
 
 /// How long a paced write waits, given when the pane was last written to.
 fn pause_before(last_write: Option<Instant>, now: Instant) -> Duration {
-    last_write.map_or(Duration::ZERO, |last| (last + KEY_GAP).saturating_duration_since(now))
+    last_write.map_or(Duration::ZERO, |last| (last + SEND_KEY_GAP).saturating_duration_since(now))
 }
 
 /// A key as it arrives: libghostty's numbering, and the app's option-as-alt setting.
@@ -1384,9 +1375,9 @@ mod tests {
     fn a_paced_key_waits_out_the_gap_since_the_last_write_and_no_longer() {
         let now = Instant::now();
         assert_eq!(pause_before(None, now), Duration::ZERO);
-        assert_eq!(pause_before(Some(now), now), KEY_GAP);
-        assert_eq!(pause_before(Some(now), now + KEY_GAP / 2), KEY_GAP / 2);
-        assert_eq!(pause_before(Some(now), now + KEY_GAP * 2), Duration::ZERO);
+        assert_eq!(pause_before(Some(now), now), SEND_KEY_GAP);
+        assert_eq!(pause_before(Some(now), now + SEND_KEY_GAP / 2), SEND_KEY_GAP / 2);
+        assert_eq!(pause_before(Some(now), now + SEND_KEY_GAP * 2), Duration::ZERO);
     }
 
     /// A reply to a terminal query is written while a send's keys wait out their gaps, rather
