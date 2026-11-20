@@ -426,6 +426,10 @@ screen matches no rule stays unknown, so `pane wait --until idle` keeps waiting.
 avoids calling an undrawn or unreadable harness idle. Once a rule has recognized the agent,
 unmatched screens can read idle as before.
 
+A visible dialog takes precedence over a declared wait. If the harness reports idle as the
+dialog opens, Muster gives the screen time to settle before showing the pane as `blocked`.
+Messages posted during the dialog wait for somebody to answer it.
+
 A manifest with no idle rule leaves idle to the unmatched-screen fallback. Those harnesses keep
 that fallback after the startup grace, since no match is their normal idle screen.
 

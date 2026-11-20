@@ -200,8 +200,11 @@ impl Reporting {
     /// one that reported (after [`UNCONFIRMED`] for one not yet identified), when the agent's
     /// process has exited, for working after [`QUIET`] without output, and for blocked or idle
     /// after [`DISAGREE`] of the rules reading otherwise once they have read it the same way, or
-    /// else after [`RESTLESS_SECONDS`] of output running. A working report is set aside, and
-    /// counts again after, while the rules have read a prompt on screen for [`DISAGREE`], or
+    /// else after [`RESTLESS_SECONDS`] of output running. An unconfirmed idle report also
+    /// expires after [`DISAGREE`] with a visible dialog. A Stop hook can report idle as a
+    /// selector opens, before any idle screen can confirm the report.
+    ///
+    /// A working report is set aside while the rules have read a prompt on screen for [`DISAGREE`], or
     /// from the moment it comes if the prompt was on screen already. A blocked report the rules
     /// have not read does not count until the screen has sat still for [`STILL`] since it came.
     /// An idle report deferred by the harness's manifest is kept without aging out while its
@@ -233,6 +236,10 @@ impl Reporting {
             })
         } else {
             self.restless_since(report.at, now)
+                || (report.state == State::Idle
+                    && self
+                        .blocker_since
+                        .is_some_and(|since| now.duration_since(since.max(report.at)) >= DISAGREE))
         };
         if stale {
             self.report = None;

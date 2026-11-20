@@ -1881,14 +1881,21 @@ fn reached_as_told(
             } else {
                 *reach
             };
+            let activity = activities.get(name).copied();
             msg_answer::Reached {
                 name: name.clone(),
                 reach: reach_of(reach).into(),
-                activity: activity_of(activities.get(name).copied()).into(),
+                activity: activity_of(activity).into(),
                 until: deferral
                     .map_or(msg_answer::Until::Unspecified, |deferral| deferral.until)
                     .into(),
-                held: deferral.and_then(|deferral| deferral.held.clone()),
+                held: deferral.and_then(|deferral| {
+                    if activity == Some(Activity::Blocked) {
+                        Some(stalls::AT_A_DIALOG.to_string())
+                    } else {
+                        deferral.held.clone()
+                    }
+                }),
             }
         })
         .collect()
