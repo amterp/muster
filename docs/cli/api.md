@@ -60,8 +60,8 @@ answer or a snapshot past 16 MiB.
 
 Requests are namespaced by what they act on, each an arm of `Request`'s oneof. A request the daemon
 does not know is refused as UNSUPPORTED and the connection stays open. A connection carries out its
-requests one at a time, in the order sent, so a program that wants to read while a confirmed send or
-a restart runs does so on a second connection.
+requests one at a time, in the order sent. To read while a send with keys, a confirmed send, or
+a restart runs, use a second connection.
 
 ### api.subscribe
 

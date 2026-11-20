@@ -208,37 +208,39 @@ impl Readback {
         before: &str,
         mut read: impl FnMut(u32) -> Result<String, String>,
         mut complete: impl FnMut(&str) -> bool,
+        now: impl Fn() -> Instant,
+        sleep: impl Fn(Duration),
     ) -> Option<String> {
         let keyed = self.keyed();
-        let paced = Instant::now() + self.key_pacing;
+        let paced = now() + self.key_pacing;
+        let redraw_deadline = paced + KEY_NO_REDRAW;
         let deadline = paced + CONFIRM_WITHIN;
         let mut previous: Option<String> = None;
         let mut changed_at = None;
         loop {
-            let unreadable = match read(CONFIRM_ROWS) {
+            let frame = read(CONFIRM_ROWS);
+            let observed_at = now();
+            let unreadable = match frame {
                 Ok(text) => {
                     let complete = complete(&text);
                     if keyed && text != previous.as_deref().unwrap_or(before) {
                         previous = Some(text);
-                        changed_at = Some(Instant::now());
+                        // An earlier key can redraw while later keys are still being paced.
+                        changed_at = (observed_at >= paced).then_some(observed_at);
                     }
-                    if complete
-                        && (!keyed
-                            || Instant::now()
-                                >= changed_at.map_or(paced + KEY_NO_REDRAW, |last| {
-                                    last.max(paced) + KEY_REDRAW_QUIET
-                                }))
-                    {
+                    let settled_at =
+                        changed_at.map_or(redraw_deadline, |last| last + KEY_REDRAW_QUIET);
+                    if complete && (!keyed || observed_at >= settled_at) {
                         return None;
                     }
                     None
                 }
                 Err(refusal) => Some(refusal),
             };
-            if Instant::now() >= deadline {
+            if observed_at >= deadline {
                 return unreadable;
             }
-            std::thread::sleep(CONFIRM_POLL);
+            sleep(CONFIRM_POLL);
         }
     }
 }
@@ -283,10 +285,22 @@ pub fn after_sending(
     pane: &str,
     sent: &str,
     before: &str,
+    read: impl FnMut(u32) -> Result<String, String>,
+) -> Result<(), Unconfirmed> {
+    after_sending_with_clock(readback, pane, sent, before, read, Instant::now, std::thread::sleep)
+}
+
+fn after_sending_with_clock(
+    readback: Readback,
+    pane: &str,
+    sent: &str,
+    before: &str,
     mut read: impl FnMut(u32) -> Result<String, String>,
+    now: impl Fn() -> Instant,
+    sleep: impl Fn(Duration),
 ) -> Result<(), Unconfirmed> {
     if !readback.confirm {
-        let _ = readback.observe(before, read, |_| true);
+        let _ = readback.observe(before, read, |_| true, now, sleep);
         return Ok(());
     }
     let wanted = looked_for(sent);
@@ -305,14 +319,15 @@ pub fn after_sending(
     // Only the last read decides whether the text was cut short: a harness can draw the start
     // of a paste on its way in and then clear the whole of it on the Return.
     let mut started = false;
-    let unreadable = readback.observe(before, &mut read, |text| {
+    let complete = |text: &str| {
         if !confirmed {
             confirmed = arrived(text);
             changed |= text != before;
             started = times_on(text, &start) > started_before;
         }
         confirmed
-    });
+    };
+    let unreadable = readback.observe(before, &mut read, complete, now, sleep);
     if confirmed {
         return Ok(());
     }
@@ -420,11 +435,17 @@ fn squeezed(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+    use std::time::{Duration, Instant};
+
     use super::{
-        PaneText, Readback, Unconfirmed, after_sending, checks_prompt, into_held_prompt, send,
+        CONFIRM_POLL, CONFIRM_WITHIN, KEY_NO_REDRAW, KEY_REDRAW_QUIET, PaneText, Readback,
+        SEND_KEY_GAP, Unconfirmed, after_sending, after_sending_with_clock, checks_prompt,
+        into_held_prompt, send,
     };
 
-    const CONFIRM: Readback = Readback { confirm: true, key_pacing: std::time::Duration::ZERO };
+    const CONFIRM: Readback = Readback { confirm: true, key_pacing: Duration::ZERO };
+    const SELECTION: &str = "selected option 1";
 
     fn confirm(
         pane: &str,
@@ -433,6 +454,72 @@ mod tests {
         read: impl FnMut(u32) -> Result<String, String>,
     ) -> Result<(), Unconfirmed> {
         after_sending(CONFIRM, pane, sent, before, read)
+    }
+
+    fn key_wait<T: Into<String>>(
+        keys: usize,
+        enter: bool,
+        screen_at: impl Fn(Duration) -> T,
+    ) -> Duration {
+        let start = Instant::now();
+        let elapsed = Cell::new(Duration::ZERO);
+        let outcome = after_sending_with_clock(
+            Readback::for_send(false, keys, enter),
+            "p1",
+            "",
+            SELECTION,
+            |_| Ok(screen_at(elapsed.get()).into()),
+            || start + elapsed.get(),
+            |delay| {
+                let next = elapsed.get() + delay;
+                assert!(!delay.is_zero() && next <= Duration::from_secs(3));
+                elapsed.set(next);
+            },
+        );
+        assert_eq!(outcome, Ok(()));
+        elapsed.get()
+    }
+
+    #[test]
+    fn a_key_waits_for_the_quiet_period_after_the_final_visible_change() {
+        let drawing = SEND_KEY_GAP + CONFIRM_POLL;
+        let drawn = drawing + KEY_REDRAW_QUIET / 2;
+        let waited = key_wait(1, false, |time| {
+            if time < drawing {
+                SELECTION
+            } else if time < drawn {
+                "redrawing selection"
+            } else {
+                "selected option 2"
+            }
+        });
+        assert_eq!(waited, drawn + KEY_REDRAW_QUIET);
+    }
+
+    #[test]
+    fn a_key_that_draws_nothing_gets_a_bounded_wait() {
+        assert_eq!(key_wait(1, false, |_| SELECTION), SEND_KEY_GAP + KEY_NO_REDRAW);
+    }
+
+    #[test]
+    fn streaming_output_cannot_keep_a_key_send_waiting() {
+        let waited = key_wait(1, false, |time| format!("frame {}", time.as_millis()));
+        assert_eq!(waited, SEND_KEY_GAP + CONFIRM_WITHIN);
+    }
+
+    #[test]
+    fn an_earlier_redraw_cannot_shorten_the_wait_for_the_last_key() {
+        let paced = 3 * SEND_KEY_GAP;
+        let without_last_redraw = |time| {
+            if time < CONFIRM_POLL { SELECTION } else { "selected option 3" }
+        };
+        assert_eq!(key_wait(2, true, without_last_redraw), paced + KEY_NO_REDRAW);
+
+        let closed = paced + KEY_NO_REDRAW / 2;
+        let waited = key_wait(2, true, |time| {
+            if time < closed { without_last_redraw(time) } else { "dialog closed" }
+        });
+        assert_eq!(waited, closed + KEY_REDRAW_QUIET);
     }
 
     /// Text is checked against a prompt holding something; keys, Return and a lone space with
@@ -639,8 +726,8 @@ mod tests {
     /// and one not asked to be confirmed reads nothing at all.
     #[test]
     fn a_send_types_only_into_an_empty_prompt_and_reads_back_only_what_it_typed() {
-        let typed = std::cell::Cell::new(false);
-        let reads = std::cell::Cell::new(0);
+        let typed = Cell::new(false);
+        let reads = Cell::new(0);
         let read = |_| {
             reads.set(reads.get() + 1);
             Ok(if typed.get() { "$ hello\n" } else { "$ \n" }.to_string())

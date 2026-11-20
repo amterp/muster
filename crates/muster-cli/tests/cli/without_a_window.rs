@@ -855,9 +855,7 @@ fn delayed_menu() -> Here {
                 printf '\r\033[2Kkey sent before redraw'
                 break
             fi
-            sleep 0.15
-            printf '\r\033[2Kredrawing selection'
-            sleep 0.03
+            sleep 0.10
             if [ "$expected" = "$normal" ]; then
                 expected=$application
                 mode=h
