@@ -175,17 +175,17 @@ exception is a daemon that can never start - its binary is not there, or nothing
 said once as an error and not tried again, since the same attempt would fail the same way. Everything less certain
 keeps trying: a host that does not resolve is also a laptop whose VPN is down.
 
-**A master is addressed by its control path, not by its pid.** The child Muster spawned is the master only while ssh
-stays in the foreground, and `ControlPersist` in somebody's own ssh config makes `ssh -N -M` fork once it has
-authenticated - the process Muster watches exits and a different one carries the forward. Believing that child
-declared a working connection down 250ms after every confirmed reopen for thirteen minutes, each false down
-unlinking both paths from under a master that was carrying every pane's traffic; and it left eighteen authenticated
-connections running on the far machine after one quit (kan a_2J1KZ9FbM, a_2J1KYPWhZ). So `ControlPersist=no` joins
-the options a config cannot override, the supervisor asks `ssh -O check -S <path>` rather than the child, and a
-master is ended with `ssh -O exit -S <path>` - on the reopen path as well as at `Drop`, because the reopen path is
-where they accumulate. Killing the child remains the fallback for a master that never answered. Both the option and
-the question are kept: the first holds a daemon to one ssh process rather than two, and the second is right whatever
-a future ssh does about forking.
+**The supervisor checks the control path and probes the forward if the child has exited.** `ControlPersist=no`
+keeps ssh in the foreground by default. If ssh forks, the original child exits and the background process can
+still carry the forward (kan a_2J1KZ9FbM). If a different master takes over the control path after the child
+exits, `ssh -O check` can still succeed while every pane's connection is refused (kan a_32xp8grzh). The supervisor
+then probes the local socket without waiting for a connection. A missing socket or a refused connection sends
+the tunnel through its usual retry. The probe works before the remote daemon starts because ssh owns the local
+listener.
+
+Muster sends `ssh -O exit -S <path>` on reopen and on drop. This ends whichever master owns that path, including
+a background process or a replacement. Killing the child is the fallback if the master fails to answer
+(kan a_2J1KYPWhZ).
 
 **A check that times out is asked again before the master is ended.** `-O check` is answered on this machine and never
 touches the network, and a master whose connection dies exits once `ServerAlive` gives up, after which the check fails
@@ -194,7 +194,7 @@ checking ssh slow to start on a loaded machine: it is logged as `tunnel.slow` an
 only a second timeout ends it. Ending on the first cost seven panes their bridges on a master that was working
 (kan a_2YQCqiInL).
 
-**Only Muster's master can hold Muster's control path.** Every ssh that runs a command over a master pins
+**Muster's SSH clients leave the control path to the master.** Every ssh that runs a command over a master pins
 `ControlMaster=no` and `ControlPersist=no`, because under a personal config's `ControlMaster auto` a client that finds
 nothing answering its `-S` path becomes the master for it, with no forward, and `-O check` then calls a tunnel healthy
 while every request is refused (kan a_2NnC4pyPm). The bridges run no ssh at all; they dial the forwarded socket.

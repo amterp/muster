@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::io;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -111,10 +113,8 @@ pub fn master_arguments(forward: &Forward) -> Vec<String> {
         // handle to has already exited while a different one carries the forward. A
         // supervisor watching that handle called a working connection down 31 times in
         // thirteen minutes, and a quit left eighteen authenticated connections behind
-        // (kan a_2J1KZ9FbM, a_2J1KYPWhZ). Nothing below this line asks a pid about a master
-        // any more, but the option stays pinned: a master in the foreground is one process
-        // per daemon rather than two, and the escape hatch exists for connection details
-        // rather than for how Muster supervises its own child.
+        // (kan a_2J1KZ9FbM, a_2J1KYPWhZ). A foreground master avoids that fork and lets
+        // the supervisor skip probing the local forward while its child is still alive.
         "-o".to_string(),
         "ControlPersist=no".to_string(),
     ];
@@ -290,12 +290,8 @@ impl Tunnel {
     /// *held*, which `muster_core::reconnect` decides and which nothing about a process
     /// existing can satisfy.
     ///
-    /// **And "up" is asked of the control path rather than of a pid.** A pid is the master
-    /// only while ssh stays in the foreground: with `ControlPersist` set, `ssh -N -M` forks
-    /// after authenticating, and this loop spent thirteen minutes calling a connection down
-    /// 250ms after confirming it - unlinking both paths out from under a master that was
-    /// carrying every pane's traffic (kan a_2J1KZ9FbM). `master_arguments` pins the option
-    /// away, and asking the path as well means no future ssh can put the bug back.
+    /// The control path can answer after our child exits. The local forward then tells
+    /// a backgrounded master apart from a replacement that carries no panes.
     fn supervise(&self, report: Report) {
         let forward = self.forward.clone();
         let child = Arc::clone(&self.child);
@@ -308,19 +304,9 @@ impl Tunnel {
                 if !sleep_unless_stopping(HEALTH_POLL, &stopping) {
                     return;
                 }
-                // Reaped rather than read. The answer is no longer the health check, but a
-                // `Child` nobody waits on is a zombie and this loop is the only place holding
-                // the handle.
-                let _ = poison::lock(&child, "ssh-child").try_wait();
-
-                let down = match control(&forward, "check") {
+                let down = match check_tunnel(&forward, &child) {
                     Ok(()) => {
                         silent = false;
-                        // `ExitOnForwardFailure` means a master that is still running is one
-                        // whose forward stood up, so a master that answers is the honest
-                        // reading of "up" once a reopen has been confirmed once. What it
-                        // cannot say is that the connection has *worked*, which is what ends a
-                        // run of failures and is the only thing time can answer.
                         if attempts.holding(clock::monotonic_now()) {
                             log::info("tunnel.settled", fields! { "host" => forward.host.clone() });
                             report(State::Reachable);
@@ -524,16 +510,71 @@ fn control(forward: &Forward, request: &str) -> Result<(), Unanswered> {
     )
 }
 
-/// Why a request through the control path came to nothing.
-///
-/// Two kinds, because they mean different things to the supervisor: a request that failed at
-/// once found nothing answering on the path, and one that timed out found something holding it
-/// that did not answer in time.
+fn check_tunnel(forward: &Forward, child: &Mutex<Child>) -> Result<(), Unanswered> {
+    let answer = control(forward, "check");
+    let status = poison::lock(child, "ssh-child").try_wait();
+    answer?;
+    // The original master has ExitOnForwardFailure. Once it exits, another master answering
+    // at that control path may have inherited the forward or started without one.
+    if let Ok(Some(status)) = status
+        && let Err(error) = probe_forward(&forward.local_socket)
+        && matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused)
+    {
+        return Err(Unanswered::Failed(format!(
+            "ssh exited ({status}) and a master still answers on {}, but the forward at {} \
+             refuses connections ({error})",
+            forward.control_path, forward.local_socket
+        )));
+    }
+    Ok(())
+}
+
+fn probe_forward(path: &str) -> io::Result<()> {
+    // SAFETY: a C socket address is valid zeroed before its fields are set.
+    let mut address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    let path = std::ffi::CString::new(path)?;
+    let bytes = path.as_bytes_with_nul();
+    if bytes.len() > address.sun_path.len() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "unix socket path is too long"));
+    }
+    address.sun_family = libc::sa_family_t::try_from(libc::AF_UNIX).expect("AF_UNIX fits");
+    for (slot, byte) in address.sun_path.iter_mut().zip(bytes) {
+        *slot = libc::c_char::from_ne_bytes([*byte]);
+    }
+    let size = size_of_val(&address);
+    #[cfg(target_os = "macos")]
+    {
+        address.sun_len = u8::try_from(size).expect("sockaddr_un fits");
+    }
+    let length = libc::socklen_t::try_from(size).expect("sockaddr_un fits socklen_t");
+
+    // SAFETY: socket returns a new descriptor or -1. This function takes ownership immediately.
+    let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
+    if fd == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fd is a fresh descriptor owned by this function.
+    let socket = unsafe { OwnedFd::from_raw_fd(fd) };
+    let fd = socket.as_raw_fd();
+    // A blocking connect can wait on Linux when a live listener's queue is full.
+    // SAFETY: fd is a valid socket descriptor, and address is valid for length bytes.
+    let connected = unsafe {
+        if libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) == -1
+            || libc::fcntl(fd, libc::F_SETFL, libc::O_NONBLOCK) == -1
+        {
+            return Err(io::Error::last_os_error());
+        }
+        libc::connect(fd, std::ptr::from_ref(&address).cast(), length)
+    };
+    if connected == -1 { Err(io::Error::last_os_error()) } else { Ok(()) }
+}
+
+/// A timed-out control request gets another check before the supervisor retries the tunnel.
 #[derive(Debug)]
 enum Unanswered {
     /// Nothing answered within [`CONTROL_WITHIN`], and the request was killed.
     Silent(String),
-    /// It could not be run, or it finished and said no.
+    /// The request failed, or the tunnel's forward no longer accepts connections.
     Failed(String),
 }
 
@@ -667,7 +708,7 @@ fn take_back(forward: &Forward) {
 fn stderr_of(mut asked: Child) -> String {
     let mut text = String::new();
     if let Some(mut stderr) = asked.stderr.take() {
-        let _ = std::io::Read::read_to_string(&mut stderr, &mut text);
+        let _ = io::Read::read_to_string(&mut stderr, &mut text);
     }
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }

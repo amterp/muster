@@ -34,3 +34,23 @@ fn a_master_without_the_forward_is_ended_and_replaced() {
     assert!(std::path::Path::new(&local).is_file(), "the new master made its forward");
     drop(tunnel);
 }
+
+#[test]
+fn a_master_that_keeps_its_forward_after_forking_stays_up() {
+    let scratch = fake::Scratch::new();
+    let forward = fake::forward(scratch.path());
+    let control = forward.control_path.clone();
+    let local = forward.local_socket.clone();
+    let tunnel = fake::open(forward);
+
+    std::fs::remove_file(&local).expect("the fake's placeholder can be replaced");
+    let _listener = UnixListener::bind(&local).expect("the local socket can be bound");
+    fake::replace_master(&control);
+
+    fake::until("two checks of the background master", &control, Duration::from_secs(10), || {
+        fake::count(&control, "foreign check") >= 2
+    });
+    assert_eq!(fake::count(&control, "control exit"), 0);
+    assert_eq!(fake::count(&control, "master"), 1);
+    drop(tunnel);
+}
