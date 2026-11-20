@@ -881,7 +881,7 @@ const CLAUDE_CODE_HOOKS: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/claude-code/hooks/hooks.json"));
 
 /// The one command `extras/claude-code/hooks/hooks.json` runs for `event`, and its matcher.
-fn claude_code_hook(event: &str) -> (Option<String>, String) {
+pub(super) fn claude_code_hook(event: &str) -> (Option<String>, String) {
     let hooks: serde_json::Value = serde_json::from_str(CLAUDE_CODE_HOOKS).unwrap();
     let groups = hooks["hooks"][event].as_array().unwrap_or_else(|| panic!("no {event} hook"));
     assert_eq!(groups.len(), 1, "one {event} entry");

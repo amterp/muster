@@ -3,6 +3,8 @@
 
 use std::time::Duration;
 
+use crate::context_changes::run_report_hook;
+use crate::detection::claude_code_hook;
 use crate::persistence::{record, stop, until_restored};
 use crate::resume::reported;
 use crate::support::*;
@@ -149,6 +151,42 @@ fn an_agent_comes_back_in_its_session_with_its_flags() {
     );
     assert_eq!(record(&snapshot(&mut control), "p1").session_id.as_deref(), Some("s-1"));
     daemon.until_agent("p1", proto::AgentState::Idle);
+}
+
+#[test]
+fn claude_codes_stop_recovers_the_session_when_session_start_was_missed() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent_with_arguments("p1", "--model opus");
+    assert_eq!(record(&snapshot(&mut control), "p1").session_id, None);
+
+    let hooks = include_str!("../../../../corpus/claude-code-2.1.318/background-hooks.jsonl");
+    let recorded_hook = |event: &str| {
+        hooks
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .find(|hook| hook["hook_event_name"] == event)
+            .unwrap()
+    };
+    let stop = recorded_hook("Stop");
+    let session = stop["session_id"].as_str().unwrap();
+    run_report_hook(&claude_code_hook("Stop").1, &stop, &daemon);
+
+    let mut subagent_stop = recorded_hook("SubagentStop");
+    subagent_stop["session_id"] = "subagent-session".into();
+    run_report_hook(&claude_code_hook("SubagentStop").1, &subagent_stop, &daemon);
+    close(&mut control, "p1");
+
+    let back = reopened(&mut control, "p1", "t2");
+    assert!(back.resumed, "Stop should make the session resumable");
+    let command = until_some("p1 to come back running its agent", || {
+        record(&snapshot(&mut control), "p1").command.clone()
+    });
+    assert!(
+        command.ends_with(&format!("claude --model opus --resume {session}")),
+        "resumed as {command:?}"
+    );
 }
 
 /// What ran in the pane is gone before it starts again, even a program that ignores the hang-up

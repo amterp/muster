@@ -446,6 +446,28 @@ fn claude_codes_session_start_reports_its_session_id() {
     }
 }
 
+#[test]
+fn claude_codes_session_start_exposes_the_report_error() {
+    let reporting = commands(&CLAUDE_CODE, "SessionStart")
+        .into_iter()
+        .find(|command| command.contains("session-id=/session_id"))
+        .expect("a SessionStart hook reports the session's id");
+    for shell in shells() {
+        let output = Command::new(shell)
+            .args(["-c", &reporting])
+            .env_clear()
+            .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{shell}: a non-blocking hook error");
+        assert!(output.stdout.is_empty(), "{shell}: stdout reaches the model");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("muster-daemon report: --from reads a JSON object"), "{stderr}");
+        assert!(stderr.contains("exited 2"), "{stderr}");
+    }
+}
+
 const CODEX_MESSAGING: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/codex/messaging-hooks.json"));
 

@@ -114,7 +114,7 @@ fn played(hooks: &str, reporting_as: &str, recorded: &str) -> Vec<ContextChangeK
         }
         row["transcript_path"] = transcript.display().to_string().into();
         for command in commands(&hooks, &event, &row) {
-            run(&command.replace(reporting_as, "--agent claude"), &row, &daemon);
+            run_report_hook(&command.replace(reporting_as, "--agent claude"), &row, &daemon);
         }
         let now = record(&snapshot(&mut control), "p1").context_change.clone();
         if let Some(change) = now.filter(|change| Some(change.at_ms) != last) {
@@ -125,7 +125,7 @@ fn played(hooks: &str, reporting_as: &str, recorded: &str) -> Vec<ContextChangeK
     seen
 }
 
-fn run(command: &str, input: &serde_json::Value, daemon: &Daemon) {
+pub(super) fn run_report_hook(command: &str, input: &serde_json::Value, daemon: &Daemon) {
     let mut hook = Command::new("/bin/sh")
         .args(["-c", command])
         .env_clear()
@@ -282,9 +282,9 @@ fn a_hook_left_waiting_shares_its_parents_compaction() {
     let command = commands(&hooks, "PostCompact", &input).remove(0);
 
     std::thread::scope(|threads| {
-        threads.spawn(|| run(&command, &input, &daemon));
+        threads.spawn(|| run_report_hook(&command, &input, &daemon));
         std::thread::sleep(std::time::Duration::from_millis(500));
-        threads.spawn(|| run(&command, &input, &daemon));
+        threads.spawn(|| run_report_hook(&command, &input, &daemon));
         let line = CLAUDE_BOUNDARIES.lines().last().unwrap();
         let mut boundary: serde_json::Value = serde_json::from_str(line).unwrap();
         boundary["timestamp"] = format_iso8601(now_ms().cast_signed()).into();
