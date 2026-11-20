@@ -22,12 +22,15 @@ fn muster(daemon: &Daemon, arguments: &[&str]) -> Output {
     muster_with(daemon.socket_path(), arguments, None)
 }
 
+fn muster_command(socket: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_muster"));
+    command.env_clear().env("HOME", std::env::temp_dir()).env("MUSTER_DAEMON_SOCKET", socket);
+    command
+}
+
 fn muster_with(socket: &Path, arguments: &[&str], stdin: Option<&str>) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_muster"))
+    let mut child = muster_command(socket)
         .args(arguments)
-        .env_clear()
-        .env("HOME", std::env::temp_dir())
-        .env("MUSTER_DAEMON_SOCKET", socket)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -732,6 +735,46 @@ fn a_post_to_an_agent_whose_pane_closed_is_unheard() {
         unheard(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", "p1", "more"])),
         format!("posted #5 to {pair}\nnot woken: {word} (p1, no agent in its pane)")
     );
+}
+
+#[test]
+fn a_closed_panes_environment_cannot_post_or_read_as_the_human() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+
+    let group = "review";
+    ok(&muster(&daemon, &["msg", "join", "--group", group]));
+    ok(&muster(&daemon, &["msg", "--as", "lead", "join", "--group", group]));
+    ok(&muster(
+        &daemon,
+        &["msg", "--as", "lead", "post", "--group", group, "--to", "@human", "for the human"],
+    ));
+    let log = || ok(&muster(&daemon, &["msg", "log", "--group", group]));
+    let before = log();
+    expect(&mut control, close_request("p1"), proto::Outcome::Done);
+
+    let from_closed_pane = |arguments: &[&str]| {
+        muster_command(daemon.socket_path())
+            .args(arguments)
+            .env("MUSTER_PANE", "p1")
+            .stdin(Stdio::null())
+            .output()
+            .expect("the muster binary runs")
+    };
+    let post = from_closed_pane(&["msg", "post", "--group", group, "--to", "lead", "late"]);
+    let read = from_closed_pane(&["msg", "read", "--if-unread", "--group", group]);
+    assert_eq!(log(), before, "the closed pane added a post to the group's log");
+    assert!(
+        ok(&muster(&daemon, &["msg", "read", "--group", group])).contains("for the human"),
+        "the closed pane consumed the human's unread message"
+    );
+    for output in [post, read] {
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let said = complained(&output);
+        assert!(said.contains("MUSTER_PANE") && said.contains("p1") && said.contains("closed"));
+    }
 }
 
 /// A `muster msg` run under an agent's server is refused, saying which server and what to do: the
