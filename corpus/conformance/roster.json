@@ -3602,7 +3602,7 @@
     },
     {
       "name": "a helper stays hidden until its part of a spanning tab is shown",
-      "why": "Show Helpers can reach one daemon sooner. The shared arrangement still names a hidden foreign pane, but that pane must have only one row while the daemons disagree about visibility.",
+      "why": "Show Helpers can reach one daemon sooner. Keep one row for the hidden foreign pane while visibility settles. Resolve the other pane by ID even when the saved layout uses an old daemon alias.",
       "given": {
         "worlds": {
           "laptop": {
@@ -3617,7 +3617,7 @@
           },
           "dev": {
             "tabs": [
-              { "id": "w1:t2", "root": "w1:p3", "copy": "[w1:p3|~w1:p2@local 0.50]", "layoutGeneration": 1, "hidden": true }
+              { "id": "w1:t2", "root": "w1:p3", "copy": "[w1:p3|~w1:p2@old-local 0.50]", "layoutGeneration": 1, "hidden": true }
             ],
             "panes": [{ "id": "w1:p3", "cwd": "/src/gamma", "maker": "w1:p1" }]
           }

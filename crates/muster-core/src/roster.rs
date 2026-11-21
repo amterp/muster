@@ -841,9 +841,7 @@ fn is_helpers_tab<'a>(
     let panes = || tab.panes.iter().chain(hidden_part.into_iter().flat_map(|part| &part.panes));
     let mut daemons =
         tab.daemons.iter().chain(hidden_part.into_iter().flat_map(|part| &part.daemons));
-    let listed = |id: &PaneId, daemon: &str| {
-        panes().any(|pane| &pane.key.pane == id && pane.key.daemon.as_str() == daemon)
-    };
+    let listed = |id: &PaneId| panes().any(|pane| &pane.key.pane == id);
     panes().all(|pane| pane.maker.as_ref() == Some(maker) && &pane.key.pane != maker)
         && daemons.all(|daemon| {
             mirror(daemon)
@@ -851,20 +849,18 @@ fn is_helpers_tab<'a>(
                     held.health() == Health::Connected && !held.restoring() && !held.stopping()
                 })
                 .and_then(|held| held.tab(&tab.id))
-                .is_some_and(|part| copy_is_listed(&part.copy, daemon.as_str(), &listed))
+                .is_some_and(|part| copy_is_listed(&part.copy, &listed))
         })
 }
 
-/// An unreachable foreign pane may exist in the saved tree before its machine has a roster row.
-fn copy_is_listed(copy: &CopyNode, owner: &str, listed: &impl Fn(&PaneId, &str) -> bool) -> bool {
-    let (id, daemon) = match copy {
-        CopyNode::Own(pane) => (pane, owner),
-        CopyNode::Foreign { pane, daemon } => (pane, daemon.as_str()),
+/// A saved copy can name an unreachable pane or use an old daemon alias. Pane IDs are global.
+fn copy_is_listed(copy: &CopyNode, listed: &impl Fn(&PaneId) -> bool) -> bool {
+    match copy {
+        CopyNode::Own(pane) | CopyNode::Foreign { pane, .. } => listed(pane),
         CopyNode::Split { first, second, .. } => {
-            return copy_is_listed(first, owner, listed) && copy_is_listed(second, owner, listed);
+            copy_is_listed(first, listed) && copy_is_listed(second, listed)
         }
-    };
-    listed(id, daemon)
+    }
 }
 
 /// What somebody named a tab, trimmed, and nothing for a tab nobody named.

@@ -446,10 +446,7 @@ fn a_makers_helpers_come_forward_together_and_go_back() {
     );
     assert_ok(&hide());
     assert_eq!(tabs(), 2, "a tab holding a pane that is not a helper was hidden");
-    assert!(
-        last_tab().panes.iter().all(|pane| pane.under.is_empty()),
-        "a tab with an ordinary pane should keep all its own rows"
-    );
+    assert!(last_tab().panes.iter().all(|pane| pane.under.is_empty()));
 
     let refused = answer(request::Payload::ShowHelpers(ShowHelpers {
         pane_id: "p2".to_string(),
