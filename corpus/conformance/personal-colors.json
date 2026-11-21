@@ -1,0 +1,98 @@
+{
+  "concept": "muster.personal-colors",
+  "source": "authored",
+  "citation": "Fencil person-color-values and the pinned Ghostty ANSI Name enum in deps/ghostty/src/terminal/color.zig.",
+  "why": "The core stores a palette name and the shell looks up its ANSI slot. The same cases hold the core to the supported names and the shell to their slot order and stored spelling.",
+  "cases": [
+    {
+      "name": "red uses slot 1",
+      "why": "Slot 0 is ANSI black. The first supported name starts at slot 1.",
+      "given": "red",
+      "expect": { "accepted": true, "stored": "red", "ansiIndex": 1 }
+    },
+    {
+      "name": "green uses slot 2",
+      "why": "Store the name so green follows changes to ANSI slot 2.",
+      "given": "green",
+      "expect": { "accepted": true, "stored": "green", "ansiIndex": 2 }
+    },
+    {
+      "name": "yellow uses slot 3",
+      "why": "Store the name so yellow follows changes to ANSI slot 3.",
+      "given": "yellow",
+      "expect": { "accepted": true, "stored": "yellow", "ansiIndex": 3 }
+    },
+    {
+      "name": "blue uses slot 4",
+      "why": "Store the name so blue follows changes to ANSI slot 4.",
+      "given": "blue",
+      "expect": { "accepted": true, "stored": "blue", "ansiIndex": 4 }
+    },
+    {
+      "name": "magenta uses slot 5",
+      "why": "Store the name so magenta follows changes to ANSI slot 5.",
+      "given": "magenta",
+      "expect": { "accepted": true, "stored": "magenta", "ansiIndex": 5 }
+    },
+    {
+      "name": "cyan uses slot 6",
+      "why": "Cyan is the last ANSI hue offered by name.",
+      "given": "cyan",
+      "expect": { "accepted": true, "stored": "cyan", "ansiIndex": 6 }
+    },
+    {
+      "name": "lowercase hex stores and draws the exact RGB",
+      "why": "An exact RGB stays fixed even when the terminal palette changes.",
+      "given": "#a1b2c3",
+      "expect": { "accepted": true, "stored": "#a1b2c3", "hex": "#a1b2c3" }
+    },
+    {
+      "name": "mixed-case hex is normalized before storage",
+      "why": "The core accepts mixed case in a request. The shell draws the canonical lowercase value it receives in the roster.",
+      "given": "#A1b2C3",
+      "expect": { "accepted": true, "stored": "#a1b2c3" }
+    },
+    {
+      "name": "an empty value clears the assigned color",
+      "why": "The shell sends a clear as an empty string and the roster uses it for an uncolored subject.",
+      "given": "",
+      "expect": { "accepted": true, "stored": null }
+    },
+    {
+      "name": "none clears the assigned color",
+      "why": "The CLI spells a clear as none. The word itself draws no color.",
+      "given": "none",
+      "expect": { "accepted": true, "stored": null }
+    },
+    {
+      "name": "ANSI white has no assigned name",
+      "why": "Exact RGB can represent white. Assigning by name offers the six ANSI hues.",
+      "given": "white",
+      "expect": { "accepted": false, "stored": null }
+    },
+    {
+      "name": "named colors are lowercase",
+      "why": "Palette names have one spelling in the core and the shell.",
+      "given": "Red",
+      "expect": { "accepted": false, "stored": null }
+    },
+    {
+      "name": "hex requires six digits",
+      "why": "Three-digit shorthand cannot be stored as the exact RGB format.",
+      "given": "#abc",
+      "expect": { "accepted": false, "stored": null }
+    },
+    {
+      "name": "hex rejects nonhex digits",
+      "why": "Matching the length and prefix alone would let an unrenderable color through.",
+      "given": "#12x456",
+      "expect": { "accepted": false, "stored": null }
+    },
+    {
+      "name": "hex requires the hash prefix",
+      "why": "The prefix identifies the stored string as RGB.",
+      "given": "a1b2c3",
+      "expect": { "accepted": false, "stored": null }
+    }
+  ]
+}

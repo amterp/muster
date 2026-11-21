@@ -3,6 +3,8 @@ import GhosttyKit
 import MusterRenderer
 import Testing
 
+@testable import MusterMac
+
 // What libghostty makes of a config file Muster wrote, asserted against the real library rather
 // than believed. This is the mechanism the whole appearance vocabulary rests on: there is no
 // setter in the C API, so handing over a file is how Muster says what a pane should look like
@@ -309,6 +311,59 @@ import Testing
     #expect(
       terminalHues(of: config)
         == ["#112233", "#b5bd68", "#f0c674", "#81a2be", "#b294bb", "#445566"])
+  }
+
+  @Test func personalColorConformance() throws {
+    let conformance = try Conformance.load("personal-colors.json")
+    let ansi = (0..<16).map { String(format: "#%02x0000", $0) }
+    let config = try loaded(ansi.enumerated().map { "palette = \($0.offset)=\($0.element)" })
+    defer { ghostty_config_free(config) }
+
+    var terminal = PaneAppearance.defaultTerminal
+    terminal.hues = terminalHues(of: config).compactMap { RGB(hex: $0) }
+    let palette = ChromePalette.make(
+      terminal: terminal, agents: [:], appearance: .init(background: .white, foreground: .black))
+
+    let names = conformance.cases.filter { $0.expect.ansiIndex != nil }.map(\.given)
+    #expect(ChromePalette.personalHueNames == names, "named colors in personal-colors.json")
+    for test in conformance.cases {
+      try #require(!test.why.isEmpty, "personal-colors.json: \(test.name) needs a reason")
+      let expected: String?
+      if let index = test.expect.ansiIndex {
+        try #require(ansi.indices.contains(index), "invalid ANSI slot in \(test.name)")
+        expected = ansi[index]
+      } else {
+        expected = test.expect.hex
+      }
+      #expect(
+        palette.personalHue(test.given)?.hex == expected,
+        "personal-colors.json: \(test.name). \(test.why) Input: \(test.given.debugDescription)")
+    }
+  }
+}
+
+private struct Conformance: Decodable {
+  struct Case: Decodable {
+    struct Expected: Decodable {
+      let ansiIndex: Int?
+      let hex: String?
+    }
+
+    let name: String
+    let why: String
+    let given: String
+    let expect: Expected
+  }
+
+  let cases: [Case]
+
+  static func load(_ file: String) throws -> Self {
+    let path = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("corpus/conformance").appendingPathComponent(file)
+    let suite = try JSONDecoder().decode(Self.self, from: Data(contentsOf: path))
+    try #require(!suite.cases.isEmpty, "\(file) has no cases")
+    return suite
   }
 }
 
