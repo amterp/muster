@@ -427,7 +427,7 @@ fn a_daemon_on_its_way_takes_neither_the_screen_nor_the_keyboard() {
 }
 
 #[test]
-fn the_only_visible_tab_unfolds_while_another_daemon_is_missing() {
+fn the_only_visible_tab_keeps_its_fold_while_another_daemon_is_missing() {
     let _turn = muster::testing::fresh_session();
     let local = Daemon::start_built();
     make(&mut local.connect(), create("a1", in_new_tab("t1")));
@@ -473,10 +473,10 @@ fn the_only_visible_tab_unfolds_while_another_daemon_is_missing() {
     else {
         panic!("window")
     };
-    assert!(!window.roster.expect("roster").tabs[0].folded);
+    assert!(window.roster.expect("roster").tabs[0].folded);
     let saved = saved::from_toml(&std::fs::read_to_string(arrangement).expect("saved"))
         .expect("arrangement");
-    assert!(!saved.presentation.folded_tabs.contains(&TabId::new("t1")));
+    assert!(saved.presentation.folded_tabs.contains(&TabId::new("t1")));
 }
 
 #[test]
@@ -515,7 +515,7 @@ fn a_fold_survives_a_daemon_that_arrives_after_the_window_opens() {
     else {
         panic!("window")
     };
-    assert!(!window.roster.expect("roster").tabs[0].folded);
+    assert!(window.roster.expect("roster").tabs[0].folded);
     let saved = saved::from_toml(&std::fs::read_to_string(&arrangement).expect("saved"))
         .expect("arrangement");
     assert!(saved.presentation.folded_tabs.contains(&TabId::new("t1")));

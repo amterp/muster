@@ -145,7 +145,7 @@ fn tab_folds_belong_to_the_window_and_focusing_unfolds() {
 }
 
 #[test]
-fn moving_one_of_two_tabs_unfolds_and_saves_the_remaining_tab() {
+fn moving_one_of_two_tabs_preserves_the_remaining_tabs_fold() {
     let _turn = muster::testing::fresh_session();
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     let daemon = Daemon::start_built();
@@ -162,21 +162,20 @@ fn moving_one_of_two_tabs_unfolds_and_saves_the_remaining_tab() {
     )));
     let roster = read_window("window-1").roster.expect("roster");
     assert_eq!(roster.tabs.len(), 1);
-    assert!(!roster.tabs[0].folded);
+    assert!(roster.tabs[0].folded);
     let saved = std::fs::read_to_string(arrangement(&daemon, "window-1")).expect("saved window");
     let saved = muster_core::composition::saved::from_toml(&saved).expect("read saved window");
     assert!(
-        !saved.presentation.folded_tabs.contains(&muster_core::mirror::backend::TabId::new(first))
+        saved.presentation.folded_tabs.contains(&muster_core::mirror::backend::TabId::new(first))
     );
 }
 
 #[test]
-fn a_folded_tab_stays_folded_when_its_window_reopens() {
+fn a_lone_tab_stays_folded_when_its_window_reopens() {
     let _turn = muster::testing::fresh_session();
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     let daemon = Daemon::start_built();
     let (_, tab) = two_windows(&daemon);
-    new_tab_in("window-2");
     assert_ok(&answer(&in_window(
         "window-2",
         request::Payload::SetTabFolded(SetTabFolded { tab_id: tab.clone(), folded: true }),

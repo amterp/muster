@@ -209,9 +209,7 @@ pub(crate) fn set_tab_folded(window: WindowId, tab: &TabId, folded: bool) {
     {
         let mut session = poison::lock(&SESSION, "session");
         let held = &mut session.windows[window];
-        if !held.composition.tabs().any(|held| &held.id == tab)
-            || (folded && held.composition.tabs().count() <= 1)
-        {
+        if !held.composition.tabs().any(|held| &held.id == tab) {
             return;
         }
         if folded {
@@ -1091,7 +1089,6 @@ pub(crate) struct Window {
     /// Spans the daemons, because a step back from a devenv pane can land on a laptop one.
     focus_history: FocusHistory,
     last_keyboard: Option<PaneKey>,
-    last_tab_count: Option<usize>,
 
     /// The last view and roster the shell was sent, so one it already has is not sent again.
     ///
@@ -1253,7 +1250,6 @@ impl Default for Window {
             armed: None,
             focus_history: FocusHistory::new(),
             last_keyboard: None,
-            last_tab_count: None,
             sent: Sent::default(),
             arrangement: None,
             lifecycle: Lifecycle::Unopened,
@@ -2587,10 +2583,8 @@ impl Session {
             |daemon| mirrors.get(daemon).map(|held| &**held),
             view.showing(),
         );
-        let can_fold = roster.tabs.len() > 1;
         for tab in &mut roster.tabs {
-            tab.folded =
-                can_fold && self.windows[window].presentation.folded_tabs.contains(&tab.id);
+            tab.folded = self.windows[window].presentation.folded_tabs.contains(&tab.id);
         }
         roster
     }
@@ -6022,13 +6016,6 @@ fn settle_folds(session: &mut Session) {
                 .presentation
                 .folded_tabs
                 .retain(|tab| tabs.contains(tab) || pending.contains(tab));
-            if tabs.len() == 1
-                && (window.awaiting.is_empty()
-                    || window.last_tab_count.is_some_and(|count| count > 1))
-            {
-                window.presentation.folded_tabs.remove(tabs.first().expect("one tab"));
-            }
-            window.last_tab_count = Some(tabs.len());
         }
     }
     for window in session.windows.opened() {
