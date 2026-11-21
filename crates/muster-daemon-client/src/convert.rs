@@ -192,6 +192,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         image_paste: record.image_paste,
         cwd: record.cwd,
         name: record.label,
+        color: record.color,
         callsign: record.callsign,
         former_names: record.former_labels,
         title: Some(record.title).filter(|title| !title.is_empty()),
@@ -249,6 +250,7 @@ fn canvas_metadata(record: proto::Canvas) -> muster_core::canvas::CanvasMetadata
 /// holds. `copy` and `copy_zoomed` keep the whole tree, for the merge.
 pub fn tab(record: proto::Tab) -> Option<Tab> {
     let label = record.label.unwrap_or_default();
+    let color = record.color.unwrap_or_default();
     let copy = copy(record.root?)?;
     let root = copy.own()?;
     let copy_zoomed = record.zoomed.map(PaneId::new);
@@ -256,6 +258,7 @@ pub fn tab(record: proto::Tab) -> Option<Tab> {
         id: TabId::new(record.tab),
         label: label.text.filter(|text| !text.is_empty()),
         generation: label.generation,
+        color: muster_core::color::TabColor { generation: color.generation, value: color.value },
         zoomed: copy_zoomed.clone().filter(|zoomed| root.panes().contains(&zoomed)),
         root,
         hidden: record.hidden,

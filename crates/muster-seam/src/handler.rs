@@ -481,6 +481,7 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         request::Payload::SetSplitRatio(set) => set_split_ratio(window, set),
         request::Payload::EqualizePanes(even) => equalize_panes(window, &even),
         request::Payload::RenamePane(rename) => rename_pane(window, &rename),
+        request::Payload::SetPaneColor(set) => set_pane_color(window, &set),
         request::Payload::CompactPane(compact) => compact_pane(window, &compact),
         request::Payload::ClearAgent(clear) => clear_agent(window, &clear),
         request::Payload::MarkUnread(mark) => mark_unread(window, &mark),
@@ -494,6 +495,7 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         request::Payload::HideHelpers(hide) => hide_helpers(window, &hide),
         request::Payload::QuietPane(quiet) => quiet_pane(window, &quiet),
         request::Payload::RenameTab(rename) => rename_tab(window, &rename),
+        request::Payload::SetTabColor(set) => set_tab_color(window, &set),
         request::Payload::CloseTab(close) => close_tab(window, &close),
         request::Payload::HideTab(hide) => hide_tab(window, &hide),
         // Answered when the panes have been handed back, not when the message was read. The
@@ -657,6 +659,16 @@ fn rename_pane(window: WindowId, rename: &proto::RenamePane) -> Response {
     let name = wanted_name(&rename.name);
     act(window, &rename.daemon_id, &rename.pane_id, Keyboard::Follows, |pane| {
         BackendIntent::RenamePane { pane, name }
+    })
+}
+
+fn set_pane_color(window: WindowId, set: &proto::SetPaneColor) -> Response {
+    let color = match muster_core::color::parse_color_request(&set.color) {
+        Ok(color) => color,
+        Err(why) => return Response::failure(why),
+    };
+    act(window, &set.daemon_id, &set.pane_id, Keyboard::StaysPut, |pane| {
+        BackendIntent::SetPaneColor { pane, color }
     })
 }
 
@@ -1020,6 +1032,26 @@ fn rename_tab(window: WindowId, rename: &proto::RenameTab) -> Response {
         ));
     };
     relayed(session::rename_tab(window, &tab, name.as_deref()).map(|()| Response::ok()))
+}
+
+fn set_tab_color(window: WindowId, set: &proto::SetTabColor) -> Response {
+    let color = match muster_core::color::parse_color_request(&set.color) {
+        Ok(color) => color,
+        Err(why) => return Response::failure(why),
+    };
+    let tab = if set.tab_id.is_empty() {
+        let target = match target(window, &set.daemon_id, "") {
+            Ok(target) => target,
+            Err(refusal) => return *refusal,
+        };
+        let Some(tab) = target.pane.and_then(|pane| session::tab_of(&target.daemon, &pane)) else {
+            return Response::failure("no tab has the keyboard, so no color was set");
+        };
+        tab
+    } else {
+        TabId::new(&set.tab_id)
+    };
+    relayed(session::set_tab_color(window, &tab, color).map(|()| Response::ok()))
 }
 
 /// Closes a tab and every pane in it.

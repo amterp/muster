@@ -29,9 +29,9 @@ use muster_proto::{
     FocusRelative, FocusTab, FocusTabRelative, HideHelpers, HidePane, HideTab, LeaveConversation,
     MarkUnread, MoveTab, OpenCanvas, PaneCompaction, QuietPane, ReadCanvas, ReadClosedPanes,
     ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RemoveFromTab, RenamePane,
-    RenameTab, ReopenPane, Request, ResizePane, RestartAgent, SendToPane, ShowConversation,
-    ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes, WriteCanvas,
-    ZoomPane, request,
+    RenameTab, ReopenPane, Request, ResizePane, RestartAgent, SendToPane, SetPaneColor,
+    SetTabColor, ShowConversation, ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster,
+    WatchPanes, WriteCanvas, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -689,6 +689,16 @@ enum Doing {
         /// What to call it, joined with spaces if it arrives in pieces
         #[arg(required = true, value_name = "NAME")]
         name: Vec<String>,
+    },
+
+    /// Set or clear a pane's color
+    Color {
+        /// The pane to color, or the one this is running in
+        #[arg(long, value_name = "REF", value_parser = reference)]
+        pane: Option<String>,
+        /// red, green, yellow, blue, magenta, cyan, #rrggbb, or none
+        #[arg(value_parser = color_arg)]
+        color: String,
     },
 
     /// Compact the context of a pane's agent, once it is idle at an empty prompt
@@ -1369,6 +1379,16 @@ enum WithTab {
         #[arg(required = true, value_name = "NAME")]
         name: Vec<String>,
     },
+
+    /// Set or clear a tab's color
+    Color {
+        /// The tab's id, as listed by muster window
+        #[arg(value_parser = reference)]
+        tab: String,
+        /// red, green, yellow, blue, magenta, cyan, #rrggbb, or none
+        #[arg(value_parser = color_arg)]
+        color: String,
+    },
 }
 
 /// Reads a command line, or says why it cannot be one.
@@ -1764,6 +1784,11 @@ fn pane(
                 ..RenamePane::default()
             }))
         }
+        Doing::Color { pane, color } => send(request::Payload::SetPaneColor(SetPaneColor {
+            pane_id: pane_ref(pane.as_ref(), environment),
+            color: color.clone(),
+            ..SetPaneColor::default()
+        })),
         Doing::Compact { pane, focus, then } => {
             compact(pane.as_ref(), focus, then.as_deref(), environment)
         }
@@ -1987,6 +2012,11 @@ fn tab(
                 ..RenameTab::default()
             }))
         }
+        WithTab::Color { tab, color } => send(request::Payload::SetTabColor(SetTabColor {
+            tab_id: tab.clone(),
+            color: color.clone(),
+            ..SetTabColor::default()
+        })),
     })
 }
 
@@ -2187,6 +2217,10 @@ fn settled(path: &Path) -> String {
 /// still splits whatever somebody is looking at.
 fn pane_ref(named: Option<&String>, environment: &BTreeMap<String, String>) -> String {
     named.cloned().or_else(|| running_in(environment)).unwrap_or_default()
+}
+
+fn color_arg(value: &str) -> Result<String, &'static str> {
+    muster_core::color::parse_color(value).map(Option::unwrap_or_default)
 }
 
 /// A pane, tab, machine or addressee as typed, refusing an empty one.

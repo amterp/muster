@@ -136,6 +136,8 @@ core and this is the other door into it.
     muster canvas open report.md --title "Test results"
     muster pane wait --pane otter --until idle,blocked
     muster tab focus t1w3r07bsd
+    muster tab color t1w3r07bsd blue
+    muster pane color --pane otter '#a42e80'
     muster window --json
     muster window --layout
 
@@ -145,6 +147,9 @@ without saying which daemon holds it - or which window: a tab belongs to exactly
 request naming another window's tab is answered by that window. What a tab does not get is a name in any pane's environment:
 nothing has to tell a tab which tab it is, so there is no `$MUSTER_TAB`, and a script that means the
 tab it is sitting in reads that out of `muster window` - where every pane says which tab holds it.
+
+The daemon keeps each tab's and pane's assigned color with its name. Each daemon holding part
+of a tab keeps the tab's color, and `muster window` reports both tab and pane colors.
 
 `muster daemons` is the one verb that is about the machine rather than about a window. `muster
 window` says which daemons this window is attached to; that says which are on this machine at

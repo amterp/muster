@@ -748,10 +748,10 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool, local:
     }
 
     // Hidden panes, which no window shows, so no window's list above has them. Listed as a closed
-    // window's are, without places or the keyboard, because nothing draws them. A tab whose every
-    // pane is listed under its maker above has nothing left to list here.
+    // window's are, without places or the keyboard. When every pane is listed under its maker,
+    // keep the tab's heading only if it carries a color.
     let hidden: Vec<&muster_proto::RosterTab> = hidden_tabs(window)
-        .filter(|tab| tab.panes.iter().any(|pane| !helpers.moved(pane)))
+        .filter(|tab| !tab.color.is_empty() || tab.panes.iter().any(|pane| !helpers.moved(pane)))
         .collect();
     if !hidden.is_empty() {
         if !lines.is_empty() {
@@ -902,6 +902,9 @@ fn pane_box(
     let mut lines = vec![name];
     if let Some(beside) = row.map(beside_callsign).filter(|beside| !beside.is_empty()) {
         lines.push(vec![(beside.to_string(), PLAIN)]);
+    }
+    if let Some(row) = row.filter(|row| !row.color.is_empty()) {
+        lines.push(vec![(format!("color={}", row.color), QUIET)]);
     }
     let state = pane_state(row, agent);
     let mut doing = vec![(state.to_string(), agent_style(state))];
@@ -1059,6 +1062,9 @@ impl Rows<'_> {
                 line.push_str(&styled(&format!(" · {subtitle}"), QUIET));
             }
             None => {}
+        }
+        if !pane.color.is_empty() {
+            line.push_str(&styled(&format!("  color={}", pane.color), QUIET));
         }
         if let Some(agent) = agent {
             for said in agent_notes(agent) {
@@ -1261,6 +1267,9 @@ fn tab_line(widths: &Widths, tab: &muster_proto::RosterTab) -> String {
     if !tab.label.is_empty() {
         line.push_str("  ");
         line.push_str(&tab.label);
+    }
+    if !tab.color.is_empty() {
+        line.push_str(&styled(&format!("  color={}", tab.color), QUIET));
     }
     if tab.on_screen {
         line.push_str("  ");
@@ -1528,6 +1537,7 @@ fn unplaced_tab_json(
         "daemons": tab.daemon_ids,
         "label": tab.label,
         "given_name": tab.given_name,
+        "color": (!tab.color.is_empty()).then_some(&tab.color),
         "panes": tab.panes.iter().map(|pane| with_pane(json!({
             "pane": pane.pane_id,
             "callsign": (!pane.callsign.is_empty()).then_some(&pane.callsign),
@@ -1551,6 +1561,7 @@ fn with_pane(
     agent: Option<&muster_proto::PaneStateChanged>,
 ) -> Value {
     let mut row = with_agent(row, agent);
+    row["color"] = json!((!pane.color.is_empty()).then_some(&pane.color));
     if let Some(canvas) = &pane.canvas {
         row["state"] = pane_state(Some(pane), agent).into();
         row["canvas"] = json!({
@@ -1674,6 +1685,7 @@ fn window_json(window: &Window, others: Others, local: &Local) -> Value {
             "place": tab.place,
             "label": tab.label,
             "given_name": tab.given_name,
+            "color": (!tab.color.is_empty()).then_some(&tab.color),
             "on_screen": tab.on_screen,
         });
         if let (Some(view), Value::Object(fields)) = (window.view.as_ref(), &mut described)

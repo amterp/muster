@@ -481,6 +481,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
             id: tab.clone(),
             label: Some("t1".to_string()),
             generation: 1,
+            color: Default::default(),
             copy: CopyNode::of(&nested(&ids)),
             copy_zoomed: None,
             root: nested(&ids),
@@ -539,6 +540,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         image_paste: false,
         cwd: "/tmp".to_string(),
         name: None,
+        color: None,
         // Every pane has a callsign, and the row is composed around it.
         callsign: Some("otter".to_string()),
         former_names: Vec::new(),

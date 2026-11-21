@@ -530,6 +530,18 @@ fn a_tab_is_addressable_by_name(window: &Value, environment: &[(&str, String)]) 
             }
         },
     );
+    let colored = run(&["tab", "color", &tab, "cyan"], environment);
+    assert_eq!(colored.code, 0, "`muster tab color` failed: {}", colored.errors);
+    until(
+        "the window to report the tab's color",
+        || {
+            let window = json_from(&run(&["window", "--json"], environment));
+            window["tabs"][0]["color"] == "cyan"
+        },
+        || run(&["window"], environment).out,
+    );
+    let listed = run(&["window"], environment);
+    assert!(listed.out.lines().any(|line| line.contains(&tab) && line.contains("color=cyan")));
     tab
 }
 

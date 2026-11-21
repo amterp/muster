@@ -117,6 +117,10 @@ pub(crate) fn read_tab(given: &Value) -> Tab {
         id: TabId::new(text(given, "id")),
         label: optional(given, "label"),
         generation: given.get("generation").and_then(Value::as_u64).unwrap_or_default(),
+        color: muster_core::color::TabColor {
+            generation: given.get("colorGeneration").and_then(Value::as_u64).unwrap_or_default(),
+            value: optional(given, "color"),
+        },
         copy: optional(given, "copy").map_or_else(|| CopyNode::of(&root), |copy| read_copy(&copy)),
         root,
         copy_zoomed: optional(given, "copyZoomed").map(PaneId::new).or_else(|| zoomed.clone()),
@@ -194,6 +198,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         image_paste: given.get("image_paste").and_then(Value::as_bool).unwrap_or_default(),
         cwd: text(given, "cwd"),
         name: optional(given, "name"),
+        color: optional(given, "color"),
         callsign: optional(given, "callsign"),
         former_names: Vec::new(),
         title: optional(given, "title"),

@@ -289,6 +289,11 @@ pub enum BackendIntent {
         name: Option<String>,
     },
 
+    SetPaneColor {
+        pane: PaneId,
+        color: Option<String>,
+    },
+
     /// Sets the compaction thresholds a pane has for itself, which beat the config file's for
     /// as long as the pane lasts. Its daemon keeps them, since its daemon applies them.
     SetPaneCompaction {
@@ -372,6 +377,11 @@ pub enum BackendIntent {
         /// it and a part that missed it is renamed when its daemon reconnects (MIP-3, section
         /// 2). The daemon refuses a lower one.
         generation: u64,
+    },
+
+    SetTabColor {
+        tab: TabId,
+        color: crate::color::TabColor,
     },
 
     /// Writes a tab's whole tree on one machine holding part of it, other machines' panes

@@ -1410,6 +1410,26 @@
       }
     },
     {
+      "name": "tab color takes the tab id before the color",
+      "given": {"argv": ["tab", "color", "t29vgmaqym", "magenta"]},
+      "expect": {"request": {"set_tab_color": {"tab_id": "t29vgmaqym", "color": "magenta"}}}
+    },
+    {
+      "name": "pane color normalizes hex and takes the pane by callsign",
+      "given": {"argv": ["pane", "color", "--pane", "otter", "#A12B3C"]},
+      "expect": {"request": {"set_pane_color": {"pane_id": "otter", "color": "#a12b3c"}}}
+    },
+    {
+      "name": "none clears the pane color",
+      "given": {"argv": ["pane", "color", "none"]},
+      "expect": {"request": {"set_pane_color": {"color": ""}}}
+    },
+    {
+      "name": "a color needs six hex digits or a palette hue",
+      "given": {"argv": ["pane", "color", "#123"]},
+      "expect": {"usage": "ValueValidation"}
+    },
+    {
       "name": "a tab's name as the first word of a rename with no --tab is refused",
       "why": "NAME takes every word and the tab is `--tab`, so `tab rename t29vgmaqym CHAT NOTES`, meant for that tab, renamed whichever tab the keyboard was in - another session's - to `t29vgmaqym CHAT NOTES`, and nothing said so. Nobody chooses a minted name as a name, so the command is refused with the spelling that was meant rather than guessed at.",
       "given": {

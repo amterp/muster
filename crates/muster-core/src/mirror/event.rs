@@ -115,6 +115,7 @@ pub enum Change {
     /// because a list of panes names them by exactly these things, and a name that never
     /// updates is a pane the user cannot find twice.
     PaneRelabelled(PaneId),
+    PaneRecolored,
     /// What is known of this pane's agent beyond its state has moved: what the agent says about
     /// itself, whether its state is its own report, or whether its screen can be read.
     ///
@@ -126,6 +127,7 @@ pub enum Change {
     /// for the same reason: a caption that never updates is a tab somebody named and cannot
     /// find again.
     TabRelabelled(TabId),
+    TabRecolored(TabId),
     TabRemoved(TabId),
     /// This tab's tree, or which of its panes is zoomed, is not what it was. Carries the tab
     /// rather than the tree, because every reader has the mirror in hand and only some of
@@ -181,9 +183,11 @@ impl Change {
             Change::AgentStateChanged { .. } => "agent_state",
             Change::FinishedUnseen { .. } => "finished_unseen",
             Change::PaneRelabelled(_) => "pane_relabelled",
+            Change::PaneRecolored => "pane_recolored",
             Change::AgentDescribed(_) => "agent_described",
             Change::TabAdded(_) => "tab_added",
             Change::TabRelabelled(_) => "tab_relabelled",
+            Change::TabRecolored(_) => "tab_recolored",
             Change::TabRemoved(_) => "tab_removed",
             Change::LayoutChanged(_) => "layout_changed",
             Change::Restored(_) => "restored",
@@ -213,8 +217,10 @@ impl Change {
                 | Change::FinishedUnseen { .. }
                 | Change::AgentDescribed(_)
                 | Change::PaneRelabelled(_)
+                | Change::PaneRecolored
                 | Change::CanvasChanged { .. }
                 | Change::TabRelabelled(_)
+                | Change::TabRecolored(_)
                 | Change::PasteHeld { .. }
                 | Change::ClipboardWrite { .. }
                 | Change::Rang(_)
@@ -242,8 +248,10 @@ impl Change {
             || matches!(
                 self,
                 Change::PaneRelabelled(_)
+                    | Change::PaneRecolored
                     | Change::CanvasChanged { reset: true, .. }
                     | Change::TabRelabelled(_)
+                    | Change::TabRecolored(_)
                     | Change::Restarted(_)
                     | Change::RestartSettled
             )

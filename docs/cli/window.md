@@ -8,8 +8,8 @@ out what it did.
       ▸ 1  prairie     unknown   2h  muster
         2  maple       working  12m  🤖 A · reading AGENTS.md  64% context  2 sub-agents  1 helper
              otter     working   5m  🤖 A1 · running the tests  (hidden, quiet)
-    tab 2  t1w3r0h4kp  the build
-        3  cobalt      blocked  40m  🤖 B  (off screen)
+    tab 2  t1w3r0h4kp  the build  color=blue
+        3  cobalt      blocked  40m  🤖 B  color=#a42e80  (off screen)
         4  lantern     waiting   8m  🤖 C · on the full gate  31% context  (off screen)
 
     hidden
@@ -203,6 +203,7 @@ One entry per pane every followed daemon holds, on screen or not.
 - `label` - what to call it to somebody who did not open it: the name somebody gave it, or
   failing that its callsign, then its directory and the harness detected in it.
 - `given_name` - the name somebody gave it, empty when nobody has.
+- `color` - the pane's assigned palette hue or lowercase `#rrggbb`, or `null` when unset.
 - `maker` - the id of the pane that made it as its helper (`muster docs agents`, "An agent's
   helpers"), or `null` for a pane nobody made as one. The maker may be on another machine, or
   closed. `[.panes[], .hidden[].panes[]] | .[] | select(.maker == env.MUSTER_PANE)` is a pane's
@@ -288,7 +289,7 @@ One entry per pane every followed daemon holds, on screen or not.
 ## tabs[], showing and keyboard
 
 `tabs[]` are the tabs this window holds, and carry `tab`, `daemons`, `place`, `label`,
-`given_name` and `on_screen`.
+`given_name`, `color` and `on_screen`.
 
 - `tab` - its name, and what to pass to `muster tab focus`, `muster tab rename --tab`,
   `muster tab move --tab` and `muster pane move --tab`. Muster's own name, unique across every
@@ -301,6 +302,8 @@ One entry per pane every followed daemon holds, on screen or not.
   where it was, whichever machine answers first and a tab on two machines included.
 - `label` - what to call it to somebody who did not open it. `given_name` is what somebody typed,
   empty when nobody has.
+- `color` - the tab's assigned palette hue or lowercase `#rrggbb`, or `null` when unset. For a
+  tab spanning machines, the window reports its newest color.
 - `on_screen` - whether this is the tab the window is showing. Exactly one carries it. Not the
   same question as its panes being on screen: a zoomed tab is on screen while all but one of its
   panes are not.

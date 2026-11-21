@@ -1387,6 +1387,42 @@ fn windowless_canvas_commands_gate_on_the_daemon_protocol() {
 }
 
 #[test]
+fn pane_color_with_no_window_updates_both_window_outputs() {
+    let here = Here::new(Daemon::start_built());
+    let mut control = here.daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let callsign = snapshot(&mut control).panes[0].callsign.clone().unwrap();
+    let set = proto::tab_request::SetColor {
+        tab: "t1".to_string(),
+        color: Some(proto::TabColor { value: Some("blue".to_string()), generation: 1 }),
+    };
+    expect(
+        &mut control,
+        muster_harness::requests::tab(proto::tab_request::Request::SetColor(set)),
+        proto::Outcome::Done,
+    );
+    ok(&here.muster(&["pane", "color", "--pane", &callsign, "#A1B2C3"]));
+    let text = ok(&here.muster(&["window"]));
+    assert!(text.contains("color=blue") && text.contains("color=#a1b2c3"), "{text}");
+    let window =
+        || -> Value { serde_json::from_str(&ok(&here.muster(&["window", "--json"]))).unwrap() };
+    assert_eq!(window()["tabs"][0]["color"], "blue");
+    assert_eq!(window()["panes"][0]["color"], "#a1b2c3");
+    ok(&here.muster(&["pane", "color", "--pane", &callsign, "none"]));
+    assert_eq!(window()["panes"][0]["color"], Value::Null);
+
+    let relay = here.daemon.saying_protocol_minor(17);
+    let refused = here
+        .command(&["pane", "color", "--pane", "p1", "red"])
+        .env("MUSTER_DAEMON_SOCKET", relay.socket_path())
+        .output()
+        .unwrap();
+    let reason = refused_with(&refused, 1);
+    assert!(reason.contains("speaks protocol 1.17"), "{reason}");
+    assert_eq!(window()["panes"][0]["color"], Value::Null);
+}
+
+#[test]
 fn a_windowless_canvas_write_with_no_answer_lands_once() {
     let here = Here::new(Daemon::start_built());
     let canvas = ok(&here.muster(&["canvas", "open"]));

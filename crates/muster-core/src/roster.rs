@@ -118,6 +118,7 @@ fn fnv1a(bytes: &[u8]) -> u32 {
 /// One tab, as something to list and something to go to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RosterTab {
+    pub color: Option<String>,
     pub id: TabId,
     pub folded: bool,
 
@@ -176,6 +177,7 @@ impl RosterTab {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[expect(clippy::struct_excessive_bools, reason = "independent facts about a pane, one each")]
 pub struct RosterPane {
+    pub color: Option<String>,
     pub key: PaneKey,
     pub canvas: Option<crate::canvas::CanvasInfo>,
 
@@ -571,6 +573,7 @@ impl Roster {
                             subtitle: pane_subtitle(pane, &label),
                             label,
                             given_name: given_name(pane.name.as_deref()),
+                            color: pane.color.clone(),
                             name: pane_name(pane).map(str::to_string),
                             callsign: pane_callsign(pane).map(str::to_string),
                             beside_callsign: pane_beside_callsign(pane),
@@ -590,10 +593,8 @@ impl Roster {
                 // A tab spanning two machines holds its name on each, and the part with the
                 // highest generation has the current one; a lagging part is renamed when its
                 // daemon reconnects (MIP-3, section 2).
-                let own = tab
-                    .daemons()
-                    .filter_map(|daemon| mirror(daemon)?.tab(&tab.id))
-                    .max_by_key(|part| part.generation);
+                let parts = || tab.daemons().filter_map(|daemon| mirror(daemon)?.tab(&tab.id));
+                let own = parts().max_by_key(|part| part.generation);
                 let name = own.and_then(tab_name);
                 RosterTab {
                     id: tab.id.clone(),
@@ -603,6 +604,7 @@ impl Roster {
                     label: name.map_or_else(|| format!("Tab {tab_place}"), str::to_string),
                     on_screen: on_screen.as_ref() == Some(&tab.id),
                     given_name: name.map(str::to_string),
+                    color: tab_color(parts()),
                     panes,
                 }
             })
@@ -730,6 +732,7 @@ fn hidden_tabs<'a>(
                     label: name.unwrap_or_default().to_string(),
                     on_screen: false,
                     given_name: name.map(str::to_string),
+                    color: None,
                     panes: Vec::new(),
                 });
                 hidden.len() - 1
@@ -746,6 +749,7 @@ fn hidden_tabs<'a>(
                     subtitle: pane_subtitle(pane, &label),
                     label,
                     given_name: given_name(pane.name.as_deref()),
+                    color: pane.color.clone(),
                     name: pane_name(pane).map(str::to_string),
                     callsign: pane_callsign(pane).map(str::to_string),
                     beside_callsign: pane_beside_callsign(pane),
@@ -762,7 +766,14 @@ fn hidden_tabs<'a>(
             }
         }
     }
+    for tab in &mut hidden {
+        tab.color = tab_color(tab.daemons.iter().filter_map(|daemon| mirror(daemon)?.tab(&tab.id)));
+    }
     hidden
+}
+
+fn tab_color<'a>(parts: impl Iterator<Item = &'a crate::mirror::backend::Tab>) -> Option<String> {
+    parts.max_by(|a, b| a.color.cmp(&b.color)).and_then(|part| part.color.value.clone())
 }
 
 /// Says which hidden helpers the list shows under their maker, on each helper's `under`.

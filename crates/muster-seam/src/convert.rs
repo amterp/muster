@@ -211,7 +211,6 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
     proto::RosterTab {
         tab_id: tab.id.to_string(),
         folded: tab.folded,
-        color: String::new(),
         daemon_ids: tab.daemons.iter().map(ToString::to_string).collect(),
         // Zero is proto3's own spelling for a field nobody set, and the handler
         // already reads it as no place at all - so a number too large to send
@@ -227,6 +226,7 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
         // appearance vocabulary uses. An optional carrying a name nobody could have
         // typed - the empty one - is not a state worth a wire representation.
         given_name: tab.given_name.clone().unwrap_or_default(),
+        color: tab.color.clone().unwrap_or_default(),
         panes: tab
             .panes
             .iter()
@@ -237,7 +237,6 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
                 });
                 proto::RosterPane {
                     canvas: pane.canvas.as_ref().map(canvas_info),
-                    color: String::new(),
                     daemon_id: pane.key.daemon.to_string(),
                     pane_id: pane.key.pane.to_string(),
                     place: u32::try_from(pane.place).unwrap_or_default(),
@@ -247,6 +246,7 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
                     on_screen: pane.on_screen,
                     subtitle: pane.subtitle.clone().unwrap_or_default(),
                     given_name: pane.given_name.clone().unwrap_or_default(),
+                    color: pane.color.clone().unwrap_or_default(),
                     name: pane.name.clone().unwrap_or_default(),
                     callsign: pane.callsign.clone().unwrap_or_default(),
                     beside_callsign: pane.beside_callsign.clone(),

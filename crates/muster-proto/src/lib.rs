@@ -91,6 +91,7 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
         Payload::CloseTab(close) => tab(&close.tab_id),
         Payload::HideTab(hide) => tab(&hide.tab_id),
         Payload::RenameTab(rename) => tab(&rename.tab_id),
+        Payload::SetTabColor(set) => tab(&set.tab_id),
         Payload::SetSplitRatio(set) => tab(&set.tab_id),
         Payload::ArrangePane(arrange) => tab(&arrange.tab_id)
             .or_else(|| pane(&arrange.onto_pane_id))
@@ -109,6 +110,7 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
         Payload::ZoomPane(zoom) => pane(&zoom.pane_id),
         Payload::ResizePane(resize) => pane(&resize.pane_id),
         Payload::RenamePane(rename) => pane(&rename.pane_id),
+        Payload::SetPaneColor(set) => pane(&set.pane_id),
         Payload::CompactPane(compact) => pane(&compact.pane_id),
         Payload::ClearAgent(clear) => pane(&clear.pane_id),
         Payload::PaneCompaction(set) => pane(&set.pane_id),
@@ -155,6 +157,7 @@ pub fn typed_panes(payload: &mut request::Payload) -> Vec<&mut String> {
         Payload::ZoomPane(zoom) => vec![&mut zoom.pane_id],
         Payload::ResizePane(resize) => vec![&mut resize.pane_id],
         Payload::RenamePane(rename) => vec![&mut rename.pane_id],
+        Payload::SetPaneColor(set) => vec![&mut set.pane_id],
         Payload::CompactPane(compact) => vec![&mut compact.pane_id],
         Payload::ClearAgent(clear) => vec![&mut clear.pane_id],
         Payload::PaneCompaction(set) => vec![&mut set.pane_id],

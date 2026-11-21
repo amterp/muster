@@ -1954,6 +1954,8 @@ public enum Core {
     case .writeCanvas: return "write_canvas"
     case .readCanvas: return "read_canvas"
     case .canvasPage: return "canvas_page"
+    case .setTabColor: return "set_tab_color"
+    case .setPaneColor: return "set_pane_color"
     case .endNumberedChord: return "end_numbered_chord"
     case .quitting: return "quitting"
     case nil: return "(none)"

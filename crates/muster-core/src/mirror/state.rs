@@ -137,6 +137,9 @@ impl Mirror {
                     if relabelled(before, pane) {
                         changes.push(Change::PaneRelabelled(id.clone()));
                     }
+                    if before.color != pane.color {
+                        changes.push(Change::PaneRecolored);
+                    }
                     changes.extend(canvas_changed(before, pane, new_run));
                     if described(before, pane) {
                         changes.push(Change::AgentDescribed(id.clone()));
@@ -160,6 +163,9 @@ impl Mirror {
             if let Some(before) = previous_tabs.get(id) {
                 if before.label != tab.label {
                     changes.push(Change::TabRelabelled(id.clone()));
+                }
+                if before.color != tab.color {
+                    changes.push(Change::TabRecolored(id.clone()));
                 }
                 if arrangement_moved(before, tab) {
                     changes.push(Change::LayoutChanged(id.clone()));
@@ -298,6 +304,9 @@ impl Mirror {
         if relabelled(before, &pane) {
             changes.push(Change::PaneRelabelled(id.clone()));
         }
+        if before.color != pane.color {
+            changes.push(Change::PaneRecolored);
+        }
         changes.extend(canvas_changed(before, &pane, false));
         if described(before, &pane) {
             changes.push(Change::AgentDescribed(id.clone()));
@@ -317,6 +326,9 @@ impl Mirror {
             Some(before) => {
                 if before.label != tab.label {
                     changes.push(Change::TabRelabelled(id.clone()));
+                }
+                if before.color != tab.color {
+                    changes.push(Change::TabRecolored(id.clone()));
                 }
                 arrangement_moved(before, &tab)
             }

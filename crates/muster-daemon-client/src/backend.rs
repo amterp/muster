@@ -433,6 +433,14 @@ impl BackendChannel for DaemonBackend {
                 }))?;
                 done
             }
+            BackendIntent::SetPaneColor { pane, color } => {
+                self.speaks_since(proto::version::PERSON_COLORS, "set pane color")?;
+                self.pane_request(pane_request::Request::SetColor(pane_request::SetColor {
+                    pane: pane.to_string(),
+                    color,
+                }))?;
+                done
+            }
             BackendIntent::CompactPane { pane, focus, then } => {
                 if then.is_some() {
                     let since = muster_daemon_proto::version::COMPACT_THEN;
@@ -534,6 +542,17 @@ impl BackendChannel for DaemonBackend {
                 self.tab_request(tab_request::Request::Rename(tab_request::Rename {
                     tab: tab.to_string(),
                     label: Some(proto::Label { text: name, generation }),
+                }))?;
+                done
+            }
+            BackendIntent::SetTabColor { tab, color } => {
+                self.speaks_since(proto::version::PERSON_COLORS, "set tab color")?;
+                self.tab_request(tab_request::Request::SetColor(tab_request::SetColor {
+                    tab: tab.to_string(),
+                    color: Some(proto::TabColor {
+                        value: color.value,
+                        generation: color.generation,
+                    }),
                 }))?;
                 done
             }

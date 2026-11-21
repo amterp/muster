@@ -65,6 +65,7 @@ pub fn can_answer(request: &Request) -> bool {
                     | request::Payload::HideHelpers(_)
                     | request::Payload::QuietPane(_)
                     | request::Payload::RenamePane(_)
+                    | request::Payload::SetPaneColor(_)
                     | request::Payload::ClosePane(_)
                     | request::Payload::ReopenPane(_)
                     | request::Payload::ReadClosedPanes(_)
@@ -191,6 +192,10 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         Some(request::Payload::RenamePane(rename)) => {
             let pane = named(&rename.pane_id, "renamed")?;
             respond(rename_pane(&socket, pane, &rename.name)?)
+        }
+        Some(request::Payload::SetPaneColor(set)) => {
+            let pane = named(&set.pane_id, "colored")?;
+            respond(set_pane_color(&socket, pane, &set.color)?)
         }
         Some(request::Payload::ClosePane(close)) => {
             let pane = named(&close.pane_id, "closed")?;
@@ -965,6 +970,23 @@ fn rename_pane(socket: &Path, pane: &str, name: &str) -> Result<Response, Troubl
     })
 }
 
+fn set_pane_color(socket: &Path, pane: &str, color: &str) -> Result<Response, Trouble> {
+    let color = muster_core::color::parse_color_request(color)
+        .map_err(|why| Trouble::Refused(why.to_string()))?;
+    let answer = asked_of_one_since(
+        socket,
+        pane_service(daemon_proto::pane_request::Request::SetColor(
+            daemon_proto::pane_request::SetColor { pane: pane.to_string(), color },
+        )),
+        daemon_proto::version::PERSON_COLORS,
+        "set pane color",
+    )?;
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::NotThere => not_held(socket, pane, "colored"),
+        _ => changed(answer),
+    })
+}
+
 /// Closes `pane`, as the agent in `by` when the request came from a pane.
 fn close_pane(socket: &Path, pane: &str, by: &str) -> Result<Response, Trouble> {
     let answer = asked(
@@ -1456,6 +1478,7 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
             tab_id: tab.tab.clone(),
             label: tab.label.as_ref().and_then(|label| label.text.clone()).unwrap_or_default(),
             given_name: tab.label.as_ref().and_then(|label| label.text.clone()).unwrap_or_default(),
+            color: tab.color.as_ref().and_then(|color| color.value.clone()).unwrap_or_default(),
             panes: panes
                 .into_iter()
                 .map(|pane| {
@@ -1468,6 +1491,7 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
                         given_name: record
                             .and_then(|record| record.label.clone())
                             .unwrap_or_default(),
+                        color: record.and_then(|record| record.color.clone()).unwrap_or_default(),
                         name: record
                             .and_then(|record| record.name())
                             .map(str::to_string)

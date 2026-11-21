@@ -898,6 +898,7 @@ struct Backend {
 #[derive(Debug, Default)]
 pub(crate) struct Session {
     backends: BTreeMap<DaemonId, Backend>,
+    tab_color_generation: u64,
 
     /// Daemons a test has the window treat as speaking a protocol from before spanning trees,
     /// since the suite runs only daemons built from this commit (`crate::testing`).
@@ -3098,12 +3099,14 @@ pub(crate) fn submit_from(
             }
             | BackendIntent::WriteCanvas { .. }
             | BackendIntent::RenamePane { .. }
+            | BackendIntent::SetPaneColor { .. }
             | BackendIntent::CompactPane { .. }
             | BackendIntent::ClearPane { .. }
             | BackendIntent::MarkUnread { .. }
             | BackendIntent::SetPaneCompaction { .. }
             | BackendIntent::RestartAgent { .. }
             | BackendIntent::RenameTab { .. }
+            | BackendIntent::SetTabColor { .. }
             | BackendIntent::SetTabTree { .. }
             | BackendIntent::SetTabHidden { .. }
             | BackendIntent::MakerClosed { .. }
@@ -4056,6 +4059,38 @@ pub(crate) fn rename_tab(window: WindowId, tab: &TabId, name: Option<&str>) -> R
     for daemon in parts {
         let name = name.map(str::to_string);
         let intent = BackendIntent::RenameTab { tab: tab.clone(), name, generation };
+        if let Err(refusal) = submit(window, &daemon, &intent, Keyboard::StaysPut) {
+            refused.get_or_insert(refusal);
+        }
+    }
+    refused.map_or(Ok(()), Err)
+}
+
+pub(crate) fn set_tab_color(
+    window: WindowId,
+    tab: &TabId,
+    value: Option<String>,
+) -> Result<(), Refusal> {
+    let (parts, generation) = {
+        let mut session = poison::lock(&SESSION, "session");
+        let parts = tab_color_parts(&session, tab);
+        let newest =
+            parts.iter().map(|(_, color)| color.generation).max().ok_or_else(|| {
+                Refusal::NotThere(format!("no attached daemon holds the tab {tab}"))
+            })?;
+        let generation = newest
+            .max(session.tab_color_generation)
+            .checked_add(1)
+            .ok_or_else(|| Refusal::Declined("tab color generation exhausted".to_string()))?;
+        session.tab_color_generation = generation;
+        (parts, generation)
+    };
+    let intent = BackendIntent::SetTabColor {
+        tab: tab.clone(),
+        color: muster_core::color::TabColor { generation, value },
+    };
+    let mut refused = None;
+    for (daemon, _) in parts {
         if let Err(refusal) = submit(window, &daemon, &intent, Keyboard::StaysPut) {
             refused.get_or_insert(refusal);
         }
@@ -6437,6 +6472,9 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             if matches!(change, Change::TabAdded(_)) {
                 catch_up_tab_names(daemon);
             }
+            if let Change::TabAdded(tab) | Change::TabRecolored(tab) = &change {
+                catch_up_tab_color(tab);
+            }
             if let Change::PaneRemoved { pane, called } = &change {
                 tell_closed_maker(daemon, pane, called.as_deref());
             }
@@ -6517,6 +6555,7 @@ fn announce_bootstrap(daemon: &DaemonId, changes: Vec<Change>, unreadable: usize
     health(daemon, Health::Connected, "");
     partners::dirty();
     catch_up_tab_names(daemon);
+    catch_up_tab_colors(daemon);
     catch_up_tab_trees(daemon);
     for change in &changes {
         if let Change::PaneRemoved { pane, called } = change {
@@ -6972,6 +7011,54 @@ fn catch_up_tab_names(daemon: &DaemonId) {
                                  window shows the newest one, and another window reading only \
                                  this machine shows the old one",
                     "check" => "`muster tab rename` sets the name on every part again",
+                },
+            );
+        }
+    }
+}
+
+fn tab_color_parts(
+    session: &Session,
+    tab: &TabId,
+) -> Vec<(DaemonId, muster_core::color::TabColor)> {
+    session
+        .backends
+        .iter()
+        .filter_map(|(daemon, backend)| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            mirror.tab(tab).map(|part| (daemon.clone(), part.color.clone()))
+        })
+        .collect()
+}
+
+fn catch_up_tab_colors(daemon: &DaemonId) {
+    let tabs: Vec<_> = {
+        let session = poison::lock(&SESSION, "session");
+        let Some(backend) = session.backends.get(daemon) else { return };
+        poison::lock(&backend.mirror, "mirror").tabs().map(|tab| tab.id.clone()).collect()
+    };
+    for tab in tabs {
+        catch_up_tab_color(&tab);
+    }
+}
+
+fn catch_up_tab_color(tab: &TabId) {
+    let (parts, window) = {
+        let session = poison::lock(&SESSION, "session");
+        (tab_color_parts(&session, tab), session.front)
+    };
+    let Some(newest) = parts.iter().map(|(_, color)| color).max() else { return };
+    let intent = BackendIntent::SetTabColor { tab: tab.clone(), color: newest.clone() };
+    for (daemon, color) in &parts {
+        if color < newest
+            && let Err(refusal) = submit(window, daemon, &intent, Keyboard::StaysPut)
+        {
+            log::warn(
+                "tab.color.catch_up_failed",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "tab" => tab.to_string(),
+                    "detail" => refusal.to_string(),
                 },
             );
         }

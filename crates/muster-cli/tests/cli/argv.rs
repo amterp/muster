@@ -229,7 +229,7 @@ fn described(request: &Request) -> Value {
 /// The arms about a tab, which is the one subject with a vocabulary of its own.
 ///
 /// Split out for length rather than for meaning, and split here because this is where a real
-/// line falls: `muster tab` has five verbs and they are the five below.
+/// line falls: these requests all name a tab.
 fn described_tab(payload: &request::Payload) -> Option<Value> {
     Some(match payload {
         request::Payload::FocusTab(focus) => json!({
@@ -240,6 +240,9 @@ fn described_tab(payload: &request::Payload) -> Option<Value> {
                 ("tab_id", said(&rename.tab_id)),
                 ("name", Some(json!(rename.name))),
             ])
+        }),
+        request::Payload::SetTabColor(set) => json!({
+            "set_tab_color": { "tab_id": set.tab_id, "color": set.color }
         }),
         request::Payload::CloseTab(close) => json!({
             "close_tab": fields([("tab_id", said(&close.tab_id))])
@@ -345,6 +348,12 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
             "rename_pane": fields([
                 ("pane_id", said(&rename.pane_id)),
                 ("name", Some(json!(rename.name))),
+            ])
+        }),
+        request::Payload::SetPaneColor(set) => json!({
+            "set_pane_color": fields([
+                ("pane_id", said(&set.pane_id)),
+                ("color", Some(json!(set.color))),
             ])
         }),
         request::Payload::CompactPane(compact) => json!({

@@ -19,8 +19,8 @@ use std::sync::Mutex;
 use muster::proto::{
     AdjustFontSize, ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow,
     PaneText, ReadPane, ReadWindow, RemoveFromTab, RenamePane, RenameTab, Request, ResizePane,
-    Response, RosterChanged, SendToPane, SetSplitRatio, SplitPane, Startup, ZoomPane, event,
-    request, response,
+    Response, RosterChanged, SendToPane, SetPaneColor, SetSplitRatio, SetTabColor, SplitPane,
+    Startup, ZoomPane, event, request, response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{
@@ -1588,6 +1588,11 @@ fn a_new_part_of_a_named_tab_takes_its_name() {
         name: "work".to_string(),
         ..RenameTab::default()
     })));
+    assert_ok(&answer(request::Payload::SetTabColor(SetTabColor {
+        tab_id: laptop_tab.clone(),
+        color: "cyan".to_string(),
+        ..SetTabColor::default()
+    })));
     assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
         pane_id: on_devenv,
         tab_id: laptop_tab.clone(),
@@ -1606,6 +1611,99 @@ fn a_new_part_of_a_named_tab_takes_its_name() {
         "the devenv's part of the tab to be called what the tab is called",
         || devenv_label().as_deref() == Some("work"),
         || format!("the devenv's part is labelled {:?}", devenv_label()),
+    );
+    until(
+        "the devenv's new tab part to take the current color",
+        || tab_color(&devenv, &laptop_tab).and_then(|color| color.value).as_deref() == Some("cyan"),
+        || format!("the devenv holds {:?}", tab_color(&devenv, &laptop_tab)),
+    );
+}
+
+fn tab_color(daemon: &Daemon, tab: &str) -> Option<daemon_proto::TabColor> {
+    snapshot(daemon).tabs.into_iter().find(|held| held.tab == tab)?.color
+}
+
+#[test]
+fn a_spanning_tab_keeps_its_newest_color_when_a_daemon_returns() {
+    let _turn = muster::testing::fresh_session();
+    let mut machines =
+        a_tab_spanning_two_machines(&["A"], ("[A|~X@devenv 0.50]", 1), ("[~A@laptop|X 0.50]", 1));
+    let set_tab_color = |color: &str| {
+        answer(request::Payload::SetTabColor(SetTabColor {
+            tab_id: SPANNING_TAB.to_string(),
+            color: color.to_string(),
+            ..SetTabColor::default()
+        }))
+    };
+    put_the_keyboard_on(SPAN_A);
+    assert_ok(&answer(request::Payload::SetPaneColor(SetPaneColor {
+        pane_id: SPAN_X.to_string(),
+        color: "#A1B2C3".to_string(),
+        ..SetPaneColor::default()
+    })));
+    assert_ok(&set_tab_color("magenta"));
+    assert_ok(&set_tab_color("blue"));
+    let blue = tab_color(&machines.laptop, SPANNING_TAB).unwrap();
+    assert_eq!(blue.value.as_deref(), Some("blue"));
+    assert_eq!(tab_color(&machines.devenv, SPANNING_TAB).as_ref(), Some(&blue));
+
+    let competing = daemon_proto::TabColor { value: Some("yellow".to_string()), ..blue };
+    let set = daemon_proto::tab_request::SetColor {
+        tab: SPANNING_TAB.to_string(),
+        color: Some(competing.clone()),
+    };
+    expect(
+        &mut machines.devenv.connect(),
+        muster_harness::requests::tab(daemon_proto::tab_request::Request::SetColor(set)),
+        daemon_proto::Outcome::Done,
+    );
+    until(
+        "the equal-generation color to converge on yellow",
+        || tab_color(&machines.laptop, SPANNING_TAB).as_ref() == Some(&competing),
+        || format!("the laptop holds {:?}", tab_color(&machines.laptop, SPANNING_TAB)),
+    );
+    until(
+        "the roster to say the tab's and pane's colors",
+        || {
+            let roster = ROSTER.lock().unwrap();
+            roster.as_ref().is_some_and(|roster| {
+                roster.tabs.iter().any(|tab| {
+                    tab.tab_id == SPANNING_TAB
+                        && tab.color == "yellow"
+                        && tab
+                            .panes
+                            .iter()
+                            .any(|pane| pane.pane_id == SPAN_X && pane.color == "#a1b2c3")
+                })
+            })
+        },
+        || format!("last roster: {:?}", ROSTER.lock().unwrap()),
+    );
+    assert_eq!(keyboard().map(|(_, pane)| pane).as_deref(), Some(SPAN_A));
+
+    expect(
+        &mut machines.devenv.connect(),
+        muster_harness::requests::session(daemon_proto::session_request::Request::Stop(
+            daemon_proto::session_request::Stop {},
+        )),
+        daemon_proto::Outcome::Done,
+    );
+    machines.devenv.wait_for_exit();
+    until(
+        "the devenv to be drawn unreachable",
+        || drawn(SPANNING_TAB).is_some_and(|tree| tree.contains('?')),
+        || format!("the tab is drawn {:?}", drawn(SPANNING_TAB)),
+    );
+    let _ = set_tab_color("");
+    let cleared = tab_color(&machines.laptop, SPANNING_TAB).unwrap();
+    assert_eq!(cleared.value, None);
+    assert!(cleared.generation > competing.generation);
+
+    machines.devenv.restart();
+    until(
+        "the returning part to keep the clear",
+        || tab_color(&machines.devenv, SPANNING_TAB).as_ref() == Some(&cleared),
+        || format!("the devenv holds {:?}", tab_color(&machines.devenv, SPANNING_TAB)),
     );
 }
 

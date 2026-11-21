@@ -453,6 +453,10 @@ sit with the pane colours even though Muster rather than the renderer paints the
 pick colours all at once and which piece of code holds the brush is not something you should
 have to know.
 
+The tab and pane colors you assign are stored by the daemon. A named hue follows the terminal
+palette when you change it. An explicit hex value keeps the same RGB. See
+`muster docs overview` for the commands and accepted values.
+
 **`bold` is the one appearance setting that changes how readable an agent is.** A terminal
 paints bold text in whatever colour the text already had, and a harness writes `**bold**` with
 nothing else distinguishing it - so a Claude pane reads flat until you give bold a colour of its

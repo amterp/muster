@@ -93,6 +93,7 @@ pub struct Pane {
     /// What a person called this pane, if anybody has. Durable identity: the daemon writes it
     /// down, so it comes back after a daemon restart.
     pub name: Option<String>,
+    pub color: Option<String>,
     /// Its callsign (`otter`), which reaches it whatever it is named. No two live panes on one
     /// daemon share one. None from a daemon before callsigns.
     pub callsign: Option<String>,
@@ -289,6 +290,7 @@ pub struct Tab {
     /// How many times the label has been set. A tab grouped across machines has a label on
     /// every part, and the highest generation is the current one.
     pub generation: u64,
+    pub color: crate::color::TabColor,
     pub root: LayoutNode,
     pub zoomed: Option<PaneId>,
     /// No window shows it: its panes are hidden, listed apart and brought back from there. The

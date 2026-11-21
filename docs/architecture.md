@@ -1525,9 +1525,14 @@ restart (agent status and scroll offsets), so the mirror is deliberately **not**
 persistence hooks. What gets written down is what someone would ask for again.
 
 This also resolves an apparent gap in "view = f(daemon state)": restoring looks like it needs an inverse, and does
-not. The daemon writes down what someone would ask for again - tabs, trees, names, directories, settings - and never
-an observation such as a title or an agent's state, then rebuilds from that file when it starts (MIP-3, section 2). A
-window reads the result the way it reads any other daemon state.
+not. The daemon writes down what someone would ask for again - tabs, trees, names, colors, directories,
+settings - and never an observation such as a title or an agent's state, then rebuilds from the file
+when it starts (MIP-3, section 2). A window reads the result like any other daemon state.
+
+The daemon keeps each pane's color with its name, including in the record used to reopen it. Each
+daemon holding part of a tab keeps its color and a generation independent of the name. Clearing a
+color advances that generation so a lagging part cannot restore an older color. When a part is added
+or comes back online, the window sends it the newest color if it missed that change.
 
 A canvas document is saved in one file per pane. For a daemon listening at `daemon.sock`, the
 files live in the neighboring `daemon.sock.canvases` directory. A replacement writes the title,

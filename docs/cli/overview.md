@@ -69,8 +69,9 @@ the keyboard is on is the worst place for that to land.
 
 A verb whose only target is a pane also takes it bare: `muster pane close otter` is `muster pane
 close --pane otter`, and so are `read`, `wait`, `restart`, `hide`, `show`, `quiet`, `reattach`,
-`compaction`, `remove` and `reopen`. Giving both is refused. `send`, `compact` and `rename` take
-only `--pane`, because the words after them are the text, the focus or the name.
+`compaction`, `remove` and `reopen`. Giving both is refused. `send`, `compact`, `rename` and
+`color` take the pane only through `--pane`. The positional words give the text, focus, name
+or color.
 
 Muster sets three variables in every pane it creates: `$MUSTER_PANE`, the id, `$MUSTER_CALLSIGN`,
 the callsign, and `$MUSTER_PANE_NAME`, what the pane was called as it was made. A program's
@@ -94,6 +95,20 @@ it - see `muster docs limits`.
 `muster tab focus` needs a name, because there is no "the tab I am in" to fall back on.
 `muster tab rename` without one means the tab the window's keyboard is in, which is what the
 menu item means, and `muster tab move` without one means the tab the window is showing.
+
+## Tab and pane colors
+
+Use `muster tab color <tab> <color>` or `muster pane color --pane <ref> <color>`. For example,
+`muster tab color t1w3r07bsd blue` sets a tab's color, and
+`muster pane color --pane otter '#a42e80'` sets a pane's color. Quote hex values in the shell.
+
+The names `red`, `green`, `yellow`, `blue`, `magenta` and `cyan` follow the terminal palette.
+A `#rrggbb` value supplies six hex digits in either case. Use `none` to clear a color.
+The daemon keeps the color beside the tab or pane name, including across restart, reopen and
+daemon replacement. `muster window` shows the saved value.
+
+`pane color` can reach this machine's daemon with no window. `tab color` uses a window so it
+can reach every daemon holding part of the tab.
 
 ## Machine names
 
@@ -197,7 +212,7 @@ pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to 
 ## With no window
 
 `muster window` (including `--watch`), the canvas commands, and the pane verbs below work with
-no window open. The pane verbs are `new`, `rename`, `read`, `send`, `wait`, `compact`,
+no window open. The pane verbs are `new`, `rename`, `color`, `read`, `send`, `wait`, `compact`,
 `compaction`, `restart`, `hide`, `show`, `quiet`, and `close`. The daemon owns the panes and
 their contents. A pane shown or made with no window open joins the
 next window that opens. When no window answers, these ask the
