@@ -5,25 +5,51 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "review",
   "comments": [
     {
       "id": "c_32xppeHaz",
       "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
       "author": "Alexander Terp",
       "created_at_millis": 1795147717666
+    },
+    {
+      "id": "c_32ycmeiy0",
+      "body": "Factory run muster-1119-iris: handed to a Codex helper (gpt-6.2-sol, xhigh), branch factory/muster-1119-iris-1.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795149599364
+    },
+    {
+      "id": "c_32zKTyC9w",
+      "body": "Built on factory/muster-1119-iris (918df413, e92dfebf, eced1f27). A messaging request whose MUSTER_PANE names a closed or unknown pane, and that carries no --as and no inbox of its own, is refused with pane_closed instead of being taken as the person's; the error names --as. The lead chose refusing over keeping the closed pane's identity (smaller, no new state). Reviewed by Claude Opus; its finding (the refusal also blocked --as senders) is fixed in eced1f27. Gate green.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795151279140
+    },
+    {
+      "id": "c_32zKUFIrs",
+      "body": "Built in factory run muster-1119-iris. Waiting for owner sign-off.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795151279319
+    },
+    {
+      "id": "c_330e7QITc",
+      "body": "Later in the run: a whole-range review found join --name from a closed pane was refused too; fixed in d3f691cd.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795154417247
     }
   ],
   "created_at_millis": 1795147692251,
   "creator": "Alexander Terp",
   "description": "A launcher's exit handler ran `muster msg post --to pollen` after its helper pane (jigsaw) had been closed with `pane close`. The message arrived in `@human+pollen` from `@human`, not in `jigsaw+pollen` from the helper. Posting as the person when the pane named by `MUSTER_PANE` is gone puts words in the owner's mouth.\n\nRefuse posts whose `MUSTER_PANE` names a closed pane, or keep the closed pane's identity. From tooling feedback a_30ZbKPQ6t.",
   "id": "a_32xpAYj1j",
-  "position": "ZoV",
+  "position": "Zx",
   "provenance": "agent-approved",
   "title": "A post from a closed pane's environment is attributed to @human",
   "type": "bug",
-  "updated_at_millis": 1795147741245,
+  "updated_at_millis": 1795179224769,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1795147692251}
+    {"field":"column","value":"backlog-hi","at":1795147692251},
+    {"field":"column","value":"in-progress","at":1795149599190},
+    {"field":"column","value":"review","at":1795179224769}
   ]
 }

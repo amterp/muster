@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-paste-sent-to-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795152665092,
+  "creator": "Alexander Terp",
+  "description": "From a_32xp9owqt's reports: `pane send \"\u003clong text\u003e\" --enter --confirm` exited 0 with the text sitting unsent in a just-started pane. Confirmation can see the text in the input box without knowing whether the Return submitted it. Not reproduced while building a_32xp9owqt, which fixed only keyed sends returning before the redraw. Raised by factory run muster-1119-iris.",
+  "id": "a_32zuXGTez",
+  "position": "ax",
+  "provenance": "ai-proposed",
+  "title": "A paste sent to a just-started pane with --enter --confirm can exit 0 with the text left unsent",
+  "type": "bug",
+  "updated_at_millis": 1795152665092,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795152665092}
+  ]
+}

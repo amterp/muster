@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "bound-pointer-input",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795152665808,
+  "creator": "Alexander Terp",
+  "description": "After a_32xpBgrr9 pointer input no longer counts toward stuck. On Linux FIONREAD sees only the line discipline's 4,095 bytes while the pty's flip buffer takes far more, so a program that hangs with keys unread is not read stuck while 4 KiB or more of pointer reports sit behind those keys, until the next key. Two bounds were tried in a raw Linux PTY while building that card and both failed: a 2 KiB FIONREAD check before each pointer write let 6,001 bytes through when a held batch drained at once (Writer::pace holds mouse events during key gaps), and a 1 KiB writer-side budget refilled on an empty FIONREAD let 4,095 or more through in 81 of 10,000 batches, because an empty sample also omits the flip buffer. Untried: a budget whose refill is also rate-limited (at most one refill per tens of milliseconds), or not holding pointer events for a batch drain. The measurements are in that card's commit message. Raised by factory run muster-1119-iris.",
+  "id": "a_32zuYPfm9",
+  "position": "az",
+  "provenance": "ai-proposed",
+  "title": "Bound pointer input queued behind unread keys so Linux can still read a hung program stuck",
+  "type": "bug",
+  "updated_at_millis": 1795152665808,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795152665808}
+  ]
+}

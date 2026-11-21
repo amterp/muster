@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-verb-that-picks",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795152665457,
+  "creator": "Alexander Terp",
+  "description": "Suggested in the reports behind a_32xp9owqt: answering a Claude Code or Codex dialog from another pane takes a counted run of --key down and a Return, which is easy to get wrong by one. A verb or flag that selects a numbered option would say what is meant. New public interface, so the owner's to decide. Raised by factory run muster-1119-iris.",
+  "id": "a_32zuXpbg0",
+  "position": "ay",
+  "provenance": "ai-proposed",
+  "title": "A verb that picks option N of a dialog in another pane",
+  "type": "feature",
+  "updated_at_millis": 1795152665457,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795152665457}
+  ]
+}

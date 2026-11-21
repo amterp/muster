@@ -5,28 +5,48 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "review",
   "comments": [
     {
       "id": "c_32xpocHb1",
       "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
       "author": "Alexander Terp",
       "created_at_millis": 1795147717021
+    },
+    {
+      "id": "c_32yzdWJd5",
+      "body": "Factory run muster-1119-iris: handed to a Codex helper (gpt-6.2-sol).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795150477821
+    },
+    {
+      "id": "c_32zkkogZk",
+      "body": "Built on factory/muster-1119-iris (d6ceb9ef, f38e3667). The selector was already read as a dialog; the miss was an unconfirmed idle report (Codex's Stop) outlasting it, so the pane showed its declared wait. Such a report now expires after two seconds beside a visible blocker, the pane reads blocked with the wait kept in its facts, and a held wake is described as waiting on a dialog. The fixture is reconstructed from the report and Codex 0.167.2's own snapshot test, and is labeled so; there is no recording of the real selector. Reviewed by Claude Opus: no findings. Gate green. ./dev --codex was not run.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795152289025
+    },
+    {
+      "id": "c_32zkl92FS",
+      "body": "Built in factory run muster-1119-iris. Waiting for owner sign-off.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795152289233
     }
   ],
   "created_at_millis": 1795147690618,
   "creator": "Alexander Terp",
   "description": "Codex's in-session \"Approaching rate limits\" selector (Switch to a smaller model / Keep current model / Keep current model, never show again; \"enter select · esc back\") is not read as a dialog. `muster window` showed the pane waiting (it had declared a wait) or idle, and posts to it were held as \"its prompt holds something typed and not sent\". Wakes and assignments sat until the orchestrator pressed Down and Return. Seen on at least four panes in one session.\n\nRead it as blocked, let blocked take precedence over a declared wait, and describe a held wake as waiting on a dialog rather than a draft. Related: a_2xf7BoaPK (the /new worktree dialog). From tooling feedback a_2xwCOXIfO.",
   "id": "a_32xp7v4Xw",
-  "position": "Zol",
+  "position": "Zw",
   "provenance": "agent-approved",
   "related": [
     "a_2xf7BoaPK"
   ],
   "title": "Codex's rate-limit model selector reads waiting or idle, and holds wakes as a draft",
   "type": "bug",
-  "updated_at_millis": 1795147741400,
+  "updated_at_millis": 1795179224936,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1795147690618}
+    {"field":"column","value":"backlog-hi","at":1795147690618},
+    {"field":"column","value":"in-progress","at":1795150477645},
+    {"field":"column","value":"review","at":1795179224936}
   ]
 }

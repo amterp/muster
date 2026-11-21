@@ -5,29 +5,49 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "review",
   "comments": [
     {
       "id": "c_32xpqWeR4",
       "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
       "author": "Alexander Terp",
       "created_at_millis": 1795147718205
+    },
+    {
+      "id": "c_32yC8c6Ky",
+      "body": "Factory run muster-1119-iris: handed to a Codex helper (gpt-6.2-sol, high), branch factory/muster-1119-iris-2.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795148575106
+    },
+    {
+      "id": "c_32yyCXDyL",
+      "body": "Built on factory/muster-1119-iris (cf693e62, 15eb5ffd, 0e7546b2). The main session's Stop hook reports the session id with its idle report; a regression test misses SessionStart, lands Stop, and reopens resumed. The startup report's stderr and exit status now reach Claude Code's debug log (claude --debug). Reviewed by Claude Opus; its finding (an exit 1 would draw a hook error in every session while the daemon is unreachable) is fixed by exiting 0 (0e7546b2). Gate green. ./dev --claude-code was not run.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795150422658
+    },
+    {
+      "id": "c_32yyCp7MW",
+      "body": "Built in factory run muster-1119-iris. Waiting for owner sign-off.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795150422835
     }
   ],
   "created_at_millis": 1795147693650,
   "creator": "Alexander Terp",
   "description": "On 0.27 and 0.28, a running Claude Code pane reported its title and turn endings up to close, and Cmd+Shift+T brought it back as a shell: `daemon.pane.reopened` with `agent=claude`, `resumed=false`, and no `session.id.reported` for the pane. Two of three reopens on 0.27.0 showed it.\n\nDiagnosis: only the SessionStart hook reports the session id (`--from session-id=/session_id`); the statusline sends it as `context-session`, which does not set the resume command, and Stop reports only idle. Once the startup report is missed, nothing later fills it. A controlled repro on Claude Code 2.1.327 confirmed it: adding `--from session-id=/session_id` to the Stop hook's report built the resume command and reopen returned `resumed=true`.\n\nFix to test: report the id again from the main session's Stop hook; add a regression where SessionStart's report is missed and Stop's lands before close and reopen; capture failures of the startup report, which today discards stderr and masks its exit. From tooling feedback a_32HfzAknP.",
   "id": "a_32xpCokkY",
-  "position": "Zu",
+  "position": "Zz",
   "provenance": "agent-approved",
   "related": [
     "a_32xpAB3Wx"
   ],
   "title": "Reopen Closed Pane drops a Claude session whose SessionStart report was missed",
   "type": "bug",
-  "updated_at_millis": 1795147740774,
+  "updated_at_millis": 1795179224436,
   "history": [
     {"field":"column","value":"backlog-hi","at":1795147693650},
-    {"field":"column","value":"next","at":1795147740774}
+    {"field":"column","value":"next","at":1795147740774},
+    {"field":"column","value":"in-progress","at":1795148574619},
+    {"field":"column","value":"review","at":1795179224436}
   ]
 }

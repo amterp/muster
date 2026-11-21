@@ -5,25 +5,45 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "review",
   "comments": [
     {
       "id": "c_32xppTpXm",
       "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
       "author": "Alexander Terp",
       "created_at_millis": 1795147717558
+    },
+    {
+      "id": "c_32yze7r08",
+      "body": "Factory run muster-1119-iris: handed to a Codex helper (gpt-6.2-sol).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795150478192
+    },
+    {
+      "id": "c_330FduPJW",
+      "body": "Built on factory/muster-1119-iris (ac608ad7, e961e167, 5dd79ee1). A pane send with keys now returns once the pane has redrawn and been quiet for 100 ms, or 300 ms after the last key when nothing changes, bounded at about a second while output keeps changing; it reuses --confirm's read-back in the window, the windowless CLI and the daemon API, with no new flag or wire change, and text sends are unchanged. Reviewed by Claude Opus; its findings (the last key of a multi-key send got too short a wait, the new CLI tests leaned on tight wall-clock margins, one stale API doc sentence) are fixed in 5dd79ee1, with unit tests on a scripted clock. Gate green. Not done, raised as cards: the unsent startup paste (a_32zuXGTez) and a pick-option-N verb (a_32zuXpbg0).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795153476389
+    },
+    {
+      "id": "c_330FeBJ6e",
+      "body": "Built in factory run muster-1119-iris. Waiting for owner sign-off.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795153476556
     }
   ],
   "created_at_millis": 1795147691785,
   "creator": "Alexander Terp",
   "description": "Two reports, both answering Claude Code dialogs from another pane:\n\n- Three `pane send --key down` in a row moved the selection once; the rest arrived after the Return, so the dialog took option 2 where 4 was meant, and a later `--key up` wrapped.\n- `pane send --key down` then `pane read` in the same command printed the dialog unmoved, though the key had landed; a second read moments later showed it. The agent nearly confirmed the wrong option.\n\nAlso seen: `pane send \"\u003clong text\u003e\" --enter --confirm` exited 0 with the text left unsent in a just-started pane.\n\nHave `--key` return once the pane has redrawn (or settled), or give `pane read` a way to wait for output since the last send. A verb that picks option N of a dialog was suggested too. Related: e0aa57c3. From tooling feedback a_2ztsfRMJ8 and a_30URmPWYM.",
   "id": "a_32xp9owqt",
-  "position": "Zot",
+  "position": "Zv",
   "provenance": "agent-approved",
   "title": "pane send --key returns before the pane redraws, so keys and reads land a step late",
   "type": "bug",
-  "updated_at_millis": 1795147741553,
+  "updated_at_millis": 1795179225101,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1795147691785}
+    {"field":"column","value":"backlog-hi","at":1795147691785},
+    {"field":"column","value":"in-progress","at":1795150478039},
+    {"field":"column","value":"review","at":1795179225101}
   ]
 }

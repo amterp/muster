@@ -5,20 +5,38 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "review",
   "comments": [
     {
       "id": "c_32xpoxtiI",
       "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
       "author": "Alexander Terp",
       "created_at_millis": 1795147717238
+    },
+    {
+      "id": "c_32yC8EXEa",
+      "body": "Factory run muster-1119-iris: handed to a Codex helper (gpt-6.2-sol, xhigh), branch factory/muster-1119-iris-1.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795148574860
+    },
+    {
+      "id": "c_32yyC0pZU",
+      "body": "Built on factory/muster-1119-iris (20c730e3, e9abe5f7, 916cd4b1). Once the ssh child has exited and a master still answers -O check, the supervisor probes the local forward; a missing path, a non-socket, or a connection refused twice 250 ms apart sends the tunnel through its retry, which -O exits whatever holds the path and respawns. Reviewed by Claude Opus and a fresh Codex; their findings (macOS refuses a full accept queue, ENOTSOCK read as healthy, a test that could pass without probing) are fixed in 916cd4b1. Gate green. Not done: the repeated 'already serving' refusal as a second signal, and the stale window-release-*.sock files (follow-up cards raised). ./dev --ssh was not run.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795150422327
+    },
+    {
+      "id": "c_32yyCHJSd",
+      "body": "Built in factory run muster-1119-iris. Waiting for owner sign-off.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795150422495
     }
   ],
   "created_at_millis": 1795147691087,
   "creator": "Alexander Terp",
   "description": "On 0.26.0 every devenv pane sat `unreachable` for 10+ minutes. The window's own ssh master died (`daemon.control.ended`, then `daemon.start_again.waiting`), and in the same second a different master appeared on Muster's control path `$TMPDIR/muster-\u003cpid\u003e-devenv.ctl`: ppid 1 (a ControlPersist fork), no `-L` (the forwarded `.sock` refused, os error 61) and no `-R`. Because `-O check` answered `Master running`, the supervisor logged no `tunnel.down` and never respawned; instead `daemon.remote.starting` ran every ~30 s and failed with \"another daemon is already serving\" while the far daemon was healthy. Nothing in crates/muster-ssh or muster-daemon was found that would create that master; the user's ssh config had `ControlMaster auto` / `ControlPersist 10m` for the host.\n\nFix: stop treating \"something answers `-O check`\" as our tunnel being up - also watch the spawned child, or probe the forward itself, and on a mismatch `-O exit` whatever holds the path and respawn. A start refused with \"already serving\" over and over is a second sign the tunnel, not the daemon, is broken. Minor: the devenv's daemon directory held ~30 stale `window-release-*.sock` files.\n\nWhere: crates/muster-ssh/src/tunnel.rs (`master_answers`, the supervise loop), crates/muster-seam/src/session/starting_again.rs. Related: a_2J1KZ9FbM, a_2shK7DirB. From tooling feedback a_2ydQrEjuc (high).",
   "id": "a_32xp8grzh",
-  "position": "Zt",
+  "position": "a0",
   "provenance": "agent-approved",
   "related": [
     "a_2J1KZ9FbM",
@@ -26,9 +44,11 @@
   ],
   "title": "A foreign ssh master on the tunnel's control path holds every devenv pane unreachable",
   "type": "bug",
-  "updated_at_millis": 1795147752167,
+  "updated_at_millis": 1795179224267,
   "history": [
     {"field":"column","value":"backlog-hi","at":1795147691087},
-    {"field":"column","value":"next","at":1795147740614}
+    {"field":"column","value":"next","at":1795147740614},
+    {"field":"column","value":"in-progress","at":1795148574405},
+    {"field":"column","value":"review","at":1795179224267}
   ]
 }

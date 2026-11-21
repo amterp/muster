@@ -5,28 +5,48 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "review",
   "comments": [
     {
       "id": "c_32xpq0VgA",
       "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
       "author": "Alexander Terp",
       "created_at_millis": 1795147717884
+    },
+    {
+      "id": "c_32yXGt1rx",
+      "body": "Factory run muster-1119-iris: handed to a Codex helper (gpt-6.2-sol, high), branch factory/muster-1119-iris-2.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795149387473
+    },
+    {
+      "id": "c_330e6vcBX",
+      "body": "Built on factory/muster-1119-iris (66131607, 30f3d2b1, 4c1d12ea). Only typed bytes (keys, pastes, doorbell rings) in the unread tail count toward stuck; pointer reports do not. unread_input.bytes is now a lower bound. Known limit, documented in muster docs limits: on Linux, about 4 KiB of pointer reports queued behind unread keys hides those keys until the next key, so a real hang there is read stuck late. Two bounds on queued pointer input were measured in a raw Linux PTY and both failed; the numbers are in 4c1d12ea's message and follow-up card a_32zuYPfm9. Reviewed by Claude Opus twice and a fresh Codex once. Gate green; the daemon suite also passed on the ARM Linux target.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795154416936
+    },
+    {
+      "id": "c_330e7ATzI",
+      "body": "Built in factory run muster-1119-iris. Waiting for owner sign-off.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795154417089
     }
   ],
   "created_at_millis": 1795147692949,
   "creator": "Alexander Terp",
   "description": "Codex panes on a remote Linux machine read `stuck` (\"... has not read 1831 bytes of input\") at an idle composer or mid-turn, on 0.27 and 0.28. FIONREAD confirmed the bytes were queued; a drain found ~200 SGR wheel reports among 2,446 bytes, and the daemon logged dropped pointer events. Codex drains the queue on the next focus change or click, so it is not hung.\n\nCount only keys, pastes and doorbell rings toward `stuck`, not pointer input: the writer already tags it (`is_pointer`). A false stuck erodes the states the window exists to show. From tooling feedback a_32ClWs5gP.",
   "id": "a_32xpBgrr9",
-  "position": "Zo",
+  "position": "Zy",
   "provenance": "agent-approved",
   "related": [
     "a_32xpC43j3"
   ],
   "title": "Pointer input a program has not read makes an idle Codex pane read stuck",
   "type": "bug",
-  "updated_at_millis": 1795147742174,
+  "updated_at_millis": 1795179224603,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1795147692949}
+    {"field":"column","value":"backlog-hi","at":1795147692949},
+    {"field":"column","value":"in-progress","at":1795149387300},
+    {"field":"column","value":"review","at":1795179224603}
   ]
 }

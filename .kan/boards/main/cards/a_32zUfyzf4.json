@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-helper-told-to-stand",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795151671128,
+  "creator": "Alexander Terp",
+  "description": "Factory run muster-1119-iris, 0.29.0: the lead posted `muster msg post --urgent --no-reply --to indigo` (withdrawing an assignment, 'stand by') to a Codex helper that was working. The helper read it, stopped, said it was standing by, and 42 s after it went to work @muster told the lead it 'went idle without posting ... If you told it to stand by ... post that with --no-reply and Muster will not say this'. The post was --no-reply. Possibly --no-reply is not honored when the post is --urgent, or when it lands in a turn begun by an earlier ordinary post. Also seen in the same run: `muster msg who` said a wake's Returns 'were not taken' on a just-relaunched Codex that had in fact taken the wake and gone to work.",
+  "id": "a_32zUfyzf4",
+  "position": "aw",
+  "provenance": "ai-proposed",
+  "title": "A helper told to stand by with --urgent --no-reply is still reported idle without posting",
+  "type": "bug",
+  "updated_at_millis": 1795151671128,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795151671128}
+  ]
+}

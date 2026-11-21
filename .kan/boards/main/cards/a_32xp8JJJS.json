@@ -12,6 +12,18 @@
       "body": "2026-11-19 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
       "author": "Alexander Terp",
       "created_at_millis": 1795147717129
+    },
+    {
+      "id": "c_32zTKAlIP",
+      "body": "Factory run muster-1119-iris: handed to a Codex helper (gpt-6.2-sol, xhigh).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795151619024
+    },
+    {
+      "id": "c_32zTWyw5K",
+      "body": "Factory run muster-1119-iris: not handed out after all. in-progress is at its limit of 6 with this run's six cards waiting for owner sign-off, so the card was withdrawn from the helper within a minute and stays in backlog-hi, unbuilt.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795151626965
     }
   ],
   "created_at_millis": 1795147690854,
@@ -22,7 +34,7 @@
   "provenance": "agent-approved",
   "title": "An upgrade's daemon handoff puts each devenv pane in a tab of its own",
   "type": "bug",
-  "updated_at_millis": 1795147741707,
+  "updated_at_millis": 1795151626965,
   "history": [
     {"field":"column","value":"backlog-hi","at":1795147690854}
   ]

@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-start-refused-with",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795150423551,
+  "creator": "Alexander Terp",
+  "description": "a_32xp8grzh fixed the first sign of a foreign ssh master (it answers -O check but carries no forward). The card named a second: daemon.remote.starting failing every ~30 s with 'another daemon is already serving' while the far daemon is healthy. The restart path (crates/muster-seam/src/session/starting_again.rs) still asks only the control socket, so a restart attempt can race tunnel recovery. Decide whether repeated refusals should trigger a tunnel reopen. Raised by factory run muster-1119-iris.",
+  "id": "a_32yyDr5a7",
+  "position": "av",
+  "provenance": "ai-proposed",
+  "title": "A start refused with 'already serving' over and over should make the supervisor suspect the tunnel",
+  "type": "bug",
+  "updated_at_millis": 1795150423551,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795150423551}
+  ]
+}

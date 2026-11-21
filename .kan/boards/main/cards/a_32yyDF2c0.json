@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "stale-window-release",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1795150423186,
+  "creator": "Alexander Terp",
+  "description": "Seen with a_32xp8grzh: a devenv's daemon directory held about 30 window-release-*.sock files from windows long gone. Remove a window's socket path when the window leaves, or sweep paths nothing listens on at daemon start, keeping any that belong to a current window. Raised by factory run muster-1119-iris while building a_32xp8grzh.",
+  "id": "a_32yyDF2c0",
+  "position": "au",
+  "provenance": "ai-proposed",
+  "title": "Stale window-release-*.sock paths pile up in an SSH machine's daemon directory",
+  "type": "bug",
+  "updated_at_millis": 1795150423186,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1795150423186}
+  ]
+}
