@@ -27,7 +27,7 @@
 //! machine holds a pane is on the pane, and a machine holding no panes at all is in `machines`
 //! below - a state that would otherwise have nowhere to be said.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::{Composition, DaemonId, MusterTab, PaneKey};
 use crate::config::Rgb;
@@ -264,6 +264,8 @@ pub struct RosterPane {
     pub maker: Option<PaneId>,
     /// The maker's row this helper is listed beneath ([`crate::helpers::nest`]).
     pub under: Option<PaneId>,
+    /// Order among helpers on the attached daemons, independent of window and visibility.
+    pub helper_order: usize,
 }
 
 /// What the next press names.
@@ -581,6 +583,7 @@ impl Roster {
                             quiet: pane.quiet,
                             maker: pane.maker.clone(),
                             under: None,
+                            helper_order: 0,
                             key,
                         }
                     })
@@ -623,26 +626,12 @@ impl Roster {
 
         let mut hidden = hidden_tabs(composition, &mirror);
         nest_helpers(&mut tabs, &mut hidden, &mirror);
-
-        let mut tab_place = 0;
-        let mut pane_place = 0;
-        for tab in &mut tabs {
-            if !tab.panes.is_empty() && tab.panes.iter().all(|pane| pane.under.is_some()) {
-                if tab.label.is_empty() {
-                    tab.label = "Helpers".to_string();
-                }
-                continue;
-            }
-            tab_place += 1;
-            tab.place = tab_place;
-            if tab.label.is_empty() {
-                tab.label = format!("Tab {tab_place}");
-            }
-            for pane in tab.panes.iter_mut().filter(|pane| pane.under.is_none()) {
-                pane_place += 1;
-                pane.place = pane_place;
-            }
+        let helper_order = helper_order(composition, &mirror);
+        for pane in tabs.iter_mut().chain(hidden.iter_mut()).flat_map(|tab| &mut tab.panes) {
+            pane.helper_order = helper_order.get(pane.key.pane.as_str()).copied().unwrap_or(0);
         }
+
+        number_tabs(&mut tabs);
 
         Roster { tabs, machines, hidden }
     }
@@ -782,6 +771,7 @@ fn hidden_tabs<'a>(
                     quiet: pane.quiet,
                     maker: pane.maker.clone(),
                     under: None,
+                    helper_order: 0,
                 });
             }
         }
@@ -796,6 +786,51 @@ fn tab_color<'a>(parts: impl Iterator<Item = &'a crate::mirror::backend::Tab>) -
     parts.max_by(|a, b| a.color.cmp(&b.color)).and_then(|part| part.color.value.clone())
 }
 
+// The mirrors cover every window. Using the local parts keeps the ranks the same when the
+// CLI combines several windows, or when a spanning tab changes which parts are visible.
+fn helper_order<'a>(
+    composition: &Composition,
+    mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
+) -> BTreeMap<&'a str, usize> {
+    let mut helpers = Vec::new();
+    for daemon in composition.daemons() {
+        let Some(held) = mirror(&daemon.id) else { continue };
+        let tabs: BTreeSet<_> =
+            held.panes().filter(|pane| pane.maker.is_some()).map(|pane| &pane.tab).collect();
+        for tab in tabs {
+            helpers.extend(
+                ordered_panes(held, tab)
+                    .into_iter()
+                    .filter(|pane| pane.maker.is_some())
+                    .map(|pane| (tab.as_str(), daemon.id.as_str(), pane.id.as_str())),
+            );
+        }
+    }
+    crate::helpers::order(helpers)
+}
+
+fn number_tabs(tabs: &mut [RosterTab]) {
+    let mut tab_place = 0;
+    let mut pane_place = 0;
+    for tab in tabs {
+        if !tab.panes.is_empty() && tab.panes.iter().all(|pane| pane.under.is_some()) {
+            if tab.label.is_empty() {
+                tab.label = "Helpers".to_string();
+            }
+            continue;
+        }
+        tab_place += 1;
+        tab.place = tab_place;
+        if tab.label.is_empty() {
+            tab.label = format!("Tab {tab_place}");
+        }
+        for pane in tab.panes.iter_mut().filter(|pane| pane.under.is_none()) {
+            pane_place += 1;
+            pane.place = pane_place;
+        }
+    }
+}
+
 /// A separate tab holding only one pane's helpers stays under their maker when shown.
 fn nest_helpers<'a>(
     tabs: &mut [RosterTab],
@@ -803,17 +838,19 @@ fn nest_helpers<'a>(
     mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
 ) {
     let under: BTreeMap<PaneId, PaneId> = {
-        let listed: Vec<&str> = tabs
+        let shown: BTreeSet<&PaneId> =
+            tabs.iter().flat_map(|tab| tab.panes.iter()).map(|pane| &pane.key.pane).collect();
+        let listed: Vec<&str> = shown
             .iter()
-            .chain(hidden.iter())
-            .flat_map(|tab| tab.panes.iter())
-            .map(|pane| pane.key.pane.as_str())
+            .copied()
+            .chain(hidden.iter().flat_map(|tab| &tab.panes).map(|pane| &pane.key.pane))
+            .map(PaneId::as_str)
             .collect();
         let makers: Vec<(&str, Option<&str>)> = tabs
             .iter()
             .filter(|tab| {
                 let hidden_part = hidden.iter().find(|part| part.id == tab.id);
-                is_helpers_tab(tab, hidden_part, mirror)
+                is_helpers_tab(tab, hidden_part, &shown, mirror)
             })
             .chain(hidden.iter())
             .flat_map(|tab| tab.panes.iter())
@@ -832,11 +869,15 @@ fn nest_helpers<'a>(
 fn is_helpers_tab<'a>(
     tab: &RosterTab,
     hidden_part: Option<&RosterTab>,
+    shown: &BTreeSet<&PaneId>,
     mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
 ) -> bool {
     let Some(maker) = tab.panes.first().and_then(|pane| pane.maker.as_ref()) else {
         return false;
     };
+    if !shown.contains(maker) {
+        return false;
+    }
     // A spanning tab can be partly hidden while its daemons answer Show or Hide.
     let panes = || tab.panes.iter().chain(hidden_part.into_iter().flat_map(|part| &part.panes));
     let mut daemons =

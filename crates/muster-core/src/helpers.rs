@@ -3,6 +3,14 @@
 //! is. And whether a quiet helper asks for the person after all, decided once for a window and
 //! for the daemon keeping what waits on the human (MIP-10, section 4).
 
+use std::collections::BTreeMap;
+
+/// Rank helpers by tab and daemon, keeping the pane order within each daemon's part.
+pub fn order<'a>(mut helpers: Vec<(&str, &str, &'a str)>) -> BTreeMap<&'a str, usize> {
+    helpers.sort_by_key(|(tab, daemon, _)| (*tab, *daemon));
+    helpers.into_iter().enumerate().map(|(index, (_, _, pane))| (pane, index + 1)).collect()
+}
+
 /// Whether a pane's maker can hear from it, as whoever asks can tell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MakerHearing {

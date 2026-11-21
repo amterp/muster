@@ -3505,9 +3505,9 @@ message RosterTab {
   // no bridge streams one.
   string tab_id = 2;
 
-  // Where this tab's caption sits in the agent list, counting from one. Zero for a hidden tab
-  // or one whose panes are listed under their maker. Which press reaches it, if any does, is
-  // `tab_press` below.
+  // Where this tab's caption sits in its own window, counting from one. Zero for a hidden tab,
+  // one listed under a maker, or a tab reported from another window. `nested_helpers` says
+  // whether a shown tab has its own caption.
   uint32 place = 3;
 
   // Was `number`: which chord reached this tab *right now*, which went to 0 while a press was
@@ -3558,6 +3558,10 @@ message RosterTab {
   // The color somebody gave this tab, as a terminal hue name or lowercase #rrggbb.
   // Empty when the tab has no color.
   string color = 13;
+
+  // The core lists all panes of this shown tab under their makers. The agent list omits its
+  // caption. CLI text can still print a colored tab's heading so its ID and color are visible.
+  bool nested_helpers = 14;
 }
 
 message RosterPane {
@@ -3663,7 +3667,8 @@ message RosterPane {
 
   // The id of the row this pane is listed beneath rather than where its tab puts it, or empty
   // for a pane listed in its tab. Set for a hidden helper or one in a tab shared only by its
-  // maker's helpers, when that maker has a row in this window's list (MIP-7, section 3).
+  // maker's helpers. A shown helper nests only when the maker has a tab in this window
+  // (MIP-7, section 3).
   string under = 18;
 
   // The directory this pane is in, as its daemon reports it: the whole path, on every pane,
@@ -3684,6 +3689,10 @@ message RosterPane {
   // The color somebody gave this pane, as a terminal hue name or lowercase #rrggbb.
   // Empty when the pane has no color.
   string color = 23;
+
+  // Order among helpers across the attached daemons, counting from one. A pane with no maker
+  // has zero. The order stays the same as tabs move into or out of a window or are hidden.
+  uint32 helper_order = 24;
 }
 
 // Everything this window is showing, as one message.

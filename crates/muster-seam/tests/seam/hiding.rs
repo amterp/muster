@@ -496,20 +496,16 @@ fn going_to_a_hidden_helper_brings_its_helpers_tab_back_whole_beside_its_maker()
         || format!("hidden: {:?}", roster().hidden),
     );
     let helpers = hidden();
-    let ordinary_chords = |roster: &RosterChanged| {
-        roster
-            .tabs
-            .iter()
-            .flat_map(|tab| tab.panes.iter())
-            .filter(|pane| pane.maker.is_empty())
-            .map(|pane| (pane.pane_id.clone(), pane.tab_press, pane.pane_press))
-            .collect::<Vec<_>>()
-    };
-    let chords_before = ordinary_chords(&roster());
+    let before = roster();
+    let chords_before = ordinary_chords(&before);
+    let order: Vec<_> = before.hidden[0].panes.iter().map(|pane| pane.helper_order).collect();
+    assert_eq!(order, [1, 2, 3]);
     let check_helpers_in_roster = || {
         let shown = roster();
         assert_eq!(ordinary_chords(&shown), chords_before);
         let helpers_tab = &shown.tabs[1];
+        assert!(helpers_tab.nested_helpers);
+        assert!(helpers_tab.panes.iter().map(|pane| pane.helper_order).eq(order.iter().copied()));
         assert!(helpers_tab.panes.iter().all(|pane| pane.under == "p1"), "{helpers_tab:?}");
         assert!(helpers_tab.panes.iter().all(|pane| pane.tab_press == 0 && pane.pane_press == 0));
     };
@@ -573,6 +569,16 @@ fn going_to_a_hidden_helper_brings_its_helpers_tab_back_whole_beside_its_maker()
         || format!("tabs: {:?}, hidden: {:?}", roster().tabs, hidden()),
     );
     check_helpers_in_roster();
+}
+
+fn ordinary_chords(roster: &RosterChanged) -> Vec<(String, u32, u32)> {
+    roster
+        .tabs
+        .iter()
+        .flat_map(|tab| &tab.panes)
+        .filter(|pane| pane.maker.is_empty())
+        .map(|pane| (pane.pane_id.clone(), pane.tab_press, pane.pane_press))
+        .collect()
 }
 
 /// A maker closing with a helper still running tells the person once, and the banner the window

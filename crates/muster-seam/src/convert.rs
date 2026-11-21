@@ -227,6 +227,7 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
         // typed - the empty one - is not a state worth a wire representation.
         given_name: tab.given_name.clone().unwrap_or_default(),
         color: tab.color.clone().unwrap_or_default(),
+        nested_helpers: numbering.is_some() && tab.place == 0,
         panes: tab
             .panes
             .iter()
@@ -258,6 +259,7 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
                     quiet: pane.quiet,
                     maker: pane.maker.as_ref().map(ToString::to_string).unwrap_or_default(),
                     under: pane.under.as_ref().map(ToString::to_string).unwrap_or_default(),
+                    helper_order: u32::try_from(pane.helper_order).unwrap_or_default(),
                 }
             })
             .collect(),
