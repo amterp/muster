@@ -444,7 +444,7 @@ fn refreshable_adapters() -> clap::builder::PossibleValuesParser {
 
 #[derive(Debug, Subcommand)]
 pub enum HarnessVerb {
-    /// Refresh an installed Codex adapter when its content differs from this Muster
+    /// Refresh an installed adapter when its content differs from this Muster
     Refresh {
         #[arg(value_name = "HARNESS", value_parser = refreshable_adapters())]
         harness: String,

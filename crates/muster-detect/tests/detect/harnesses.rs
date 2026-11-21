@@ -15,6 +15,7 @@ struct Supplied {
     prompt_at_work: bool,
     reported_state: bool,
     context: bool,
+    cost: bool,
     subagents: bool,
     fetches_messages: bool,
     woken_by_command: bool,
@@ -30,9 +31,10 @@ struct Supplied {
 /// A capability's row: its name on the page, and how it is read off what a harness supplies.
 type Row = (&'static str, fn(&Supplied) -> bool);
 
-const ROWS: [Row; 14] = [
+const ROWS: [Row; 15] = [
     ("Its own report of its state", |supplied| supplied.reported_state),
     ("Context used and model", |supplied| supplied.context),
+    ("Cost", |supplied| supplied.cost),
     ("Sub-agents counted", |supplied| supplied.subagents),
     ("Rung at an empty prompt", |supplied| supplied.prompt),
     ("Rung while it works, for an urgent post", |supplied| supplied.prompt_at_work),
@@ -81,7 +83,8 @@ fn supplied(manifests: &Manifests, wiring: &str, agent: &Agent) -> Supplied {
         prompt: manifests.reads_prompt(agent),
         prompt_at_work: manifests.reads_prompt_at_work(agent),
         reported_state: words(wiring).contains(&format!("--agent {} --state", agent.id())),
-        context: reports(wiring, "context-used"),
+        context: reports(wiring, "context-used") && reports(wiring, "model"),
+        cost: reports(wiring, "cost-usd"),
         subagents: wiring.contains("--subagent-started"),
         fetches_messages: wiring.contains("msg read --if-unread"),
         woken_by_command: manifests.session_wake(agent, "id", "wake").is_some()

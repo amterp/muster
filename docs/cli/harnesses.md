@@ -3,38 +3,39 @@
 Muster runs whatever coding agent you already run. It calls the program an agent runs in a
 harness - Claude Code, Codex, Gemini - and gets from each what that harness allows. Every pane
 running one shows its state, read off its screen. Most of the rest needs the harness's adapter:
-hooks or a plugin that Muster ships for Claude Code, Codex and OpenCode, and installs with the
-harness's own plugin command:
+hooks or a plugin that Muster ships for Antigravity, Claude Code, Codex and OpenCode. Install the
+adapter with the harness's own plugin command.
 
+    muster harness install agy
     muster harness install claude-code
     muster harness install codex --dry-run    # print the commands instead
 
-With an adapter, an agent reports its own state, its context, model and cost, and its session,
-which is what `compact_at` acts on and what brings a session back after a restart. `muster
-window` says whether each agent's adapter reports, in `adapter`, and notes `(adapter not
-reporting)` on the row of an agent whose harness has one that is not reporting (`muster docs
-window`).
+With an adapter, an agent can report its state, context, model, cost and session. Muster uses
+reported context for `compact_at` and the reported session ID to resume after a restart. `muster
+window` shows an adapter's status in `adapter` and adds `(adapter not reporting)` to rows whose
+harness has an adapter that has stayed silent.
 
-| Capability | Claude Code | Codex | OpenCode | Every other harness |
-|---|---|---|---|---|
-| Its state read off the screen | yes | yes | yes | yes |
-| Its own report of its state | yes | yes | yes | agy |
-| Context used and model | yes | yes | yes | agy |
-| Sub-agents counted | yes | yes | no | no |
-| Rung at an empty prompt | yes | yes | yes | agy |
-| Rung while it works, for an urgent post | yes | yes | no | no |
-| Messages fetched by its hooks | yes | yes | no | no |
-| Woken by its own command, typing nothing | no | no | no | no |
-| Its session named after the pane | yes | yes | no | agy |
-| The pane named after its session | yes | no | no | agy |
-| Compacted when asked | yes | yes | no | agy |
-| Cleared when asked | yes | yes | no | agy |
-| Says when its context was cleared or compacted | yes | yes | no | no |
-| Resumed after a restart | yes | yes | yes | agy |
-| Clipboard image pasted into a remote composer | yes | yes | no | no |
+| Capability | Antigravity | Claude Code | Codex | OpenCode | Every other harness |
+|---|---|---|---|---|---|
+| Its state read off the screen | yes | yes | yes | yes | yes |
+| Its own report of its state | yes | yes | yes | yes | no |
+| Context used and model | yes | yes | yes | yes | no |
+| Cost | no | yes | no | yes | no |
+| Sub-agents counted | no | yes | yes | no | no |
+| Rung at an empty prompt | yes | yes | yes | yes | no |
+| Rung while it works, for an urgent post | no | yes | yes | no | no |
+| Messages fetched by its hooks | no | yes | yes | no | no |
+| Woken by its own command, typing nothing | no | no | no | no | no |
+| Its session named after the pane | yes | yes | yes | no | no |
+| The pane named after its session | yes | yes | no | no | no |
+| Compacted when asked | yes | yes | yes | no | no |
+| Cleared when asked | yes | yes | yes | no | no |
+| Says when its context was cleared or compacted | no | yes | yes | no | no |
+| Resumed after a restart | yes | yes | yes | yes | no |
+| Clipboard image pasted into a remote composer | no | yes | yes | no | no |
 
-Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
-kimi, kiro, maki, pi, qodercli.
+Every other harness: amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo, kimi,
+kiro, maki, pi, qodercli.
 
 The Antigravity CLI (`agy`) uses the [native plugin and status-line wrapper](../../extras/agy/README.md).
 Its hooks report the conversation ID and turn state. Its status line supplies the model, effort,
@@ -241,4 +242,11 @@ modules rather than a file, so `muster harness install opencode` runs nothing an
 
 `extras/opencode/README.md` has what it reports, and what it does not yet.
 
-Every other harness has no adapter: Muster reads its state off its screen, and does not ring it.
+**Antigravity** uses its native plugin for hooks and a status-line wrapper for model, effort
+and context. `muster harness install agy` installs the plugin and prints a status-line command
+to add through your settings or configuration manager. Both use Python 3. Once installed,
+`muster harness refresh agy` updates the local plugin if its runtime files differ and preserves
+whether it is enabled. Restart Antigravity to load changed hooks. See `extras/agy/README.md`
+for status-line setup with an existing command.
+
+For other harnesses, Muster reads the screen for state.

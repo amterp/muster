@@ -3276,7 +3276,7 @@
         ]
       },
       "expect": {
-        "refused": "Muster ships no adapter for \"gemini\", so there is nothing to install. It has one for claude-code, codex, opencode; every other harness is read off its screen (`muster docs harnesses`)."
+        "refused": "Muster ships no adapter for \"gemini\", so there is nothing to install. It has one for agy, claude-code, codex, opencode; every other harness is read off its screen (`muster docs harnesses`)."
       }
     },
     {

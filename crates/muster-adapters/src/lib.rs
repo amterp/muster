@@ -1,5 +1,6 @@
 //! Muster's bundled harness catalog, installation plans and hook formats.
 
+mod agy;
 mod claude_code;
 mod codex;
 mod opencode;

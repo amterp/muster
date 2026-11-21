@@ -3,7 +3,7 @@
 use std::io::Write;
 
 use crate::install::{InstallContext, Plan, Run};
-use crate::{claude_code, codex, opencode};
+use crate::{agy, claude_code, codex, opencode};
 
 #[derive(Debug)]
 pub struct Harness {
@@ -107,6 +107,24 @@ const OPENCODE: Adapter = Adapter {
     refresh: None,
 };
 
+const AGY: Adapter = Adapter {
+    dir: "agy",
+    name: "Antigravity",
+    assets: agy::ASSETS,
+    install: agy::install,
+    install_failure: "",
+    copy: Some(CopyInspection {
+        differs: agy::copy_differs,
+        warning: "Antigravity's copy of Muster's adapter differs from this Muster's: muster harness refresh agy",
+        install_reminder: "Antigravity keeps its own copy of Muster's adapter: muster harness refresh agy.",
+    }),
+    refresh: Some(Refresh {
+        run: agy::refresh,
+        login_repair: "Run `muster harness refresh agy` from a terminal.",
+        at_startup: None,
+    }),
+};
+
 macro_rules! bundled {
     ($id:literal, $file:literal) => {
         bundled!(@entry $id, $file, None)
@@ -126,7 +144,7 @@ macro_rules! bundled {
 
 pub static BUNDLED: &[Harness] = &[
     bundled!("amp", "amp.toml"),
-    bundled!("agy", "antigravity.toml"),
+    bundled!("agy", "antigravity.toml", AGY),
     bundled!("claude", "claude.toml", CLAUDE_CODE),
     bundled!("cline", "cline.toml"),
     bundled!("codex", "codex.toml", CODEX),

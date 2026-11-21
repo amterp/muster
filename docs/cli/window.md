@@ -37,7 +37,8 @@ message's wake that Muster could not ring at the prompt appears as `(a wake wait
 why as `muster msg who` does, and `wake_held` carries it in JSON. The model, its effort and the
 cost are in `--json`.
 
-A machine's own block says one more thing, on the machine the `muster` you ran is on:
+A machine's own block reports stale adapter copies for the machine running the command. For
+example, it may say
 
     Codex's copy of Muster's adapter differs from this Muster's: muster harness install codex
 
@@ -45,8 +46,9 @@ The Muster app refreshes its local Codex plugin in the background at launch when
 changes. The note still appears while the copy differs, including after a failed refresh. It is
 shown only when Codex has Muster's plugin installed and a file the plugin ships, other than its
 documentation, is not the one in the copy. The adapters are compared by content, since development
-builds share a version. Sessions already running take the new adapter when they restart, and
-Codex asks you to trust its hooks again only if they changed.
+builds share a version. Antigravity's stale-copy notice points to `muster harness refresh agy`.
+Sessions already running take the new adapter when they restart. Codex asks you to trust its
+hooks again only if they changed.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
 shows one. The machines follow rather than heading the list, because a tab can hold panes on more
@@ -537,8 +539,9 @@ attached has none yet, and with nothing attached at all the plain answer says so
   today adopts a daemon started yesterday if it is still answering, so what is in it may
   predate the window.
 - `panes` and `directories` say how much it holds and where.
-- `adapter_copies` is `{"codex": "differs"}` on the machine this `muster` runs on when Codex's copy
-  of Muster's adapter is not this Muster's, as above, and null otherwise.
+- `adapter_copies` maps harness IDs to `"differs"` for stale installed copies on the machine
+  running this command. For example, `{"codex": "differs"}`. It is null when there are no
+  stale copies to report.
 - `color` is the color of the machine's swatch in the agent list, `#rrggbb`: its `[[daemon]]`
   block's `color`, or the one Muster draws from its name. The plain answer prints it at the end
   of the machine's second line, as text rather than painted, since the colors the CLI paints are

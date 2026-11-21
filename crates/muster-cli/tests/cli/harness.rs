@@ -484,3 +484,155 @@ fn automatic_refresh_uses_the_login_profiles_path_and_codex_home() {
         ]
     );
 }
+
+impl Home {
+    fn agy_fixture(&self, listing: &str) {
+        let linked = self.extras();
+        std::fs::rename(&linked, linked.with_file_name("original-extras")).unwrap();
+        let plugin = linked.join("agy");
+        std::fs::create_dir_all(&plugin).unwrap();
+        for (name, file) in [
+            ("plugin.json", r#"{"name":"muster"}"#),
+            ("hooks.json", r#"{"muster":{}}"#),
+            ("report.py", "# fixture report"),
+            ("statusline.sh", "# fixture status line"),
+            ("README.md", "# fixture readme"),
+        ] {
+            std::fs::write(plugin.join(name), file).unwrap();
+        }
+        let config = self.0.join("home/.gemini/config");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("hooks.json"), br#"{"another-tool":{}}"#).unwrap();
+        let settings = self.0.join("home/.gemini/antigravity-cli");
+        std::fs::create_dir_all(&settings).unwrap();
+        std::fs::write(settings.join("settings.json"), br#"{"statusLine":{"enabled":false}}"#)
+            .unwrap();
+        let path = self.0.join("bin/agy");
+        let script = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\n\
+             case \"$1 $2\" in\n\
+             'plugin list') printf '%s\\n' '{}';;\n\
+             'plugin install') /bin/mkdir -p '{}' && /bin/cp -R \"$3/.\" '{}';;\n\
+             *) exit 91;;\nesac\n",
+            self.ran("agy").display(),
+            listing,
+            self.agy_copy().display(),
+            self.agy_copy().display(),
+        );
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn agy_copy(&self) -> PathBuf {
+        self.0.join("home/.gemini/config/plugins/muster")
+    }
+
+    fn agy_listing(path: &Path, enabled: bool) -> String {
+        serde_json::json!([{
+            "name": "muster", "enabled": enabled, "version": "0.1.0",
+            "source": "antigravity", "path": path, "hooks": ["SessionStart"]
+        }])
+        .to_string()
+    }
+
+    fn assert_agy_settings_unchanged(&self) {
+        let config = self.0.join("home/.gemini/config");
+        assert_eq!(std::fs::read(config.join("hooks.json")).unwrap(), br#"{"another-tool":{}}"#);
+        assert_eq!(
+            std::fs::read(self.0.join("home/.gemini/antigravity-cli/settings.json")).unwrap(),
+            br#"{"statusLine":{"enabled":false}}"#
+        );
+    }
+}
+
+#[test]
+fn antigravity_install_uses_only_the_native_plugin_command() {
+    let home = Home::new("agy-install");
+    home.agy_fixture("[]");
+    let dry = home.muster(&["--json", "harness", "install", "agy", "--dry-run"]);
+    assert_eq!(dry.status.code(), Some(0), "{}", text(&dry.stderr));
+    assert!(home.asked("agy").is_empty());
+    let printed: serde_json::Value = serde_json::from_slice(&dry.stdout).unwrap();
+    let command = format!("agy plugin install {}", home.extras().join("agy").display());
+    assert_eq!(printed["commands"], serde_json::json!([command]));
+    assert_eq!(printed["ran"], false);
+
+    let install = home.muster(&["harness", "install", "agy"]);
+    assert_eq!(install.status.code(), Some(0), "{}", text(&install.stderr));
+    assert_eq!(home.asked("agy"), [command.strip_prefix("agy ").unwrap()]);
+    assert!(text(&install.stdout).contains("statusline.sh"), "{}", text(&install.stdout));
+    assert!(home.agy_copy().join("hooks.json").is_file());
+    home.assert_agy_settings_unchanged();
+}
+
+#[test]
+fn antigravity_refresh_preserves_a_disabled_plugin_and_skips_a_matching_copy() {
+    let home = Home::new("agy-refresh");
+    home.agy_fixture(&Home::agy_listing(&home.agy_copy(), false));
+    std::fs::create_dir_all(home.agy_copy()).unwrap();
+    std::fs::write(home.agy_copy().join("hooks.json"), b"old").unwrap();
+    let first = home.muster(&["--json", "harness", "refresh", "agy"]);
+    assert_eq!(first.status.code(), Some(0), "{}", text(&first.stderr));
+    let outcome: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(outcome["harness"], "agy");
+    let outcome = outcome["outcome"].as_str().unwrap();
+    assert!(outcome.contains("refreshed") && outcome.contains("disabled"), "{outcome}");
+    assert_eq!(
+        std::fs::read(home.agy_copy().join("hooks.json")).unwrap(),
+        std::fs::read(home.extras().join("agy/hooks.json")).unwrap(),
+    );
+
+    std::fs::write(home.agy_copy().join("README.md"), b"old").unwrap();
+    let second = home.muster(&["harness", "refresh", "agy"]);
+    assert_eq!(second.status.code(), Some(0), "{}", text(&second.stderr));
+    let said = text(&second.stdout);
+    assert!(said.contains("matches") && said.contains("disabled"), "{said}");
+    assert_eq!(
+        home.asked("agy"),
+        [
+            "plugin list --json".to_string(),
+            format!("plugin install {}", home.extras().join("agy").display()),
+            "plugin list --json".to_string(),
+            "plugin list --json".to_string(),
+        ],
+    );
+    home.assert_agy_settings_unchanged();
+}
+
+#[test]
+fn antigravity_refresh_has_no_first_install() {
+    let home = Home::new("agy-absent");
+    home.agy_fixture("[]");
+    let refresh = home.muster(&["harness", "refresh", "agy"]);
+    assert_eq!(refresh.status.code(), Some(0), "{}", text(&refresh.stderr));
+    assert!(text(&refresh.stdout).contains("not installed"));
+    assert_eq!(home.asked("agy"), ["plugin list --json"]);
+    assert!(!home.agy_copy().exists());
+}
+
+#[test]
+fn antigravity_refresh_refuses_malformed_or_outside_plugin_paths() {
+    let cases = [("broken", "not JSON"), ("outside", ""), ("symlink", "")];
+    for (name, invalid) in cases {
+        let home = Home::new(name);
+        let outside = home.0.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        let path = if name == "symlink" {
+            let copy = home.agy_copy();
+            std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(&outside, &copy).unwrap();
+            copy
+        } else {
+            outside
+        };
+        let listing =
+            if invalid.is_empty() { Home::agy_listing(&path, true) } else { invalid.to_string() };
+        home.agy_fixture(&listing);
+        let refresh = home.muster(&["harness", "refresh", "agy"]);
+        assert_eq!(refresh.status.code(), Some(1), "{}", text(&refresh.stderr));
+        let said = text(&refresh.stderr);
+        assert!(said.contains("plugin listing") || said.contains("outside"), "{said}");
+        assert_eq!(home.asked("agy"), ["plugin list --json"]);
+        home.assert_agy_settings_unchanged();
+    }
+}
