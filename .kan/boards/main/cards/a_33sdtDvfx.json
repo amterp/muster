@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-group-conversation-is",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1795283105701,
+  "creator": "Alexander Terp",
+  "description": "Reported by the owner 2026-11-21 on the installed build, with a screenshot (not kept). The window had been resized to about two thirds of the screen with a window-tiling shortcut, and showed a group conversation (kayak, 2 members) in place of the panes. Everything in the conversation ran past the window's right edge: long message lines were clipped instead of wrapping, each message's time at the right was not visible, the date and Unread rules ran off the edge, and the message box's right end was cut off. The agent list on the left was drawn correctly. The owner: \"some elements is just cut off on the right side. For example, the clock or time isn't visible, it just doesn't properly fit. If I full screen it, then it works fine.\"\n\nSo the conversation view seems to keep a width from before the resize (or the full screen's) instead of the pane area's current width. Worth checking whether it follows a resize made by another program moving the window's frame, as opposed to a drag of the window's edge, and whether the terminal panes are affected the same way. The window's title read \"connecting winbox\" and an unreachable-daemon notice was showing; probably unrelated, but it was part of the state.\n\nThe owner said it does not have to be fixed now.",
+  "id": "a_33sdtDvfx",
+  "position": "b23",
+  "provenance": "approved",
+  "title": "A group conversation is laid out wider than a window resized to part of the screen, so its right side is cut off",
+  "type": "bug",
+  "updated_at_millis": 1795283105701,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795283105701}
+  ]
+}
