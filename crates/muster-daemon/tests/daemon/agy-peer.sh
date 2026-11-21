@@ -62,7 +62,7 @@ while read -r action sequence conversation command; do
             ;;
         frame) frame=$conversation ;;
         '[muster]')
-            printf '%s %s %s %s\n' "$action" "$sequence" "$conversation" "$command" >> "$work/wakes"
+            printf '%s\t%s %s %s %s\n' "$frame" "$action" "$sequence" "$conversation" "$command" >> "$work/wakes"
             draw
             continue
             ;;

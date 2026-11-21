@@ -1,6 +1,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use crate::api_panes::current_pane;
 use crate::attention::msg;
@@ -396,8 +397,18 @@ fn antigravity_wakes_an_empty_composer_and_holds_drafts_dialogs_and_working_turn
                     || agent.pane().wake_held.is_some_and(|reason| reason.contains("not sent")),
                     (),
                 );
+            } else {
+                let reason = if frame == "dialog" {
+                    "it is at a dialog, waiting for somebody to answer it"
+                } else {
+                    "waiting for the agent to go idle"
+                };
+                assert_eq!(outcome.reason.as_deref(), Some(reason));
+                // Activity deferrals do not set wake_held. Leave the frame up past the
+                // doorbell's three-second quiet period so a stray ring can reach the peer.
+                std::thread::sleep(Duration::from_secs(4));
             }
-            assert_eq!(written(&wakes).lines().count(), index);
+            assert_eq!(written(&wakes).lines().count(), index, "wake reached {frame}");
             agent.command("frame {number} idle");
             agent.until_state(Idle);
         }
@@ -405,9 +416,10 @@ fn antigravity_wakes_an_empty_composer_and_holds_drafts_dialogs_and_working_turn
             let text = std::fs::read_to_string(&wakes).ok()?;
             (text.lines().count() > index).then_some(text)
         });
-        let last = heard.lines().last().unwrap();
-        assert!(last.starts_with(&format!("[muster] {}", posted.group)), "{last}");
-        assert!(last.contains(&format!("muster msg read --group {}", posted.group)), "{last}");
+        let (received_at, notice) = heard.lines().nth(index).unwrap().split_once('\t').unwrap();
+        assert_eq!(received_at, "idle", "{notice}");
+        assert!(notice.starts_with(&format!("[muster] {}", posted.group)), "{notice}");
+        assert!(notice.contains(&format!("muster msg read --group {}", posted.group)), "{notice}");
 
         let read = Asked::Read(msg_request::Read { group: Some(posted.group.clone()) });
         let read = expect(&mut agent.control, msg(&recipient, read), proto::Outcome::Done);
