@@ -2936,6 +2936,34 @@ mod tests {
         assert_eq!(listing.matches("🤖 otter").count(), 1, "{listing}");
     }
 
+    #[test]
+    fn a_colored_helpers_tab_keeps_its_heading_when_shown_or_hidden() {
+        for shown in [false, true] {
+            let mut window = helpers_window();
+            let roster = window.roster.as_mut().unwrap();
+            let mut helpers = roster.hidden.remove(0);
+            roster.hidden.clear();
+            helpers.color = "blue".to_string();
+            for pane in &mut helpers.panes {
+                pane.under.clone_from(&pane.maker);
+            }
+            if shown {
+                roster.tabs.push(helpers);
+            } else {
+                roster.hidden.push(helpers);
+            }
+            let text = unstyled(&window_text(&window, 0, Others::All, true, &Local::default()));
+            let rows: Vec<_> = text.lines().collect();
+            let caption =
+                rows.iter().position(|row| row.contains("t2") && row.contains("color=blue"));
+            assert!(caption.is_some(), "{text}");
+            if !shown {
+                assert_eq!(rows[caption.unwrap() - 1], "hidden", "{text}");
+            }
+            assert_eq!(text.matches("🤖 otter").count(), 1, "{text}");
+        }
+    }
+
     /// The columns stay in line through an indented helper: its state starts where its maker's
     /// does.
     #[test]

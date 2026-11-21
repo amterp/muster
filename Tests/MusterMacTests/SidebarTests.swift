@@ -734,9 +734,9 @@ struct SidebarTests {
     let awayHelper = try #require(away.first { $0.pane == second })
     #expect(!awayHelper.hidden && !awayHelper.onScreen && !awayHelper.hasKeyboard)
     #expect(rows(shown: first, keyboard: first, expanded: true).map(\.label) == shown.map(\.label))
-    #expect(
-      rows(shown: second, keyboard: second, expanded: false).map(\.label)
-        == ["w1:t1", "w1:p1", "w1:p2"])
+    let closed = rows(shown: second, keyboard: second, expanded: false)
+    #expect(closed.map(\.label) == ["w1:t1", "w1:p1", "w1:p2"])
+    #expect(closed.filter(\.hasKeyboard).compactMap(\.pane) == [maker])
     let settling = rows(shown: second, keyboard: second, expanded: true, spanning: true)
     #expect(settling.map(\.label) == shown.map(\.label))
     #expect(settling.first { $0.pane == second }?.hidden == false)

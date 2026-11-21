@@ -3643,6 +3643,40 @@
       }
     },
     {
+      "name": "a shown helper of a hidden maker has a numbered tab",
+      "why": "When the maker's tab is hidden, the helper's own tab is how the list reaches it. In a one-tab window its pane gets the direct shortcut.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              { "id": "w1:t1", "root": "w1:p1", "hidden": true },
+              { "id": "w1:t2", "root": "w1:p2" }
+            ],
+            "panes": [
+              { "id": "w1:p1", "cwd": "/src/alpha" },
+              { "id": "w1:p2", "cwd": "/src/beta", "maker": "w1:p1" }
+            ]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "showing": ["local/w1:p2"],
+        "numbered": { "press": [1] },
+        "at": 1
+      },
+      "expect": {
+        "machines": ["local connected 2 panes"],
+        "panes": ["local/w1:p2 place=1 tab=w1:t2 label=\"beta\" on-screen maker=w1:p1"],
+        "tabs": ["w1:t2 on=local place=1 label=\"Tab 1\" on-screen"],
+        "hidden": [
+          "w1:t1 on=local place=0 label=\"\" off-screen",
+          "local/w1:p1 place=0 tab=w1:t1 label=\"alpha\" off-screen"
+        ],
+        "pressed": ["⌘1 of panes → pane local/w1:p2"],
+        "chords": ["w1:t2 nothing", "  local/w1:p2 ⌘1"],
+        "at": "local/w1:p2"
+      }
+    },
+    {
       "name": "a pane can be restarted when its daemon knows how its agent resumes",
       "why": "The agent row's menu offers Restart Agent and greys it out where there is nothing to resume: a pane running no agent, or an agent that reported no session its harness resumes. The daemon builds the resume from what the agent reported and the manifests it holds, so the row carries the daemon's word, and the command it would run is what the window says before it ends anything.",
       "given": {
