@@ -43,6 +43,12 @@ which a version Codex is told was released brings up. Only Esc is pressed there:
 run the update. `codex-pickers` records, the same way, the lists Codex opens from its composer:
 /new's question of where the new conversation runs, and the /model and /permissions pickers.
 
+`agy` records folder trust and the interactive composer. Run it in a scratch directory
+with agy already signed in. Its phases are `turn`, `approval`, `commands`, `interrupt`, and
+`draft`. The commands phase needs a conversation from an earlier phase. Check quota before
+running Gemini 3.8 Flash (Low). `--only draft` takes no model turns. With `--conversation ID`,
+the recipe opens that agy conversation and stops at the composer unless phases are named.
+
 It spends a few short requests against whatever account the harness is logged in to, and runs it
 in <out>, which it trusts when asked. Nothing is sent to the network by this script itself.
 """
@@ -792,7 +798,115 @@ OPENCODE = Harness(
     credentials=False,
 )
 
+def agy_argv(out: Path) -> list[str]:
+    settings = out / "capture-settings.json"
+    settings.write_text(json.dumps({"permissions": {"ask": ["command(printf)"]}}) + "\n")
+    return ["agy", "--model", "gemini-3.8-flash-low", "--settings", str(settings),
+            "--log-file", str(out / "agy.log")]
+
+
+def agy_expect(capture: Capture, text: str, seconds: float = 20) -> None:
+    if not capture.pump(seconds, text.encode()):
+        raise RuntimeError(f"agy did not draw {text!r}")
+    capture.pump(0.2)
+
+
+def agy_start(capture: Capture) -> None:
+    capture.pump(4)
+    # Only the folder-trust choice receives Return. Existing sign-in is required.
+    if b"Yes, I trust this folder" in capture.raw and b"No, exit" in capture.raw:
+        capture.mark("folder trust", "blocked", "Return answers the fresh-folder trust dialog.")
+        capture.send("\r")
+    if b"? for shortcuts" not in capture.raw and not capture.pump(15, b"? for shortcuts"):
+        raise RuntimeError("agy did not reach the composer with its existing sign-in")
+    capture.pump(0.2)
+    capture.mark("startup composer", "idle", "The mode hint is a placeholder, so the composer is empty.")
+
+
+def agy_paste(capture: Capture, text: str) -> None:
+    capture.send(f"\x1b[200~{text}\x1b[201~")
+
+
+def agy_submit(capture: Capture, text: str) -> None:
+    agy_paste(capture, text)
+    capture.send("\r")
+
+
+def agy_draft(capture: Capture) -> None:
+    capture.send("/")
+    agy_expect(capture, "/add-dir")
+    capture.mark("slash menu", "unknown", "The menu takes Return and covers the composer.", skip=True)
+    capture.send("\x1b")
+    capture.pump(0.3)
+    capture.send("\x15")
+    agy_paste(capture, "\nfirst draft line\nsecond draft line")
+    agy_expect(capture, "second draft line")
+    capture.mark("multiline draft", "idle", "The draft starts with a blank line and holds two lines of text.")
+    capture.send("\x15\x7f\x15\x7f\x15")
+    capture.pump(0.3)
+
+
+def agy_turn(capture: Capture) -> None:
+    agy_submit(capture, "Reply with exactly MUSTER-AGY-OK.")
+    agy_expect(capture, "esc to cancel")
+    capture.mark("working", "working", "A new turn draws a spinner above the composer.")
+    agy_expect(capture, "? for shortcuts", 45)
+    capture.mark("after a turn", "idle", "The old prompt is visible above the empty composer.")
+
+
+def agy_approval(capture: Capture) -> None:
+    agy_submit(capture, "Use your shell tool to run exactly: printf muster-approval")
+    agy_expect(capture, "No, cancel", 45)
+    capture.mark("command approval", "blocked", "Return approves a command while this dialog is open.")
+    capture.send("\x1b")
+    agy_expect(capture, "Interrupted")
+    capture.mark("approval dismissed", "idle", "Esc dismisses the dialog and restores the composer.")
+
+
+def agy_interrupt(capture: Capture) -> None:
+    agy_submit(capture, "Write a numbered list of 100 short animal names.")
+    agy_expect(capture, "esc to cancel")
+    agy_paste(capture, "draft while working")
+    agy_expect(capture, "draft while working")
+    capture.mark("draft while working", "working", "The draft does not end the running turn.")
+    capture.send("\x1b")
+    agy_expect(capture, "Interrupted")
+    capture.mark("interrupted turn", "idle", "After Esc, the composer still holds the draft.")
+    capture.send("\x15")
+    capture.pump(0.3)
+
+
+def agy_commands(capture: Capture) -> None:
+    agy_submit(capture, "/rename Muster Capture")
+    capture.pump(1)
+    capture.mark("one Return on /rename", "idle", "One Return submits the whole rename command.")
+    for suffix in ("", " keep the animal names"):
+        agy_submit(capture, "/compact" + suffix)
+        agy_expect(capture, "Compacting conversation")
+        label = " with focus" if suffix else ""
+        capture.mark("compacting" + label, "working", "One Return starts compaction.")
+        agy_expect(capture, "Conversation compacted", 45)
+        capture.pump(0.5)
+    agy_submit(capture, "/clear")
+    agy_expect(capture, "? for shortcuts")
+    capture.mark("after /clear", "idle", "The new composer is empty before its first turn.")
+    agy_submit(capture, "Reply with exactly FRESH.")
+    agy_expect(capture, "esc to cancel")
+    agy_expect(capture, "? for shortcuts", 45)
+    capture.mark("first reply after /clear", "idle", "The new conversation has completed its first turn.")
+
+
+AGY = Harness(
+    argv=agy_argv,
+    strip=("AGY_", "ANTIGRAVITY_", "CLAUDE_", "CODEX_", "MUSTER_"),
+    start=agy_start,
+    phases={"turn": agy_turn, "approval": agy_approval, "commands": agy_commands,
+            "interrupt": agy_interrupt, "draft": agy_draft},
+)
+
+
 HARNESSES = {
+    "agy": AGY,
     "claude": CLAUDE,
     "claude-startup": CLAUDE_STARTUP,
     "claude-signin": CLAUDE_SIGNIN,
@@ -812,16 +926,23 @@ def main() -> int:
     parser.add_argument("--size", default="100x30", help="COLUMNSxROWS")
     parser.add_argument("--only", help="comma-separated phases to run after the start")
     parser.add_argument("--binary", help="the harness's executable, when not the one on PATH")
+    parser.add_argument("--conversation", help="an Antigravity conversation ID to reopen in <out>")
     arguments = parser.parse_args()
+    if arguments.conversation and arguments.harness != "agy":
+        parser.error("--conversation requires --harness agy")
     harness = HARNESSES[arguments.harness]
     columns, rows = (int(part) for part in arguments.size.split("x"))
     phases = list(harness.phases) if arguments.only is None else arguments.only.split(",")
+    if arguments.conversation and arguments.only is None:
+        phases = []
     unknown = [phase for phase in phases if phase not in harness.phases]
     if unknown:
         sys.exit(f"{arguments.harness} has no phase {', '.join(unknown)}; it has {', '.join(harness.phases)}")
     out = arguments.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     argv = harness.argv(out)
+    if arguments.conversation:
+        argv.extend(("--conversation", arguments.conversation))
     if arguments.binary:
         argv[0] = arguments.binary
     said = subprocess.run([argv[0], "--version"], capture_output=True, text=True).stdout
@@ -835,15 +956,14 @@ def main() -> int:
             harness.phases[phase](capture)
     finally:
         capture.end()
-
-    (out / "raw").write_bytes(bytes(capture.raw))
-    (out / "marks.json").write_text(
-        json.dumps(
-            {"agent": harness.agent or arguments.harness, "version": version, "columns": columns, "rows": rows, "marks": capture.marks},
-            indent=2,
+        (out / "raw").write_bytes(bytes(capture.raw))
+        (out / "marks.json").write_text(
+            json.dumps(
+                {"agent": harness.agent or arguments.harness, "version": version, "columns": columns, "rows": rows, "marks": capture.marks},
+                indent=2,
+            )
+            + "\n"
         )
-        + "\n"
-    )
     print(f"wrote {len(capture.raw)} bytes and {len(capture.marks)} marks to {out}", file=sys.stderr)
     return 0
 
