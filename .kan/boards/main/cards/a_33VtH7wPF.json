@@ -6,21 +6,30 @@
     "shell",
     "backend"
   ],
-  "column": "in-progress",
+  "column": "review",
+  "comments": [
+    {
+      "id": "c_33uzMsfQ4",
+      "body": "Built 2026-11-21 on main (unpushed at the time of writing), 1b1872f8..4904130b: the daemon keeps tab and pane colors (protocol 1.18), muster tab color / muster pane color, muster window's color= and --json color, every tab drawn as an outlined block with a caption (a lone tab included, which now folds; Fencil lone-tab-caption), the Band, the Chip in the list and pane header, and a Color submenu with a macOS color panel that applies once. Full ./dev green at 4904130b. What to check: nobody has seen the pixels - screen capture is not available to a pane (a_2luRHsHJW), so the Band, outline, Chip and the Color menu were checked by tests and by the CLI against a running checkout build only. Look at them in light and dark, and try Custom Color. Two agent decisions still await your review: person-color-values, person-color-in-window. Left unfixed: a_33uz40fLJ.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795288697744
+    }
+  ],
   "created_at_millis": 1795228881641,
   "creator": "Alexander Terp",
   "description": "The owner asked on 2026-11-20 to color a tab or a single pane and to make tabs read more clearly as groups in the agent list, then chose from mock-ups. What to build is recorded in Fencil (`fencil show \u003cid\u003e`):\n\n- `tab-color-look` (owner-decided): Band. A tab's caption is filled with its color and an outline runs round the tab and its entries; a tab without a color keeps a plain caption and a neutral outline, so every tab reads as a block.\n- `pane-color-look` (owner-decided): Chip. A pane's callsign sits on a small block of its color, in its agent-list entry and its pane header.\n- `person-color-values` (agent, marked for review): the terminal palette's six hues by name, following [colors], plus any color from the macOS picker or `#rrggbb`; `none` removes it.\n- `person-color-in-window` (agent, marked for review): no strip above the panes for a tab's color; a pane does not take its tab's color.\n\nThe color is set from a Color submenu on a tab caption's and an agent entry's right-click menus, and by `muster tab color \u003ctab\u003e \u003ccolor\u003e` and `muster pane color --pane \u003cref\u003e \u003ccolor\u003e`, through the one shared action path. The daemon keeps it with the tab or pane, beside its name, so it survives a restart, a reopen and a daemon replacement; a tab spanning two machines keeps it on both daemons, as it keeps its name. Every derived color goes through the chrome-colors function with its minimum-contrast rule; check light, dark and default themes, and that no tab color reaches an entry's blocked or stuck tint or edge.\n\nThe owner did not ask for named groups of several tabs (drawn on the mock-up as another reading of \"group tabs\"); that is not part of this card.",
   "id": "a_33VtH7wPF",
-  "position": "a0",
+  "position": "Zs",
   "provenance": "approved",
   "related": [
     "a_33V7y0osK"
   ],
   "title": "Let a person color a tab or a pane: a Band caption for tabs, a Chip callsign for panes",
   "type": "feature",
-  "updated_at_millis": 1795279774356,
+  "updated_at_millis": 1795288697744,
   "history": [
     {"field":"column","value":"backlog-hi","at":1795228881641},
-    {"field":"column","value":"in-progress","at":1795279774356}
+    {"field":"column","value":"in-progress","at":1795279774356},
+    {"field":"column","value":"review","at":1795288697632}
   ]
 }

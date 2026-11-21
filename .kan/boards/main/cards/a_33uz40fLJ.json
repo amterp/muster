@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "a-tab-s-color",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_33uzMQ5yp",
+      "body": "agent-approved: it fixes a defect found in review; it overturns no decision, adds no interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795288697466
+    }
+  ],
+  "created_at_millis": 1795288686116,
+  "creator": "Alexander Terp",
+  "description": "From the review of the tab color build (a_33VtH7wPF), 2026-11-21, left unfixed. When a pane is placed into a part of a spanning tab that does not exist yet on the destination machine, the placement request carries the tab's color as it was when the placement began. If the color changes after that, and the only part holding the newer color closes before the destination part opens, the destination keeps the older color. Narrow: it needs a color write, a cross-machine placement and the source part's last pane leaving, all overlapping. A fix has to define how a concurrent placement and color write are ordered; the tab's name has the same shape and may share the answer.",
+  "id": "a_33uz40fLJ",
+  "position": "b3S",
+  "provenance": "agent-approved",
+  "title": "A tab's color changed during a pane's move to a new machine can be lost on the new part",
+  "type": "bug",
+  "updated_at_millis": 1795288697466,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795288686116}
+  ]
+}

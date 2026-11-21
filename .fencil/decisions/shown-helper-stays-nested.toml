@@ -1,0 +1,31 @@
+id = "shown-helper-stays-nested"
+question = "Where does the agent list draw a helper whose pane has been brought on screen?"
+tags = ["ui", "agent-list", "helpers"]
+paths = ["Sources/MusterMac/Sidebar.swift", "crates/muster-core/src/roster.rs", "crates/muster-cli/src/render.rs"]
+
+[[revisions]]
+id = "nogtmjjp"
+date = 2026-11-21
+recorded_by = "other"
+discussion = "person-colors-2026-11"
+level = "owner-decided"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = '''
+Under its maker, where it was. Showing a helper, by clicking it or by bringing its maker's helpers
+forward together, changes nothing else in the list: the helper keeps its line and its order, the
+maker keeps its helper count, the helpers' shared tab gets no caption and no numbered chord, and
+the other tabs keep theirs. `muster window` lists it the same way. A helper keeps a tab of its own
+only when its maker has no row in one of the window's shown tabs (hidden, closed, or in another
+window), or when it sits in a tab with panes that are not that maker's helpers.'''
+why = '''
+Clicking a helper used to move it out from under its maker into a new captioned tab and drop the
+maker's count, so the list rearranged on every click. The owner asked for a click to show the pane
+and nothing else. The exception for a hidden maker was chosen by an agent in review: nesting there
+left the window with no numbered tab and its on-screen pane listed only under Hidden.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-21
+  quote = "I don't want anything popping around when I click on a helper in the muster sidebar. I think we could just click on a helper and ... that's all that happens. It shows the [pane] and the sidebar doesn't change at all and I can click on another pane and collapse it and the helpers stay where they were before."
+  note = "Reporting, with two screenshots, that clicking one of a maker's two helpers moved it into a new tab captioned with the maker's name and 'helpers', and the maker's helper count fell from 2 to 1."
