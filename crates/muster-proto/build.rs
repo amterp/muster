@@ -53,7 +53,7 @@ fn main() {
         "ConversationMessage",
         "#[expect(clippy::struct_excessive_bools, reason = \"independent facts, one each\")]",
     );
-    for message in ["RosterPane", "PaneStateChanged"] {
+    for message in ["RosterPane", "RosterTab", "PaneStateChanged"] {
         config.message_attribute(
             message,
             "#[expect(clippy::struct_excessive_bools, reason = \"independent facts, one each\")]",
