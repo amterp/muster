@@ -103,6 +103,7 @@ final class SidebarRowView: NSView {
 
   /// Whether this row carries the keyboard marker.
   var marksKeyboard: Bool { highlight.superlayer != nil }
+  var keyboardMarkFrame: CGRect? { marksKeyboard ? highlight.frame : nil }
 
   /// What a machine heading's second line says, or nil when the row has none.
   var shownSubtitle: String? { subtitle.superview == nil ? nil : subtitle.stringValue }
@@ -728,8 +729,11 @@ final class SidebarRowView: NSView {
     if let place = shown?.tabBlock?.place {
       layoutTabBlock(place)
     }
+    let side: CGFloat = shown?.tabBlock == nil ? 4 : 10
+    let marked = bounds.insetBy(dx: side, dy: 1)
+    highlight.frame = marked
     if isPaneRow {
-      layoutPaneRow()
+      layoutPaneRow(marked: marked)
     } else {
       layoutOtherRow()
     }
@@ -772,11 +776,8 @@ final class SidebarRowView: NSView {
     if reservesSecond { place(secondKey) }
   }
 
-  private func layoutPaneRow() {
-    let side: CGFloat = shown?.tabBlock == nil ? 4 : 10
-    let marked = bounds.insetBy(dx: side, dy: 1)
+  private func layoutPaneRow(marked: CGRect) {
     tintLayer.frame = marked
-    highlight.frame = marked
     // A helper's one line is too short for the inset an entry's edge takes.
     let edgeInset: CGFloat = shown?.isHelper == true ? 3 : 7
     edgeBar.frame = CGRect(

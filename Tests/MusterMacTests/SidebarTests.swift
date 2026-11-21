@@ -688,7 +688,7 @@ struct SidebarTests {
   }
 
   @Test("showing a helper tab keeps each helper line and its place under the maker")
-  func shownHelpersKeepTheirRows() throws {
+  @MainActor func shownHelpersKeepTheirRows() throws {
     let maker = PaneKey(daemon: "local", pane: "w1:p1")
     let first = PaneKey(daemon: "local", pane: "w1:h1")
     let second = PaneKey(daemon: "remote", pane: "w1:h2")
@@ -745,10 +745,16 @@ struct SidebarTests {
     #expect(folded.map(\.label) == ["w1:t1"])
     #expect(caption.foldedPanes.map(\.key).suffix(2) == [first, second])
     #expect(caption.hasKeyboard)
+    let view = SidebarRowView()
+    view.frame = NSRect(x: 0, y: 0, width: 200, height: SidebarModel.height(of: caption))
+    view.show(caption)
+    view.layoutSubtreeIfNeeded()
+    let marker = try #require(view.keyboardMarkFrame)
+    #expect(!marker.isEmpty && view.bounds.contains(marker))
   }
 
   @Test("a collapsed Hidden caption identifies the shown helper of a hidden maker")
-  func shownHelperUnderHiddenMaker() throws {
+  @MainActor func shownHelperUnderHiddenMaker() throws {
     let maker = pane("local", "w1:p1")
     let helperKey = PaneKey(daemon: "local", pane: "w1:h1")
     let helper = Roster.Pane(
@@ -764,6 +770,12 @@ struct SidebarTests {
     #expect(rows.map(\.label) == ["Hidden"])
     #expect(caption.hasKeyboard)
     #expect(SidebarModel.summary(of: caption) == "1 hidden pane\nhelper: on screen")
+    let view = SidebarRowView()
+    view.frame = NSRect(x: 0, y: 0, width: 200, height: SidebarModel.height(of: caption))
+    view.show(caption)
+    view.layoutSubtreeIfNeeded()
+    let marker = try #require(view.keyboardMarkFrame)
+    #expect(!marker.isEmpty && view.bounds.contains(marker))
   }
 
   /// Hide Helpers takes back only a tab holding nothing but the pane's helpers, so a helper moved
