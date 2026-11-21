@@ -1,7 +1,9 @@
 # Antigravity adapter
 
 Muster reads the Antigravity CLI's screen from the `agy` detection manifest. The native plugin in
-this directory reports turn boundaries and the conversation ID to the daemon that owns the pane.
+this directory reports turn boundaries, the conversation ID, and transcript provenance to the
+daemon that owns the pane. The transcript path comes from the hook and appears in the pane API
+once the daemon confirms the foreground sender, session ID, and working directory.
 The status-line wrapper reports state, the conversation title, model, effort and context usage.
 Both use Python 3 on the machine running agy.
 
@@ -37,6 +39,11 @@ the next invocation identifies the conversation to the adapter. After a fully id
 status line reports facts until the next invocation. When Escape or a background task leaves a
 turn without a fully idle Stop, an idle sample can still report the turn's end. The wrapper
 uses agy's shell command semantics, and reporting is quiet outside a foreground Muster pane.
+
+After `/clear`, the first hook for the new conversation confirms the clear and retires the old
+transcript provenance. A resumed pane gets fresh provenance on its next invocation. The
+manifest lets Muster issue `/compact`. There is no receipt for that command because a hook ending
+the turn can produce the same Stop reason as a successful compaction.
 
 [Antigravity plugin reference](https://antigravity.google/docs/plugins?tab=cli) ·
 [Antigravity status-line settings](https://antigravity.google/docs/cli/statusline/)

@@ -23,7 +23,9 @@ struct Supplied {
     names_pane: bool,
     compacts: bool,
     clears: bool,
-    says_context_changes: bool,
+    says_cleared: bool,
+    says_compacted: bool,
+    transcript: bool,
     resumes: bool,
     image_paste: bool,
 }
@@ -31,7 +33,7 @@ struct Supplied {
 /// A capability's row: its name on the page, and how it is read off what a harness supplies.
 type Row = (&'static str, fn(&Supplied) -> bool);
 
-const ROWS: [Row; 15] = [
+const ROWS: [Row; 17] = [
     ("Its own report of its state", |supplied| supplied.reported_state),
     ("Context used and model", |supplied| supplied.context),
     ("Cost", |supplied| supplied.cost),
@@ -44,7 +46,9 @@ const ROWS: [Row; 15] = [
     ("The pane named after its session", |supplied| supplied.names_pane),
     ("Compacted when asked", |supplied| supplied.compacts),
     ("Cleared when asked", |supplied| supplied.clears),
-    ("Says when its context was cleared or compacted", |supplied| supplied.says_context_changes),
+    ("Says when its context was cleared", |supplied| supplied.says_cleared),
+    ("Says when its context was compacted", |supplied| supplied.says_compacted),
+    ("Reports its session transcript path", |supplied| supplied.transcript),
     ("Resumed after a restart", |supplied| supplied.resumes),
     ("Clipboard image pasted into a remote composer", |supplied| supplied.image_paste),
 ];
@@ -93,7 +97,9 @@ fn supplied(manifests: &Manifests, wiring: &str, agent: &Agent) -> Supplied {
         names_pane: reports(wiring, "session-name"),
         compacts: manifests.session_compact(agent, None).is_some(),
         clears: manifests.session_clear(agent).is_some(),
-        says_context_changes: reports(wiring, "session-source"),
+        says_cleared: reports(wiring, "session-source"),
+        says_compacted: reports(wiring, "context-compacted") || reports(wiring, "compacted-in"),
+        transcript: reports(wiring, "session-transcript"),
         // The manifest says how, and the adapter reports the session to resume.
         resumes: manifests.session_resume(agent, "id", &[], None).is_some()
             && reports(wiring, "session-id"),

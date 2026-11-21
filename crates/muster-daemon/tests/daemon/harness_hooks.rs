@@ -5,23 +5,21 @@
 
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixListener;
+use std::path::Path;
 use std::process::{Command, Stdio};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use super::claude_code::Scratch;
 use crate::support::{daemon, proto, until_some};
 
-#[test]
-fn a_hook_sends_its_session_id_without_provenance_to_an_older_daemon() {
-    use std::os::unix::net::UnixListener;
-
+pub(crate) fn legacy_report(socket: &Path) -> JoinHandle<proto::pane_request::Report> {
     use proto::connection::{receive, send};
 
-    let scratch = daemon();
-    let socket = scratch.root().join("report.sock");
-    let listener = UnixListener::bind(&socket).unwrap();
+    let listener = UnixListener::bind(socket).unwrap();
     listener.set_nonblocking(true).unwrap();
-    let old = std::thread::spawn(move || {
+    std::thread::spawn(move || {
         let mut stream =
             until_some("the hook to connect", || listener.accept().ok().map(|(stream, _)| stream));
         stream.set_nonblocking(false).unwrap();
@@ -53,7 +51,14 @@ fn a_hook_sends_its_session_id_without_provenance_to_an_older_daemon() {
         )
         .unwrap();
         report
-    });
+    })
+}
+
+#[test]
+fn a_hook_sends_its_session_id_without_provenance_to_an_older_daemon() {
+    let scratch = daemon();
+    let socket = scratch.root().join("report.sock");
+    let old = legacy_report(&socket);
     let status = Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
         .env_clear()
         .env("MUSTER_PANE", "p1")
@@ -155,10 +160,7 @@ fn commands(harness: &Harness, event: &str) -> Vec<String> {
 /// zsh - where an unquoted expansion is not split into words, as it is in `sh`. Codex runs its
 /// hooks in the user's shell.
 fn shells() -> Vec<&'static str> {
-    ["/bin/sh", "/bin/zsh"]
-        .into_iter()
-        .filter(|shell| std::path::Path::new(shell).exists())
-        .collect()
+    ["/bin/sh", "/bin/zsh"].into_iter().filter(|shell| Path::new(shell).exists()).collect()
 }
 
 /// What `command` runs `$MUSTER_DAEMON` with, bracketed per argument, in each of [`shells`],

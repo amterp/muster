@@ -1,8 +1,8 @@
 {"name":"authenticating","payload":{"cwd":"/tmp/capture","agent_state":"authenticating","conversation_id":"","model":{"display_name":"Gemini 3.1 Pro (High)"},"context_window":{"used_percentage":0}}}
 {"name":"startup","payload":{"cwd":"/tmp/capture","agent_state":"idle","conversation_id":"","model":{"display_name":"Gemini 3.8 Flash (Low)","effort":"low"},"context_window":{"used_percentage":0}}}
-{"name":"start","payload":{"cwd":"/tmp/capture","hookEventName":"SessionStart","conversationId":"00000000-0000-4000-8000-000000000001"}}
-{"name":"pre-invocation","payload":{"cwd":"/tmp/capture","hookEventName":"PreInvocation","conversationId":"00000000-0000-4000-8000-000000000001","invocationNum":0}}
+{"name":"start","payload":{"cwd":"/tmp/capture","hookEventName":"SessionStart","conversationId":"00000000-0000-4000-8000-000000000001","transcriptPath":"/tmp/capture/first-full.jsonl"}}
+{"name":"pre-invocation","payload":{"cwd":"/tmp/capture","hookEventName":"PreInvocation","conversationId":"00000000-0000-4000-8000-000000000001","invocationNum":0,"transcriptPath":"/tmp/capture/first-full.jsonl"}}
 {"name":"approval","payload":{"cwd":"/tmp/capture","agent_state":"tool_use","conversation_id":"00000000-0000-4000-8000-000000000001","model":{"display_name":"Gemini 3.8 Flash (Low)","effort":"low"},"context_window":{"used_percentage":3.8593292236328125},"tool_confirmation_pending":true}}
-{"name":"stop","payload":{"cwd":"/tmp/capture","hookEventName":"Stop","conversationId":"00000000-0000-4000-8000-000000000001","fullyIdle":true,"continuationActive":false,"terminationReason":"NO_TOOL_CALL","executionNum":0}}
+{"name":"stop","payload":{"cwd":"/tmp/capture","hookEventName":"Stop","conversationId":"00000000-0000-4000-8000-000000000001","fullyIdle":true,"continuationActive":false,"terminationReason":"NO_TOOL_CALL","executionNum":0,"transcriptPath":"/tmp/capture/first-full.jsonl"}}
 {"name":"renamed","payload":{"cwd":"/tmp/capture","agent_state":"idle","conversation_id":"00000000-0000-4000-8000-000000000001","model":{"display_name":"Gemini 3.8 Flash (Low)","effort":"low"},"context_window":{"used_percentage":4.695224761962891},"conversation_title":"Muster Capture"}}
-{"name":"second-start","payload":{"cwd":"/tmp/capture","hookEventName":"SessionStart","conversationId":"00000000-0000-4000-8000-000000000002"}}
+{"name":"second-start","payload":{"cwd":"/tmp/capture","hookEventName":"SessionStart","conversationId":"00000000-0000-4000-8000-000000000002","transcriptPath":"/tmp/capture/second-full.jsonl"}}

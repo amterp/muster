@@ -38,12 +38,17 @@ def hook_report(daemon, payload, seen, sampled_at):
     conversation = payload.get("conversationId")
     if not conversation or conversation != os.environ.get("ANTIGRAVITY_CONVERSATION_ID"):
         return
+    if sampled_at < seen.get("hook_sampled_at", 0):
+        return
 
     event = payload.get("hookEventName")
-    changed = seen.get("conversation") != conversation
-    args = ["--session-id", conversation, "--context-session", conversation] if changed else []
+    known = seen.get("conversation")
+    changed = known != conversation
+    args = []
     state = None
     if event == "PreInvocation":
+        if known and changed:
+            return
         state = "working"
     elif event == "Stop":
         if changed or payload.get("fullyIdle") is not True or payload.get("continuationActive") is not False:
@@ -52,11 +57,27 @@ def hook_report(daemon, payload, seen, sampled_at):
     elif event != "SessionStart":
         return
 
+    if event in ("SessionStart", "PreInvocation"):
+        transcript = payload.get("transcriptPath")
+        has_transcript = (
+            isinstance(transcript, str) and os.path.isabs(transcript) and "\0" not in transcript
+        )
+        if changed or has_transcript:
+            args.extend(("--session-id", conversation))
+        if changed:
+            args.extend(("--context-session", conversation))
+            if known:
+                args.extend(("--clear", "--session-source", "startup"))
+        if has_transcript:
+            args.extend(("--session-transcript", transcript, "--session-directory", payload["cwd"]))
+
     if (args or state) and send(daemon, payload["cwd"], args, state):
         seen["conversation"] = conversation
-        seen["turn_stopped"] = state == "idle"
+        seen["hook_sampled_at"] = sampled_at
         seen["sampled_at"] = max(seen.get("sampled_at", 0), sampled_at)
-        seen.pop("status", None)
+        if changed or state is not None:
+            seen["turn_stopped"] = state == "idle"
+            seen.pop("status", None)
 
 
 def status_state(payload):
@@ -136,7 +157,7 @@ def report(mode, daemon, socket, pane, payload, sampled_at):
         if mode == "status" and state != "idle":
             lock |= fcntl.LOCK_NB
         fcntl.flock(cache, lock)
-        if state == "idle" and foreground_group(mode) != group:
+        if foreground_group(mode) != group:
             return
         try:
             seen = json.load(cache)

@@ -30,7 +30,9 @@ harness has an adapter that has stayed silent.
 | The pane named after its session | yes | yes | no | no | no |
 | Compacted when asked | yes | yes | yes | no | no |
 | Cleared when asked | yes | yes | yes | no | no |
-| Says when its context was cleared or compacted | no | yes | yes | no | no |
+| Says when its context was cleared | yes | yes | yes | no | no |
+| Says when its context was compacted | no | yes | yes | no | no |
+| Reports its session transcript path | yes | no | no | no | no |
 | Resumed after a restart | yes | yes | yes | yes | no |
 | Clipboard image pasted into a remote composer | no | yes | yes | no | no |
 
@@ -38,8 +40,11 @@ Every other harness: amp, cline, copilot, cursor, devin, droid, gemini, grok, he
 kiro, maki, pi, qodercli.
 
 The Antigravity CLI (`agy`) uses the [native plugin and status-line wrapper](../../extras/agy/README.md).
-Its hooks report the conversation ID and turn state. Its status line supplies the model, effort,
-context usage and conversation title once a hook identifies the conversation.
+Its hooks report the conversation ID, turn state, and transcript path. Its status line supplies
+the model, effort, context usage, and conversation title once a hook identifies the conversation.
+After `/clear`, the next prompt starts a new conversation and its first hook confirms the clear.
+Muster can submit `/compact`. Antigravity reports the same Stop reason for compaction and for a
+hook that ends a turn, so Muster has no compaction receipt.
 
 - **Its state read off the screen**: working, blocked or idle, from rules Muster keeps for each
   harness's screens.

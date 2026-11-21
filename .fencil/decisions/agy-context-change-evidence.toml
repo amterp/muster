@@ -1,0 +1,22 @@
+id = "agy-context-change-evidence"
+question = "When does Muster report that Antigravity cleared or compacted its context?"
+tags = ["agy", "harnesses", "hooks"]
+paths = ["extras/agy/report.py", "docs/cli/harnesses.md"]
+
+[[revisions]]
+id = "x8rvfufd"
+date = 2026-11-21
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Report a clear when SessionStart identifies a new conversation after the same foreground
+launch reported the preceding one. A launched or resumed session establishes identity and
+its own transcript provenance. The adapter can issue a compact command, but reports no
+compaction receipt.'''
+why = '''
+Antigravity 1.5.14 can show the previous conversation ID on its status line until the next
+prompt, when the hook supplies the new ID. Compaction and deliberate hook termination both
+end with TERMINAL_CUSTOM_HOOK and no model callback. The input tells which command was
+requested and cannot establish that the command completed.'''

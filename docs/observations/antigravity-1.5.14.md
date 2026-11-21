@@ -43,8 +43,13 @@ The hook JSON supplies the workspace through `cwd`. The hook process itself runs
 directory containing its configuration. `PreInvocation` supplies the conversation on both a
 new turn and a resumed conversation. `Stop` reports idle only when `fullyIdle` is true and
 `continuationActive` is false. Compaction and deliberate hook termination can both produce
-`TERMINAL_CUSTOM_HOOK`. The adapter reports turn state and identity. Context-change receipts
-need a way to bind them to the specific command or launch.
+`TERMINAL_CUSTOM_HOOK`. `lastUserInput` names the requested `/compact`. The Stop payload cannot
+establish that the command completed. Muster reports a clear when a new `SessionStart` replaces
+a known conversation in the same foreground launch.
+
+Muster takes the absolute transcript path from the hook's `transcriptPath` and binds it to that
+report's conversation and directory. The status line's `transcript_path` on 1.5.14 points into
+the desktop app's directory.
 
 In a real agy PTY, the status command shared agy's foreground process group. Each hook ran
 in its own group, with agy's foreground group still readable from the controlling terminal.

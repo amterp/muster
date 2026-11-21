@@ -1,9 +1,15 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
-use crate::persistence::record;
+use crate::api_panes::current_pane;
+use crate::attention::msg;
+use crate::harness_hooks::legacy_report;
+use crate::persistence::{directory, record, until_saved};
+use crate::resume::restarted;
 use crate::support::*;
 use proto::AgentState::{Blocked, Idle, Working};
+use proto::msg_request::{self, Request as Asked};
 use serde_json::Value;
 
 const PLUGIN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/agy");
@@ -23,36 +29,67 @@ impl AntigravityPane {
     fn start() -> Self {
         let daemon = daemon();
         let mut control = daemon.connect();
-        make(&mut control, create("p1", in_new_tab("t1")));
-        until_text(&mut control, "p1", "$");
-        let work = daemon.root().join("scratch cwd");
-        std::fs::create_dir(&work).unwrap();
-        let agent = daemon.root().join("agy");
+        let work = directory(&daemon, "scratch cwd");
+        let home = daemon.root().join("home");
+        let bin = home.join(".muster/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let agent = bin.join("agy");
         std::fs::write(&agent, include_str!("agy-peer.sh")).unwrap();
         std::fs::set_permissions(&agent, std::fs::Permissions::from_mode(0o700)).unwrap();
-        daemon.type_into("p1", &format!("{} '{}' '{PLUGIN}'", agent.display(), work.display()));
-        until_text(&mut control, "p1", "AGY-READY");
+        std::fs::write(work.join("plugin"), PLUGIN).unwrap();
+        std::fs::write(
+            home.join(".profile"),
+            "PATH=\"$HOME/.muster/bin:$PATH\"\nexport PATH\nPS1='$ '\n",
+        )
+        .unwrap();
+        let create = proto::pane_request::Create {
+            cwd: Some(work.display().to_string()),
+            ..create("p1", in_new_tab("t1"))
+        };
+        make(&mut control, create);
         let mut pane = Self { daemon, control, work, sequence: 0 };
-        pane.until_state(Idle);
+        pane.launch();
         pane
+    }
+
+    fn launch(&mut self) {
+        until_text(&mut self.control, "p1", "$");
+        self.daemon.type_into("p1", "agy");
+        until_text(&mut self.control, "p1", "AGY-READY");
+        self.until_state(Idle);
     }
 
     fn send(&mut self, action: &str, payload: &Value) -> String {
         let mut payload = payload.clone();
-        payload["cwd"] = self.work.to_str().unwrap().into();
+        if payload["cwd"] == "/tmp/capture" {
+            payload["cwd"] = self.work.to_str().unwrap().into();
+        }
+        if let Some(path) = payload["transcriptPath"].as_str()
+            && let Some(relative) = path.strip_prefix("/tmp/capture/")
+        {
+            payload["transcriptPath"] = self.work.join(relative).display().to_string().into();
+        }
         let input = format!("{payload}\n\n");
         std::fs::write(self.work.join("input"), &input).unwrap();
-        self.sequence += 1;
-        self.daemon.type_into("p1", &action.replace("{number}", &self.sequence.to_string()));
-        until_text(&mut self.control, "p1", &format!("AGY-DONE {}", self.sequence));
+        self.command(action);
         input
     }
 
+    fn command(&mut self, action: &str) {
+        self.sequence += 1;
+        self.daemon.type_into("p1", &action.replace("{number}", &self.sequence.to_string()));
+        until_text(&mut self.control, "p1", &format!("AGY-DONE {}", self.sequence));
+    }
+
     fn hook(&mut self, payload: &Value, conversation: &str) {
+        self.hook_as("hook", payload, conversation);
+    }
+
+    fn hook_as(&mut self, action: &str, payload: &Value, conversation: &str) {
         let hooks: Value = serde_json::from_str(HOOKS).unwrap();
         let event = payload["hookEventName"].as_str().unwrap();
         let command = hooks["muster"][event][0]["command"].as_str().unwrap();
-        self.send(&format!("hook {{number}} {conversation} {command}"), payload);
+        self.send(&format!("{action} {{number}} {conversation} {command}"), payload);
         assert_eq!(written(&self.work.join("hook-output")), "{}\n");
     }
 
@@ -64,6 +101,10 @@ impl AntigravityPane {
 
     fn pane(&mut self) -> proto::Pane {
         record(&snapshot(&mut self.control), "p1").clone()
+    }
+
+    fn transcript(&self) -> Option<api::SessionTranscript> {
+        current_pane(&self.daemon, "p1").session_transcript
     }
 
     fn until_state(&mut self, expected: proto::AgentState) {
@@ -106,7 +147,14 @@ fn recorded_antigravity_hooks_and_status_reach_the_panes_daemon() {
     agent.hook(&start, first);
     let pane = agent.pane();
     assert_eq!(pane.session_id.as_deref(), Some(first));
-    assert_eq!(pane.resume.unwrap().command, ["agy", "--conversation", first]);
+    let resume = pane.resume.unwrap().command;
+    assert_eq!(&resume[1..], ["--conversation", first]);
+    assert_eq!(PathBuf::from(&resume[0]).file_name().unwrap(), "agy");
+    let transcript = agent.transcript().expect("the hook reported the transcript");
+    assert_eq!(transcript.session_id, first);
+    assert_eq!(transcript.directory, agent.work.display().to_string());
+    assert_eq!(transcript.path, agent.work.join("first-full.jsonl").display().to_string());
+    assert!(agent.pane().context_change.is_none());
 
     agent.hook(&payload("pre-invocation"), first);
     agent.until_state(Working);
@@ -142,10 +190,210 @@ fn recorded_antigravity_hooks_and_status_reach_the_panes_daemon() {
     assert!(facts.context_used.is_some_and(|used| used > 0.0));
     assert_eq!(facts.cost_usd, None);
 
-    let second = payload("second-start");
+    let mut second = payload("second-start");
+    second.as_object_mut().unwrap().remove("transcriptPath");
     agent.hook(&second, conversation(&second));
     agent.send("status-sample {number}", &renamed);
     let pane = agent.pane();
     assert_eq!(pane.session_id.as_deref(), Some(conversation(&second)));
     assert_eq!(pane.facts.and_then(|facts| facts.context_used), None);
+    let change = pane.context_change.expect("a new session in the same launch clears context");
+    assert_eq!(change.kind(), proto::ContextChangeKind::Cleared);
+    assert!(agent.transcript().is_none());
+    agent.hook(&payload("second-start"), conversation(&second));
+    assert_eq!(agent.pane().context_change, Some(change));
+    let replaced = agent.transcript().expect("the next valid path replaces the missing one");
+    assert_eq!(replaced.session_id, conversation(&second));
+    assert_eq!(replaced.path, agent.work.join("second-full.jsonl").display().to_string());
+}
+
+#[test]
+fn antigravity_provenance_requires_the_foreground_hook_and_the_live_directory() {
+    let mut agent = AntigravityPane::start();
+    let start = payload("start");
+    let first = conversation(&start);
+    let mut detached = start.clone();
+    detached["cwd"] = agent.work.display().to_string().into();
+    std::fs::write(agent.work.join("detached-input"), detached.to_string()).unwrap();
+    let output = Command::new("python3")
+        .args([
+            "-c",
+            "import os, sys; os.setsid(); os.execv(sys.executable, [sys.executable, *sys.argv[1:]])",
+        ])
+        .arg(format!("{PLUGIN}/report.py"))
+        .arg("hook")
+        .env_clear()
+        .env("ANTIGRAVITY_CONVERSATION_ID", first)
+        .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
+        .env("MUSTER_DAEMON_SOCKET", agent.daemon.socket_path())
+        .env("MUSTER_PANE", "p1")
+        .env("TMPDIR", &agent.work)
+        .stdin(Stdio::from(std::fs::File::open(agent.work.join("detached-input")).unwrap()))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(output.stdout, b"{}\n");
+    assert!(agent.pane().session_id.is_none());
+
+    agent.hook_as("nested", &start, first);
+    assert!(agent.pane().session_id.is_none());
+    assert!(agent.transcript().is_none());
+
+    let mut invalid = start.clone();
+    invalid["transcriptPath"] = "relative.jsonl".into();
+    agent.hook(&invalid, first);
+    assert_eq!(agent.pane().session_id.as_deref(), Some(first));
+    assert!(agent.transcript().is_none());
+
+    let mut status = payload("renamed");
+    status["transcript_path"] = "/desktop/wrong.jsonl".into();
+    agent.send("status-sample {number}", &status);
+    assert!(agent.transcript().is_none());
+
+    let mut other_directory = start;
+    other_directory["cwd"] = directory(&agent.daemon, "different cwd").display().to_string().into();
+    let first = conversation(&other_directory);
+    agent.hook(&other_directory, first);
+    assert!(agent.transcript().is_none());
+
+    let pre = payload("pre-invocation");
+    agent.hook(&pre, conversation(&pre));
+    assert_eq!(agent.transcript().unwrap().session_id, conversation(&pre));
+}
+
+#[test]
+fn antigravity_resumes_a_saved_id_and_reports_fresh_provenance() {
+    let mut agent = AntigravityPane::start();
+    let start = payload("start");
+    let first = conversation(&start);
+    agent.hook(&start, first);
+    let before = agent.transcript().expect("initial transcript");
+    until_saved(&agent.daemon, first);
+
+    agent.control = restarted(&mut agent.daemon, &mut agent.control);
+    until_text(&mut agent.control, "p1", "AGY-READY");
+    agent.until_state(Idle);
+    assert_eq!(written(&agent.work.join("argv")), format!("--conversation\n{first}\n"));
+    assert_eq!(agent.pane().session_id.as_deref(), Some(first));
+    assert!(agent.transcript().is_none());
+
+    agent.hook(&payload("pre-invocation"), first);
+    assert_eq!(agent.transcript(), Some(before));
+    assert!(agent.pane().context_change.is_none());
+}
+
+#[test]
+fn antigravity_drops_the_previous_launch_and_ignores_a_stale_invocation() {
+    let mut agent = AntigravityPane::start();
+    let start = payload("start");
+    agent.hook(&start, conversation(&start));
+    agent.daemon.type_into("p1", "quit");
+    until("the old agent to leave", || agent.pane().agent.is_none(), ());
+    agent.launch();
+
+    let mut next = payload("second-start");
+    next["hookEventName"] = "PreInvocation".into();
+    let second = conversation(&next);
+    agent.hook(&next, second);
+    assert_eq!(agent.transcript().unwrap().session_id, second);
+    assert!(agent.pane().context_change.is_none());
+
+    let stale = payload("pre-invocation");
+    agent.hook(&stale, conversation(&stale));
+    assert_eq!(agent.transcript().unwrap().session_id, second);
+}
+
+#[test]
+fn antigravity_keeps_session_identity_when_protocol_1_18_omits_provenance() {
+    let mut agent = AntigravityPane::start();
+    let socket = agent.daemon.root().join("old-report.sock");
+    std::fs::write(agent.work.join("old-socket"), socket.display().to_string()).unwrap();
+    let receiver = legacy_report(&socket);
+    let start = payload("start");
+    agent.hook_as("old-hook", &start, conversation(&start));
+    assert!(written(&agent.work.join("last-report")).contains("--session-transcript"));
+    let report = receiver.join().unwrap();
+    assert_eq!(report.session_id.as_deref(), Some(conversation(&start)));
+    assert!(report.session_transcript.is_none());
+}
+
+#[test]
+fn antigravity_a_compact_shaped_stop_leaves_context_change_absent() {
+    let mut agent = AntigravityPane::start();
+    let start = payload("start");
+    let conversation = conversation(&start);
+    agent.hook(&start, conversation);
+    agent.hook(&payload("pre-invocation"), conversation);
+    agent.until_state(Working);
+    let mut stop = payload("stop");
+    stop["terminationReason"] = "TERMINAL_CUSTOM_HOOK".into();
+    stop["lastUserInput"] = "/compact".into();
+    agent.hook(&stop, conversation);
+    agent.until_state(Idle);
+    assert_eq!(agent.pane().session_id.as_deref(), Some(conversation));
+    assert!(agent.pane().context_change.is_none());
+}
+
+#[test]
+fn antigravity_wakes_an_empty_composer_and_holds_drafts_dialogs_and_working_turns() {
+    let mut agent = AntigravityPane::start();
+    let mut client = agent.daemon.api();
+    let wakes = agent.work.join("wakes");
+    let recipient = msg_request::Caller { pane: Some("p1".into()), ..Default::default() };
+    assert!(agent.pane().session_id.is_none(), "the first brief precedes the first session");
+
+    for (index, frame) in ["idle", "draft", "dialog", "working"].into_iter().enumerate() {
+        if frame != "idle" {
+            agent.command(&format!("frame {{number}} {frame}"));
+            match frame {
+                "dialog" => agent.until_state(Blocked),
+                "working" => agent.until_state(Working),
+                _ => {}
+            }
+        }
+        let body = format!("brief while {frame}");
+        let asked = client.ask(post(api::NewPost {
+            operation: frame.into(),
+            to: vec!["p1".into()],
+            body: body.clone(),
+            ..Default::default()
+        }));
+        assert_eq!(asked.outcome(), api::Outcome::Done, "{:?}", asked.answer);
+        let posted = asked.posted();
+        if frame != "idle" {
+            let outcome = &posted.recipient_outcomes[0];
+            assert_eq!(outcome.disposition(), api::PostDisposition::Deferred, "{outcome:?}");
+            assert!(outcome.reason.is_some());
+            if frame == "draft" {
+                until(
+                    "the doorbell to see the draft",
+                    || agent.pane().wake_held.is_some_and(|reason| reason.contains("not sent")),
+                    (),
+                );
+            }
+            assert_eq!(written(&wakes).lines().count(), index);
+            agent.command("frame {number} idle");
+            agent.until_state(Idle);
+        }
+        let heard = until_some("a typed wake", || {
+            let text = std::fs::read_to_string(&wakes).ok()?;
+            (text.lines().count() > index).then_some(text)
+        });
+        let last = heard.lines().last().unwrap();
+        assert!(last.starts_with(&format!("[muster] {}", posted.group)), "{last}");
+        assert!(last.contains(&format!("muster msg read --group {}", posted.group)), "{last}");
+
+        let read = Asked::Read(msg_request::Read { group: Some(posted.group.clone()) });
+        let read = expect(&mut agent.control, msg(&recipient, read), proto::Outcome::Done);
+        let Some(proto::answer::Detail::Msg(proto::MsgAnswer {
+            answer: Some(proto::msg_answer::Answer::Entries(entries)),
+            ..
+        })) = read.answer.detail
+        else {
+            panic!("the wake's read got no entries: {:?}", read.answer);
+        };
+        assert!(entries.groups.iter().flat_map(|group| &group.entries).any(|entry| {
+            matches!(&entry.what, Some(proto::msg_answer::entry::What::Message(post)) if post.body == body)
+        }));
+    }
 }
