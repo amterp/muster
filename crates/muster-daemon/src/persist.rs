@@ -158,6 +158,8 @@ pub(crate) struct ClosedTab {
     #[serde(rename = "tab")]
     pub(crate) name: String,
     pub(crate) label: proto::Label,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<proto::TabColor>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) hidden: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -179,6 +181,8 @@ pub(crate) struct Tab {
     #[serde(rename = "tab")]
     pub(crate) name: String,
     pub(crate) label: proto::Label,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<proto::TabColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) zoomed: Option<String>,
     pub(crate) root: Node,
@@ -204,6 +208,8 @@ pub(crate) struct Pane {
     pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<String>,
     /// Its label came from its agent's session (`proto::Pane::label_from_session`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) label_from_session: bool,
@@ -962,6 +968,7 @@ mod tests {
         Pane {
             name: name.to_string(),
             label: None,
+            color: None,
             label_from_session: false,
             callsign: Some(format!("word-{name}")),
             cwd: PathBuf::from("/tmp"),
@@ -989,6 +996,7 @@ mod tests {
             tabs: vec![Tab {
                 name: "t1".to_string(),
                 label: proto::Label { text: Some("work".to_string()), generation: 2 },
+                color: None,
                 zoomed: Some("p2".to_string()),
                 root: Node::Split {
                     axis: Axis::Columns,
@@ -1208,6 +1216,7 @@ mod tests {
         let pane = |name: &str, label: Option<&str>| Pane {
             name: name.to_string(),
             label: label.map(str::to_string),
+            color: None,
             label_from_session: false,
             callsign: None,
             cwd: PathBuf::from("/tmp"),
@@ -1258,6 +1267,7 @@ mod tests {
                 Tab {
                     name: "t1".to_string(),
                     label: proto::Label { text: Some("work".to_string()), generation: 2 },
+                    color: None,
                     zoomed: Some("p2".to_string()),
                     root: split(Axis::Columns, 0.3, "p1", "p2"),
                     hidden: false,
@@ -1267,6 +1277,7 @@ mod tests {
                 Tab {
                     name: "t2".to_string(),
                     label: proto::Label { text: None, generation: 1 },
+                    color: None,
                     zoomed: None,
                     root: split(Axis::Rows, 0.6, "p3", "p4"),
                     hidden: false,

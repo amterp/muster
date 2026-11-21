@@ -80,6 +80,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
         Service::Tab(asked) => match &asked.request {
             Some(tab_request::Request::Close(_)) => "tab.close",
             Some(tab_request::Request::Rename(_)) => "tab.rename",
+            Some(tab_request::Request::SetColor(_)) => "tab.set_color",
             Some(tab_request::Request::SetSplitRatio(_)) => "tab.set_split_ratio",
             Some(tab_request::Request::SetHidden(_)) => "tab.set_hidden",
             Some(tab_request::Request::SetTree(_)) => "tab.set_tree",
@@ -93,6 +94,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Swap(_)) => "pane.swap",
             Some(pane_request::Request::Move(_)) => "pane.move",
             Some(pane_request::Request::Rename(_)) => "pane.rename",
+            Some(pane_request::Request::SetColor(_)) => "pane.set_color",
             Some(pane_request::Request::Read(_)) => "pane.read",
             Some(pane_request::Request::Report(_)) => "pane.report",
             Some(pane_request::Request::Seen(_)) => "pane.seen",

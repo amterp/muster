@@ -129,6 +129,8 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
     expect(&mut control, tab(tab_request::Request::Rename(rename)), proto::Outcome::Done);
     let rename = pane_request::Rename { pane: "p1".to_string(), label: Some("🤖 A".to_string()) };
     expect(&mut control, pane(pane_request::Request::Rename(rename)), proto::Outcome::Done);
+    expect(&mut control, tab_color("t1", Some("blue"), 1), proto::Outcome::Done);
+    expect(&mut control, pane_color("p1", Some("#123456")), proto::Outcome::Done);
     let palette = proto::Palette {
         entries: vec![0x10_20_30; 16],
         foreground: 0xee_ee_ee,
@@ -169,7 +171,12 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
         tabs.sort_by(|one, other| one.tab.cmp(&other.tab));
         tabs
     };
-    assert_eq!(by_name(&after), by_name(&before), "tabs, trees, ratios, zoom, labels, hiding");
+    assert_eq!(
+        by_name(&after),
+        by_name(&before),
+        "tabs, trees, ratios, zoom, labels, colors, hiding"
+    );
+    assert_eq!(record(&after, "p1").color.as_deref(), Some("#123456"));
     assert!(record(&after, "p3").quiet && !record(&after, "p1").quiet, "which pane is quiet");
     assert_eq!(record(&after, "p3").maker.as_deref(), Some("p1"), "whose helper p3 is");
     for name in ["p1", "p2", "p3"] {

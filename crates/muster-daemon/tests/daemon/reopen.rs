@@ -109,6 +109,8 @@ fn a_pane_alone_in_its_tab_comes_back_in_a_new_tab_named_as_its_old_one() {
     let label = proto::Label { text: Some("work".to_string()), generation: 2 };
     let rename = tab_request::Rename { tab: "t1".to_string(), label: Some(label) };
     expect(&mut control, tab(tab_request::Request::Rename(rename)), proto::Outcome::Done);
+    expect(&mut control, tab_color("t1", Some("green"), 1), proto::Outcome::Done);
+    expect(&mut control, pane_color("p1", Some("cyan")), proto::Outcome::Done);
     close(&mut control, "p1");
 
     let back = reopened(&mut control, "p1", "t2");
@@ -117,6 +119,8 @@ fn a_pane_alone_in_its_tab_comes_back_in_a_new_tab_named_as_its_old_one() {
     let snapshot = snapshot(&mut control);
     let t2 = snapshot.tabs.iter().find(|tab| tab.tab == "t2").expect("the new tab");
     assert_eq!(t2.label.as_ref().and_then(|label| label.text.as_deref()), Some("work"));
+    assert_eq!(t2.color.as_ref().and_then(|color| color.value.as_deref()), Some("green"));
+    assert_eq!(record(&snapshot, "p1").color.as_deref(), Some("cyan"));
 }
 
 /// Each pane of a closed tab comes back, in a tab of its own.

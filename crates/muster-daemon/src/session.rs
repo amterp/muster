@@ -28,6 +28,7 @@ use std::process::Child;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, RwLockWriteGuard, Weak};
 
+use muster_core::color::parse_color;
 use muster_core::compaction::{Placed, Rules, Setting, Thresholds, Withheld};
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -571,6 +572,7 @@ impl std::fmt::Debug for Session {
 struct Tab {
     name: String,
     label: proto::Label,
+    color: Option<proto::TabColor>,
     root: Node,
     zoomed: Option<String>,
     /// No view shows it (`proto::Tab::hidden`). Set only when the tab is made.
@@ -588,6 +590,7 @@ impl Tab {
         proto::Tab {
             tab: self.name.clone(),
             label: Some(self.label.clone()),
+            color: self.color.clone(),
             root: Some(node_record(&self.root)),
             zoomed: self.zoomed.clone(),
             hidden: self.hidden,
@@ -1026,6 +1029,7 @@ fn place_in(tab: &Tab, pane: &str) -> persist::ClosedTab {
     persist::ClosedTab {
         name: tab.name.clone(),
         label: tab.label.clone(),
+        color: tab.color.clone(),
         hidden: tab.hidden,
         helpers_of: tab.helpers_of.clone(),
         neighbours: tab.root.neighbours(pane),
@@ -1038,6 +1042,7 @@ fn saved_pane(pane: &Pane) -> persist::Pane {
     persist::Pane {
         name: pane.record.pane.clone(),
         label: pane.record.label.clone(),
+        color: pane.record.color.clone(),
         label_from_session: pane.record.label_from_session,
         callsign: pane.record.callsign.clone(),
         cwd: PathBuf::from(&pane.record.cwd),
@@ -1063,6 +1068,7 @@ fn saved_canvas_record(saved: &persist::Pane, document: &Document) -> proto::Pan
     proto::Pane {
         pane: saved.name.clone(),
         label: saved.label.clone(),
+        color: saved.color.clone(),
         callsign: saved.callsign.clone(),
         quiet: saved.quiet,
         canvas: Some(document.metadata(canvas.opened_by.clone())),
@@ -1547,6 +1553,7 @@ impl Session {
             Service::Tab(proto::TabRequest { request: Some(request) }) => match request {
                 T::Close(close) => self.close_tab(&close.tab),
                 T::Rename(rename) => self.rename_tab(rename),
+                T::SetColor(set) => self.set_tab_color(set),
                 T::SetSplitRatio(set) => self.set_split_ratio(&set),
                 T::SetHidden(set) => self.set_tab_hidden(set),
                 T::SetTree(set) => self.set_tree(set),
@@ -1560,6 +1567,7 @@ impl Session {
                 P::Swap(swap) => self.swap(&swap),
                 P::Move(moved) => self.move_pane(moved),
                 P::Rename(rename) => self.rename_pane(rename),
+                P::SetColor(set) => self.set_pane_color(set),
                 P::Report(report) => self.report(report),
                 P::Seen(seen) => self.seen(&seen.panes),
                 P::Compact(compact) => self.compact(&compact),
@@ -2468,6 +2476,7 @@ impl Session {
     ) -> Reply {
         let StartedPane { grid, program, target } = started;
         let saved = &reopening.closed.pane;
+        record.color.clone_from(&saved.color);
         let maker = saved.maker.as_deref();
         let maker_open = maker.is_some_and(|maker| self.pane_index(maker).is_some());
         // A helper can close before its maker, as when a client closes a maker's helpers deepest
@@ -2576,6 +2585,7 @@ impl Session {
         let tab = Tab {
             name: fresh.clone(),
             label: closed.label.clone(),
+            color: closed.color.clone(),
             root: Node::Pane(pane.to_string()),
             zoomed: None,
             hidden: closed.hidden,
@@ -2894,6 +2904,7 @@ impl Session {
                 let tab = Tab {
                     name,
                     label,
+                    color: None,
                     root,
                     zoomed: None,
                     hidden,
@@ -2931,6 +2942,7 @@ impl Session {
                     let tab = Tab {
                         name,
                         label,
+                        color: None,
                         root,
                         zoomed: None,
                         hidden,
@@ -4324,6 +4336,24 @@ impl Session {
         Reply::done()
     }
 
+    fn set_pane_color(&mut self, set: pane_request::SetColor) -> Reply {
+        let Some(index) = self.pane_index(&set.pane) else {
+            return Reply::not_there(format!("no pane {} on this daemon", set.pane));
+        };
+        let color = match parse_color(set.color.as_deref().unwrap_or("none")) {
+            Ok(color) => color,
+            Err(why) => return Reply::refused(why),
+        };
+        let record = &mut self.panes[index].record;
+        if record.color == color {
+            return Reply::already();
+        }
+        record.color = color;
+        let record = record.clone();
+        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        Reply::done()
+    }
+
     // -----------------------------------------------------------------------------------------
     // Tabs
 
@@ -4430,6 +4460,35 @@ impl Session {
             return Reply::already();
         }
         tab.label = label;
+        let record = tab.record();
+        self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
+        Reply::done()
+    }
+
+    fn set_tab_color(&mut self, set: tab_request::SetColor) -> Reply {
+        let Some(index) = self.tab_index(&set.tab) else {
+            return Reply::not_there(format!("no tab {} on this daemon", set.tab));
+        };
+        let Some(mut color) = set.color else {
+            return Reply::refused("the request carries no tab color generation");
+        };
+        color.value = match parse_color(color.value.as_deref().unwrap_or("none")) {
+            Ok(value) => value,
+            Err(why) => return Reply::refused(why),
+        };
+        let tab = &mut self.tabs[index];
+        let current = tab
+            .color
+            .as_ref()
+            .map_or((0, None), |color| (color.generation, color.value.as_deref()));
+        match (color.generation, color.value.as_deref()).cmp(&current) {
+            std::cmp::Ordering::Less => {
+                return Reply::refused("this tab already holds a newer color");
+            }
+            std::cmp::Ordering::Equal => return Reply::already(),
+            std::cmp::Ordering::Greater => {}
+        }
+        tab.color = Some(color);
         let record = tab.record();
         self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
         Reply::done()
@@ -5085,6 +5144,7 @@ impl Session {
             .map(|tab| persist::Tab {
                 name: tab.name.clone(),
                 label: tab.label.clone(),
+                color: tab.color.clone(),
                 zoomed: tab.zoomed.clone(),
                 root: tab.root.clone(),
                 hidden: tab.hidden,
@@ -5262,6 +5322,7 @@ impl Session {
         let record = proto::Pane {
             pane: name.clone(),
             label: saved.label,
+            color: saved.color,
             label_from_session: saved.label_from_session,
             callsign: saved.callsign,
             cwd: cwd.display().to_string(),
@@ -5358,6 +5419,7 @@ impl Session {
         let tab = Tab {
             name: tab.name,
             label: tab.label,
+            color: tab.color,
             root,
             zoomed,
             hidden: tab.hidden,
@@ -5654,6 +5716,7 @@ impl Session {
             self.tabs.push(Tab {
                 name: tab.name,
                 label: tab.label,
+                color: tab.color,
                 root: tab.root,
                 zoomed: tab.zoomed,
                 hidden: tab.hidden,
@@ -6998,6 +7061,7 @@ mod tests {
         let tab = |name: &str, panes: [&str; 2]| persist::Tab {
             name: name.to_string(),
             label: proto::Label::default(),
+            color: None,
             zoomed: None,
             root: Node::Split {
                 axis: tree::Axis::Columns,

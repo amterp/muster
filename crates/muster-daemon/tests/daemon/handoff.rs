@@ -85,6 +85,8 @@ fn replaced(daemon: &mut Daemon) {
 fn every_pane_survives_a_handoff_with_its_process_screen_and_place() {
     let mut daemon = daemon();
     let (mut control, _input) = two_panes(&daemon);
+    expect(&mut control, tab_color("t1", Some("red"), 1), proto::Outcome::Done);
+    expect(&mut control, pane_color("p2", Some("magenta")), proto::Outcome::Done);
     let quiet = pane_request::Create {
         quiet: true,
         ..helper("p3", "p1", among_helpers("t2", "p1's helpers"))

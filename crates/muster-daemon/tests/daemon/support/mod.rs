@@ -27,6 +27,20 @@ pub fn daemon_holding(descriptor: i32) -> Daemon {
     Daemon::start_holding(env!("CARGO_BIN_EXE_muster-daemon"), descriptor)
 }
 
+pub fn pane_color(pane_id: &str, color: Option<&str>) -> proto::request::Service {
+    pane(proto::pane_request::Request::SetColor(proto::pane_request::SetColor {
+        pane: pane_id.to_string(),
+        color: color.map(str::to_string),
+    }))
+}
+
+pub fn tab_color(tab_id: &str, color: Option<&str>, generation: u64) -> proto::request::Service {
+    tab(proto::tab_request::Request::SetColor(proto::tab_request::SetColor {
+        tab: tab_id.to_string(),
+        color: Some(proto::TabColor { value: color.map(str::to_string), generation }),
+    }))
+}
+
 /// A connection the daemon's log streams to from its first line.
 pub fn following(daemon: &Daemon) -> Control {
     let mut logging = daemon.connect();

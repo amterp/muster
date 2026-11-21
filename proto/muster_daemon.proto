@@ -235,6 +235,8 @@ message TabRequest {
     SetHidden set_hidden = 4;
     // Since 1.7.
     SetTree set_tree = 5;
+    // Since 1.18.
+    SetColor set_color = 6;
   }
 
   // Closes the tab and every pane in it.
@@ -247,6 +249,11 @@ message TabRequest {
   message Rename {
     string tab = 1;
     Label label = 2;
+  }
+
+  message SetColor {
+    string tab = 1;
+    TabColor color = 2;
   }
 
   // REFUSED, since 1.7, in a tab whose tree holds another machine's pane: a window writes that
@@ -327,6 +334,14 @@ message PaneRequest {
     WriteCanvas write_canvas = 22;
     // Since 1.17.
     ReadCanvas read_canvas = 23;
+    // Since 1.18.
+    SetColor set_color = 24;
+  }
+
+  message SetColor {
+    string pane = 1;
+    // Absent clears the color.
+    optional string color = 2;
   }
 
   // Makes a canvas: a pane that holds a document for a view to draw, and runs no program. It has
@@ -2048,6 +2063,8 @@ message Pane {
   // and `cwd` is empty. Absent for a pane with a terminal. Never the document itself, which a
   // view reads with ReadCanvas when `revision` moves.
   Canvas canvas = 33;
+  // Since 1.18. The palette hue or RGB value somebody gave this pane.
+  optional string color = 34;
 }
 
 // What a pane's record says of the document it holds. Since 1.17.
@@ -2203,6 +2220,16 @@ message Tab {
   // own changes, its panes coming and going, leave it alone. Zero for a tab no window has written.
   // Since 1.7.
   uint64 layout_generation = 6;
+  // Since 1.18. Independent of the tab's label and arrangement.
+  TabColor color = 7;
+}
+
+// Every daemon holding part of the tab keeps this record, including the generation of a clear.
+// The higher generation wins. For equal generations, compare the optional value in ascending
+// order with absent first.
+message TabColor {
+  optional string value = 1;
+  uint64 generation = 2;
 }
 
 // A tab's name, as a person gave it. Every daemon holding part of a grouped tab stores it, and

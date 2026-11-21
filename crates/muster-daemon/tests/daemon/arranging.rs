@@ -550,3 +550,32 @@ fn a_tab_name_older_than_the_one_recorded_is_refused() {
     assert_eq!(label, proto::Label { text: None, generation: 3 });
     expect(&mut control, rename_tab("missing", Some("x"), 9), proto::Outcome::NotThere);
 }
+
+#[test]
+fn colors_announce_their_records_and_tab_clears_outrank_older_sets() {
+    let (_daemon, mut control) = two_panes();
+    let asked = expect(&mut control, pane_color("a", Some("#A1B2C3")), proto::Outcome::Done);
+    let Some(proto::event::Event::PaneChanged(changed)) = &asked.events[0].event else {
+        panic!("the pane color announced {:?}", names(&asked.events));
+    };
+    assert_eq!(changed.pane.as_ref().unwrap().color.as_deref(), Some("#a1b2c3"));
+    expect(&mut control, pane_color("a", Some("orange")), proto::Outcome::Refused);
+    expect(&mut control, pane_color("a", Some("#a1b2c3")), proto::Outcome::AlreadySo);
+    expect(&mut control, pane_color("a", None), proto::Outcome::Done);
+
+    let asked = expect(&mut control, tab_color("t1", Some("red"), 1), proto::Outcome::Done);
+    let Some(proto::event::Event::TabChanged(changed)) = &asked.events[0].event else {
+        panic!("the tab color announced {:?}", names(&asked.events));
+    };
+    assert_eq!(changed.tab.as_ref().unwrap().color.as_ref().unwrap().value.as_deref(), Some("red"));
+    expect(&mut control, rename_tab("t1", Some("work"), 8), proto::Outcome::Done);
+    let named = &snapshot(&mut control).tabs[0];
+    assert_eq!(named.color.as_ref().unwrap().generation, 1);
+    expect(&mut control, tab_color("t1", Some("blue"), 1), proto::Outcome::Refused);
+    expect(&mut control, tab_color("t1", None, 2), proto::Outcome::Done);
+    expect(&mut control, tab_color("t1", Some("cyan"), 1), proto::Outcome::Refused);
+    let held = snapshot(&mut control);
+    assert_eq!(held.tabs[0].color, Some(proto::TabColor { generation: 2, value: None }));
+    assert_eq!(held.tabs[0].label.as_ref().unwrap().text.as_deref(), Some("work"));
+    assert!(held.panes.iter().all(|pane| pane.color.is_none()));
+}
