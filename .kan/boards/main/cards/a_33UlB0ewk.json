@@ -1,0 +1,33 @@
+{
+  "_v": 4,
+  "alias": "a-wake-typed-into-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "comments": [
+    {
+      "id": "c_33UlpzeNW",
+      "body": "2026-11-20 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795226212353
+    }
+  ],
+  "created_at_millis": 1795226187049,
+  "creator": "Alexander Terp",
+  "description": "On 0.28.0 with Claude Code 2.1.329 in a remote Linux pane, an urgent post reached a Claude Code pane while it waited at a Bash permission dialog. Once the person declined the command, Muster typed its wake line into the prompt and never pressed Return, so the pane sat idle. The sender's `msg who` said the wake was held because the prompt held typed, unsent text, and that text was Muster's own wake. One `muster pane send --enter` submitted it and the agent read the message.\n\nThis is the case a_2vgam6tPd fixed for a notice cleared by hand (cf8e5c31 looks at an at-work ring's prompt again after each Return), reached by a different path: the ring follows a dialog closing rather than a turn ending. When the idle prompt holds exactly the wake text Muster typed, Muster should submit it; when anything else is in the prompt, it should keep holding. From tooling feedback a_33FVFKUiK.",
+  "id": "a_33UlB0ewk",
+  "position": "Zv",
+  "provenance": "agent-approved",
+  "related": [
+    "a_2vgam6tPd"
+  ],
+  "title": "A wake typed into a Claude Code prompt after a declined permission dialog is left unsent",
+  "type": "bug",
+  "updated_at_millis": 1795227097230,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795226187049},
+    {"field":"column","value":"next","at":1795227096972}
+  ]
+}

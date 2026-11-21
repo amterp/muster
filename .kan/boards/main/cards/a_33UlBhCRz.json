@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "a-canvas-pane-s",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_33UlqRKSN",
+      "body": "2026-11-20 re-triage: agent-approved - it fixes a defect reported in tooling feedback; it overturns no decision, adds no public interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795226212635
+    }
+  ],
+  "created_at_millis": 1795226187465,
+  "creator": "Alexander Terp",
+  "description": "On 0.28.0, a titled HTML canvas in pane `journey` showed only the document title in its header, while the agent pane beside it showed its callsign. The callsign is how a person and the CLI name every pane, a canvas included, so the header should carry it beside the title. `PaneHeader.draw` sets the name label to `canvasTitle` alone when the pane shows a canvas (Sources/MusterMac/PaneHeader.swift, the `if let canvasTitle` branch); check its blame before changing it, in case the title was meant to replace the callsign. From tooling feedback a_33HBL2b22.",
+  "id": "a_33UlBhCRz",
+  "position": "b3R",
+  "provenance": "agent-approved",
+  "title": "A canvas pane's header shows the document title and drops the pane's callsign",
+  "type": "bug",
+  "updated_at_millis": 1795226212635,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795226187465}
+  ]
+}
