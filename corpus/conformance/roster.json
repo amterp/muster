@@ -3536,7 +3536,7 @@
             "panes": [{ "id": "w1:p1", "cwd": "/src/alpha" }]
           },
           "dev": {
-            "tabs": [{ "id": "w1:t2", "label": "alpha's helpers", "root": "w1:p2" }],
+            "tabs": [{ "id": "w1:t2", "root": "w1:p2" }],
             "panes": [{ "id": "w1:p2", "cwd": "/src/beta", "maker": "w1:p1" }]
           }
         },
@@ -3555,12 +3555,49 @@
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"Tab 1\" off-screen",
-          "w1:t2 on=devenv place=0 label=\"alpha's helpers\" given-name=\"alpha's helpers\" on-screen"
+          "w1:t2 on=devenv place=0 label=\"Helpers\" on-screen"
         ],
         "pressed": ["⌘1 of panes → pane local/w1:p1", "⌘2 of panes → nothing"],
         "chords": ["w1:t1 nothing", "  local/w1:p1 ⌘1", "w1:t2 nothing", "  devenv/w1:p2 nothing"],
         "stepped": "w1:t2",
         "at": null
+      }
+    },
+    {
+      "name": "a tab with an unresolved foreign pane keeps its own caption",
+      "why": "A local part can hold only helpers while its saved layout includes a foreign pane whose maker is unknown. Keep the tab separate until every pane is known to belong under the maker.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              { "id": "w1:t1", "root": "w1:p1" },
+              {
+                "id": "w1:t2",
+                "root": "w1:p2",
+                "copy": "[w1:p2|~w1:p3@devenv 0.50]",
+                "layoutGeneration": 1
+              }
+            ],
+            "panes": [
+              { "id": "w1:p1", "cwd": "/src/alpha" },
+              { "id": "w1:p2", "cwd": "/src/beta", "maker": "w1:p1" }
+            ]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }, { "id": "devenv" }],
+        "showingTab": "w1:t2",
+        "showing": ["local/w1:p2"]
+      },
+      "expect": {
+        "machines": ["local connected 2 panes", "devenv disconnected 0 panes"],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"beta\" on-screen maker=w1:p1"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"Tab 1\" off-screen",
+          "w1:t2 on=local place=2 label=\"Tab 2\" on-screen"
+        ]
       }
     },
     {

@@ -32,8 +32,7 @@ use std::collections::BTreeMap;
 use crate::composition::{Composition, DaemonId, MusterTab, PaneKey};
 use crate::config::Rgb;
 use crate::mirror::Mirror;
-use crate::mirror::backend::Health;
-use crate::mirror::backend::{Pane, PaneId, TabId};
+use crate::mirror::backend::{CopyNode, Health, Pane, PaneId, TabId};
 use crate::spanning;
 
 /// Everything the attached daemons hold, in the order to show it.
@@ -629,6 +628,9 @@ impl Roster {
         let mut pane_place = 0;
         for tab in &mut tabs {
             if !tab.panes.is_empty() && tab.panes.iter().all(|pane| pane.under.is_some()) {
+                if tab.label.is_empty() {
+                    tab.label = "Helpers".to_string();
+                }
                 continue;
             }
             tab_place += 1;
@@ -831,16 +833,24 @@ fn is_helpers_tab<'a>(tab: &RosterTab, mirror: &impl Fn(&DaemonId) -> Option<&'a
     tab.panes.iter().all(|pane| pane.maker.as_ref() == Some(maker) && &pane.key.pane != maker)
         && tab.daemons.iter().all(|daemon| {
             mirror(daemon)
-                .filter(|held| held.health() == Health::Connected)
-                .and_then(|held| held.tab(&tab.id))
-                .is_some_and(|part| {
-                    part.root.panes().iter().all(|id| {
-                        tab.panes
-                            .iter()
-                            .any(|pane| &pane.key.daemon == daemon && &pane.key.pane == *id)
-                    })
+                .filter(|held| {
+                    held.health() == Health::Connected && !held.restoring() && !held.stopping()
                 })
+                .and_then(|held| held.tab(&tab.id))
+                .is_some_and(|part| copy_is_listed(&part.copy, daemon.as_str(), &tab.panes))
         })
+}
+
+/// An unreachable foreign pane may exist in the saved tree before its machine has a roster row.
+fn copy_is_listed(copy: &CopyNode, owner: &str, panes: &[RosterPane]) -> bool {
+    let (id, daemon) = match copy {
+        CopyNode::Own(pane) => (pane, owner),
+        CopyNode::Foreign { pane, daemon } => (pane, daemon.as_str()),
+        CopyNode::Split { first, second, .. } => {
+            return copy_is_listed(first, owner, panes) && copy_is_listed(second, owner, panes);
+        }
+    };
+    panes.iter().any(|pane| &pane.key.pane == id && pane.key.daemon.as_str() == daemon)
 }
 
 /// What somebody named a tab, trimmed, and nothing for a tab nobody named.
