@@ -2591,15 +2591,18 @@ impl Session {
     }
 
     /// Every other window the record knows, with a roster of the tabs each holds.
-    fn other_windows(&self, me: WindowId) -> Vec<(HeldWindow, Roster)> {
-        let mirrors = self.mirrors();
+    fn other_windows(
+        &self,
+        me: WindowId,
+        mirrors: &BTreeMap<&DaemonId, MutexGuard<'_, Mirror>>,
+    ) -> Vec<(HeldWindow, Roster)> {
         let me = &self.windows[me];
         let holders = self.holding.holders();
         holders
             .windows()
             .filter(|window| window.name != me.name)
             .map(|window| {
-                let theirs = self.held_composition(window, me, &mirrors);
+                let theirs = self.held_composition(window, me, mirrors);
                 let roster = Roster::of(
                     &theirs,
                     |daemon| mirrors.get(daemon).map(|held| &**held),
@@ -5475,8 +5478,13 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
     // No reconcile, unlike `publish`. This is a read: a caller asking what the window shows
     // must not be able to move the keyboard or open a region by asking, and anything that
     // needed reconciling has already published.
-    let view = session.view(window);
-    let roster = session.roster(window, &view);
+    // Text combines helpers across windows, so they need ranks from the same mirror snapshot.
+    let (view, roster, others) = {
+        let mirrors = session.mirrors();
+        let view = session.view_with(window, &mirrors);
+        let roster = session.roster_with(window, &view, &mirrors);
+        (view, roster, session.other_windows(window, &mirrors))
+    };
     let numbering = session.numbering(window, &roster);
 
     let agents = session.agents();
@@ -5505,7 +5513,6 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
 
     let name = session.windows[window].name.to_string();
     let open_here = session.holding.open_here();
-    let others = session.other_windows(window);
     let (layouts, channels) = if layout {
         let channels: Vec<(DaemonId, Arc<dyn BackendChannel>)> = session
             .backends
