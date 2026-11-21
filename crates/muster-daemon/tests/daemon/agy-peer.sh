@@ -1,9 +1,16 @@
 #!/bin/sh
 set -eu
 
+if [ "$1" = report ]; then
+    printf '%s\n' "$*" > "$AGY_TEST_WORK/last-report"
+    exec "$AGY_TEST_DAEMON" "$@"
+fi
+
 work=$1
 plugin=$2
 export TMPDIR="$work"
+export AGY_TEST_WORK="$work" AGY_TEST_DAEMON="$MUSTER_DAEMON"
+export MUSTER_DAEMON="$0"
 rule='────────────────────────────────────────────────────────────────────────────────'
 printf '\033[2J\033[H%s\n>\n%s\n? for shortcuts\n' "$rule" "$rule"
 printf 'AGY-READY\n'

@@ -121,6 +121,14 @@ fn recorded_antigravity_hooks_and_status_reach_the_panes_daemon() {
     agent.hook(&payload("stop"), first);
     agent.until_state(Idle);
 
+    let mut late_status = payload("approval");
+    late_status["tool_confirmation_pending"] = false.into();
+    late_status["context_window"]["used_percentage"] = 4.into();
+    agent.send("status-sample {number}", &late_status);
+    let report = written(&agent.work.join("last-report"));
+    assert!(report.contains("--context-used 4"), "the status facts landed: {report}");
+    assert!(!report.contains("--state"), "a late status must respect Stop: {report}");
+
     let renamed = payload("renamed");
     agent.status(&renamed);
     until(
