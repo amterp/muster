@@ -100,6 +100,7 @@ extension Roster.Tab {
       onScreen: tab.onScreen,
       givenName: tab.givenName,
       folded: tab.folded,
+      color: tab.color,
       panes: tab.panes.map(Roster.Pane.init))
   }
 }
@@ -125,7 +126,8 @@ extension Roster.Pane {
       directory: pane.directory,
       maker: pane.maker,
       under: pane.under,
-      canvas: pane.hasCanvas ? CanvasInfo(pane.canvas) : nil)
+      canvas: pane.hasCanvas ? CanvasInfo(pane.canvas) : nil,
+      color: pane.color)
   }
 }
 

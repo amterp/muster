@@ -60,11 +60,13 @@ struct OneToOneTests {
 
     let before = SidebarModel.rows(
       roster: roster, agents: [:], groups: [group("human+otter", unread: 2, toYou: 1)])
-    #expect(before.allSatisfy { $0.isPane }, "a group with no partner took a row")
+    #expect(
+      before.map(\.kind) == [.tab(press: 0), .pane(tabPress: 0, press: 0)],
+      "a group with no partner took a row")
     #expect(before.first { $0.isPane }?.conversation == nil)
 
     let after = SidebarModel.rows(roster: roster, agents: [:], groups: [pair])
-    #expect(after.allSatisfy { $0.isPane })
+    #expect(after.map(\.kind) == before.map(\.kind))
     let row = try #require(after.first { $0.isPane })
     #expect(row.conversation?.unread == 2)
     #expect(row.conversation?.toYou == 1)
@@ -87,7 +89,7 @@ struct OneToOneTests {
     let pair = group("human+otter", unread: 1, partner: otter)
     let without = roster([pane("w1:p2", callsign: "lynx")])
     let rows = SidebarModel.rows(roster: without, agents: [:], groups: [pair])
-    #expect(rows.allSatisfy { $0.isPane && $0.conversation == nil })
+    #expect(rows.allSatisfy { $0.conversation == nil })
     #expect(inWindowMenu([pair], without) == ["human+otter"])
   }
 
@@ -113,7 +115,7 @@ struct OneToOneTests {
     let here = roster([pane("w1:p1", callsign: "otter")])
     let groups = [group("review", unread: 4)]
     let rows = SidebarModel.rows(roster: here, agents: [:], groups: groups)
-    #expect(rows.allSatisfy { $0.isPane && $0.conversation == nil })
+    #expect(rows.allSatisfy { $0.conversation == nil })
     #expect(
       ConversationsMenu.entries(groups: groups, roster: here).map(\.title)
         == ["review (4 unread)"])

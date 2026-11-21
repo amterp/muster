@@ -10,7 +10,7 @@ import AppKit
 /// directory's last part. Last, a pill for each of its helpers. An entry with no name and no title
 /// leaves the task line out and draws its marks at the end of the state line, and one with no
 /// helpers has no pills line. A blocked or stuck entry is tinted and carries a
-/// colored edge; the tab on screen sits on a raised panel.
+/// colored edge. A tab's outline groups its rows, with a raised fill on the tab on screen.
 ///
 /// Built once and shown many times. A focus change moves the keyboard marker on two rows and an
 /// agent going idle repaints one, and rebuilding a row's fields and layers for that cost about a
@@ -24,6 +24,7 @@ final class SidebarRowView: NSView {
   /// Behind everything: the tab on screen's panel, then a blocked or stuck row's tint, then the
   /// keyboard marker, then the colored edge.
   private let panelLayer = CALayer()
+  private let outlineLayer = CAShapeLayer()
   private let tintLayer = CALayer()
   private let highlight = CALayer()
   private let edgeBar = CALayer()
@@ -33,6 +34,11 @@ final class SidebarRowView: NSView {
   /// Which machine the row is on, for the rows that are not panes. A pane says it with a tag.
   private let swatch = CALayer()
   private let name = NSTextField(labelWithString: "")
+  private var callsignChip: CallsignChip?
+  private var firstLineView: NSView {
+    if let callsignChip, callsignChip.superview != nil { return callsignChip }
+    return name
+  }
   /// A machine heading's note on what its restart cost.
   private let subtitle = NSTextField(labelWithString: "")
   /// A pane's task line.
@@ -124,7 +130,7 @@ final class SidebarRowView: NSView {
   var machineTagFrame: CGRect? { showsMachineTag ? machineTag?.frame : nil }
 
   /// Where each of a pane's lines was laid out. Meaningful after layout.
-  var firstLineFrame: CGRect { name.frame }
+  var firstLineFrame: CGRect { firstLineView.frame }
   var taskLineFrame: CGRect? { taskField.superview == nil ? nil : taskField.frame }
   var stateLineFrame: CGRect? { stateField.superview == nil ? nil : stateField.frame }
   var directoryFrame: CGRect? { directoryField.superview == nil ? nil : directoryField.frame }
@@ -133,7 +139,7 @@ final class SidebarRowView: NSView {
   var markFrames: [CGRect] { marks.map(\.frame) }
 
   /// Whether the first line gives the callsign all the room it asks for.
-  var firstLineFits: Bool { name.frame.width >= ceil(name.fittingSize.width) }
+  var firstLineFits: Bool { firstLineView.frame.width >= ceil(firstLineView.fittingSize.width) }
 
   /// The directory a pane's entry ends in, or nil when it has none.
   var shownDirectory: String? { directoryField.superview == nil ? nil : directoryField.stringValue }
@@ -170,7 +176,17 @@ final class SidebarRowView: NSView {
 
   /// Whether the row is tinted, and the place it takes in the raised panel, if it has one.
   var showsTint: Bool { tintLayer.superlayer != nil }
-  var shownPanel: SidebarModel.PanelPlace? { panelLayer.superlayer == nil ? nil : shown?.panel }
+  var shownPanel: SidebarModel.TabBlock.Place? { panelLayer.superlayer == nil ? nil : shown?.panel }
+  var shownTabOutline: CGColor? { outlineLayer.superlayer == nil ? nil : outlineLayer.strokeColor }
+  var shownBand: CGColor? { shown?.isTab == true && band ? panelLayer.backgroundColor : nil }
+  var shownChip: RGB? { callsignChip?.superview == nil ? nil : callsignChip?.fill }
+  var shownStateColors: (tint: CGColor?, edge: CGColor?) {
+    (
+      showsTint ? tintLayer.backgroundColor : nil,
+      edgeBar.superlayer == nil ? nil : edgeBar.backgroundColor
+    )
+  }
+  private var band = false
 
   /// The digits of the keycaps drawn, left to right.
   var shownKeys: [Int] { [firstKey, secondKey].compactMap { $0?.value } }
@@ -203,7 +219,9 @@ final class SidebarRowView: NSView {
     super.init(frame: .zero)
     identifier = SidebarRowView.identifier
     wantsLayer = true
-    panelLayer.cornerRadius = 10
+    panelLayer.cornerRadius = Self.blockRadius
+    outlineLayer.fillColor = nil
+    outlineLayer.lineWidth = 1
     tintLayer.cornerRadius = 8
     highlight.cornerRadius = 8
     highlight.borderWidth = 1.5
@@ -237,15 +255,16 @@ final class SidebarRowView: NSView {
   /// Draws `row`, taking away whatever the row this view last showed had and this one does not.
   func show(_ row: SidebarModel.Row) {
     shown = row
-    let palette = ChromePalette.current(for: effectiveAppearance).list
-    // Panes indent under their tab caption, and stay indented in a list that draws none; a
-    // helper listed under its maker's entry goes a step further in.
+    let chrome = ChromePalette.current(for: effectiveAppearance)
+    let palette = chrome.list
     indent = (row.isPane ? 1 : 0) + row.depth
     isPaneRow = row.isPane
     layerColors = []
-    for layer in [panelLayer, tintLayer, highlight, edgeBar, dot, swatch, icon] {
+    for layer in [panelLayer, outlineLayer, tintLayer, highlight, edgeBar, dot, swatch, icon] {
       layer.removeFromSuperlayer()
     }
+    callsignChip?.removeFromSuperview()
+    name.isHidden = false
     for layer in [progressTrack, progressBar] { layer.removeFromSuperlayer() }
     for field in [subtitle, taskField, stateField, directoryField] { field.removeFromSuperview() }
     for key in [firstKey, secondKey] { key?.removeFromSuperview() }
@@ -265,17 +284,28 @@ final class SidebarRowView: NSView {
     // keyboard feeds, so a list of a dozen panes beside a window of two can be read back
     // against it.
     var backgrounds: [CALayer] = []
-    if let place = row.panel {
-      panelLayer.maskedCorners = Self.corners(of: place)
-      paint(panelLayer, palette.raised.color)
-      backgrounds.append(panelLayer)
+    let tabHue = row.tabBlock.flatMap { chrome.personalHue($0.color) }
+    let bandColors =
+      row.isTab ? tabHue.map { chrome.tabBand(hue: $0, onScreen: row.onScreen) } : nil
+    band = bandColors != nil
+    if let block = row.tabBlock {
+      if let fill = bandColors?.background ?? (block.onScreen ? palette.raised : nil) {
+        panelLayer.maskedCorners = Self.corners(of: block.place)
+        paint(panelLayer, fill.color)
+        backgrounds.append(panelLayer)
+      }
+      outlineLayer.strokeColor = chrome.tabOutline(hue: tabHue).color.cgColor
+      backgrounds.append(outlineLayer)
     }
-    if row.isTinted, let tint = palette.tint[row.state] {
+    let tint = row.isTinted ? palette.tint[row.state] : nil
+    if let tint {
       paint(tintLayer, tint.color)
       backgrounds.append(tintLayer)
     }
     if row.hasKeyboard {
-      paint(highlight, NSColor.controlAccentColor.withAlphaComponent(0.22))
+      paint(
+        highlight,
+        NSColor.controlAccentColor.withAlphaComponent(ChromePalette.keyboardHighlightOpacity))
       highlight.borderColor = NSColor.controlAccentColor.cgColor
       backgrounds.append(highlight)
     }
@@ -314,18 +344,16 @@ final class SidebarRowView: NSView {
       // where you are typing and so is not the accent.
       name.font = .systemFont(ofSize: 11, weight: row.onScreen ? .semibold : .regular)
       name.stringValue = row.label
-      name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
+      name.textColor = bandColors?.text.color ?? (row.onScreen ? .labelColor : .secondaryLabelColor)
       draw(tabPress: reached, press: 0, in: row, palette: palette)
-      if row.foldable {
-        let control = FoldControl(folded: row.folded)
-        control.onPressed = { [weak self] in
-          guard let self, let shown else { return }
-          onFoldToggled?(shown)
-        }
-        addSubview(control)
-        foldControl = control
+      let control = FoldControl(folded: row.folded)
+      control.onPressed = { [weak self] in
+        guard let self, let shown else { return }
+        onFoldToggled?(shown)
       }
-      if row.folded { drawFoldedPanes(row.foldedPanes) }
+      addSubview(control)
+      foldControl = control
+      if row.folded { drawFoldedPanes(row.foldedPanes, text: bandColors?.text.color) }
     case .pane(let first, let second):
       draw(tabPress: first, press: second, in: row, palette: palette)
       // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
@@ -334,6 +362,16 @@ final class SidebarRowView: NSView {
       let color: NSColor = row.onScreen ? .labelColor : .secondaryLabelColor
       name.textColor = color
       name.attributedStringValue = Self.firstLine(for: row, color: color)
+      if !row.callsign.isEmpty, let hue = chrome.personalHue(row.paneColor) {
+        let background = chrome.listRowBackground(
+          raised: row.panel != nil, tint: tint, keyboard: row.hasKeyboard)
+        let colors = chrome.callsignChip(hue: hue, on: background, text: palette.text)
+        let chip = callsignChip ?? CallsignChip()
+        chip.show(Self.firstLine(for: row, color: colors.text.color), fill: colors.background)
+        callsignChip = chip
+        addSubview(chip)
+        name.isHidden = true
+      }
       icon.show(state: row.state, color: PaneAppearance.borderColor(state: row.state))
       layer?.addSublayer(icon)
       if let machine = row.machine {
@@ -404,7 +442,7 @@ final class SidebarRowView: NSView {
 
   /// The icons of the panes a folded caption stands in for, so a blocked agent inside still shows.
   /// Laid out later, when the room is known.
-  private func drawFoldedPanes(_ panes: [SidebarModel.FoldedPane]) {
+  private func drawFoldedPanes(_ panes: [SidebarModel.FoldedPane], text: NSColor?) {
     foldIcons = panes.map { pane in
       let icon = StateIcon()
       icon.show(state: pane.state, color: PaneAppearance.borderColor(state: pane.state))
@@ -412,13 +450,13 @@ final class SidebarRowView: NSView {
       return icon
     }
     foldMore.font = .systemFont(ofSize: 10, weight: .semibold)
-    foldMore.textColor = .secondaryLabelColor
+    foldMore.textColor = text ?? .secondaryLabelColor
     foldMore.isHidden = true
   }
 
   /// Which corners of the raised panel a row at `place` rounds: the top ones of its first row and
   /// the bottom ones of its last, so the rows read as one rectangle.
-  private static func corners(of place: SidebarModel.PanelPlace) -> CACornerMask {
+  private static func corners(of place: SidebarModel.TabBlock.Place) -> CACornerMask {
     let top: CACornerMask = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
     let bottom: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
     switch place {
@@ -647,6 +685,8 @@ final class SidebarRowView: NSView {
   }
 
   static let dotSize: CGFloat = 7
+  private static let blockInset: CGFloat = 3
+  private static let blockRadius: CGFloat = 6
   /// Between two trailing marks, and between the last of them and the text.
   static let markGap: CGFloat = 4
   static let progressHeight: CGFloat = 2
@@ -684,14 +724,52 @@ final class SidebarRowView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     defer { CATransaction.commit() }
-    if panelLayer.superlayer != nil {
-      panelLayer.frame = bounds.insetBy(dx: 6, dy: 0)
+    if let place = shown?.tabBlock?.place {
+      layoutTabBlock(place)
     }
     if isPaneRow {
       layoutPaneRow()
     } else {
       layoutOtherRow()
     }
+  }
+
+  private func layoutTabBlock(_ place: SidebarModel.TabBlock.Place) {
+    let top = place == .top || place == .only
+    let bottom = place == .bottom || place == .only
+    let minX = bounds.minX + Self.blockInset
+    let maxX = bounds.maxX - Self.blockInset
+    let minY = bounds.minY + (bottom ? 1.5 : 0)
+    let maxY = bounds.maxY - (top ? 1.5 : 0)
+    guard maxX > minX, maxY > minY else {
+      outlineLayer.path = nil
+      panelLayer.frame = .zero
+      return
+    }
+    panelLayer.frame = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    let radius = min(Self.blockRadius, (maxX - minX) / 2, (maxY - minY) / 2)
+    let path = CGMutablePath()
+    path.move(to: CGPoint(x: minX, y: minY + (bottom ? radius : 0)))
+    path.addLine(to: CGPoint(x: minX, y: maxY - (top ? radius : 0)))
+    if top {
+      path.addQuadCurve(
+        to: CGPoint(x: minX + radius, y: maxY), control: CGPoint(x: minX, y: maxY))
+      path.addLine(to: CGPoint(x: maxX - radius, y: maxY))
+      path.addQuadCurve(
+        to: CGPoint(x: maxX, y: maxY - radius), control: CGPoint(x: maxX, y: maxY))
+    } else {
+      path.move(to: CGPoint(x: maxX, y: maxY))
+    }
+    path.addLine(to: CGPoint(x: maxX, y: minY + (bottom ? radius : 0)))
+    if bottom {
+      path.addQuadCurve(
+        to: CGPoint(x: maxX - radius, y: minY), control: CGPoint(x: maxX, y: minY))
+      path.addLine(to: CGPoint(x: minX + radius, y: minY))
+      path.addQuadCurve(
+        to: CGPoint(x: minX, y: minY + radius), control: CGPoint(x: minX, y: minY))
+    }
+    if place == .only { path.closeSubpath() }
+    outlineLayer.path = path
   }
 
   /// Where a key column starts, advancing `left` past each column the row reserves.
@@ -766,10 +844,10 @@ final class SidebarRowView: NSView {
 
     // The callsign whole, then the machine's tag in what is left: the tag is cut before the
     // callsign is, and left out when too little of it would show to read.
-    let nameSize = name.fittingSize
+    let nameSize = firstLineView.fittingSize
     let firstRoom = max(0, firstRight - textLeft)
     let nameWidth = min(ceil(nameSize.width), firstRoom)
-    name.frame = centered(nameSize, in: first, x: textLeft, width: nameWidth)
+    firstLineView.frame = centered(nameSize, in: first, x: textLeft, width: nameWidth)
     if let tag = machineTag {
       let size = tag.fittingSize
       let spare = firstRoom - nameWidth - SidebarRowView.edgeGap
@@ -850,9 +928,9 @@ final class SidebarRowView: NSView {
       lineRight -= size.width + (mark is ContextBar ? 8 : SidebarRowView.markGap)
     }
     machineTag?.isHidden = true
-    let nameSize = name.fittingSize
+    let nameSize = firstLineView.fittingSize
     let nameWidth = min(ceil(nameSize.width), max(0, lineRight - line.minX))
-    name.frame = centered(nameSize, x: line.minX, width: nameWidth)
+    firstLineView.frame = centered(nameSize, x: line.minX, width: nameWidth)
     var cursor = line.minX + nameWidth + SidebarRowView.edgeGap
     // The state when it has one to say, and the directory in whatever is left after it.
     if stateField.superview != nil {
@@ -922,6 +1000,50 @@ final class SidebarRowView: NSView {
     name.frame = CGRect(x: textLeft, y: top + secondHeight, width: width, height: textHeight)
     subtitle.frame = CGRect(x: textLeft, y: top, width: width, height: secondHeight)
   }
+}
+
+@MainActor
+final class CallsignChip: NSView {
+  private static let padding: CGFloat = 3
+  private let label = NSTextField(labelWithString: "")
+  private(set) var fill = RGB.black
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = 3
+    layer?.masksToBounds = true
+    addSubview(label)
+  }
+
+  convenience init() {
+    self.init(frame: .zero)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
+  }
+
+  func show(_ text: NSAttributedString, fill: RGB) {
+    self.fill = fill
+    label.attributedStringValue = text
+    layer?.backgroundColor = fill.color.cgColor
+    needsLayout = true
+  }
+
+  override var fittingSize: CGSize {
+    let text = label.fittingSize
+    return CGSize(width: ceil(text.width) + Self.padding * 2, height: ceil(text.height))
+  }
+
+  override func layout() {
+    super.layout()
+    label.frame = CGRect(
+      x: Self.padding, y: 0,
+      width: max(0, bounds.width - Self.padding * 2), height: bounds.height)
+  }
+
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 extension SidebarRowView {

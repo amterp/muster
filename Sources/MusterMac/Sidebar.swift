@@ -77,6 +77,7 @@ public struct Roster: Equatable {
     /// decided: its maker's, for a hidden helper whose maker has a row. Empty for most panes.
     public let under: String
     public let canvas: CanvasInfo?
+    public let color: String
 
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
@@ -84,7 +85,7 @@ public struct Roster: Equatable {
       clearable: Bool = false, agent: String = "", resumesAs: String = "", quiet: Bool = false,
       callsign: String = "",
       besideCallsign: String? = nil, directory: String = "",
-      maker: String = "", under: String = "", canvas: CanvasInfo? = nil
+      maker: String = "", under: String = "", canvas: CanvasInfo? = nil, color: String = ""
     ) {
       self.key = key
       self.place = place
@@ -105,6 +106,7 @@ public struct Roster: Equatable {
       self.maker = maker
       self.under = under
       self.canvas = canvas
+      self.color = color
     }
   }
 
@@ -145,11 +147,14 @@ public struct Roster: Equatable {
     /// not recoverable from `label`, which may carry the tab's workspace in front of it.
     public let givenName: String
 
+    public let color: String
     public let panes: [Pane]
 
     public init(
       id: String, daemons: [String] = [], place: Int, press: Int = 0, armed: Bool = false,
-      label: String, onScreen: Bool, givenName: String = "", folded: Bool = false, panes: [Pane]
+      label: String, onScreen: Bool, givenName: String = "", folded: Bool = false,
+      color: String = "",
+      panes: [Pane]
     ) {
       self.id = id
       self.daemons = daemons
@@ -160,6 +165,7 @@ public struct Roster: Equatable {
       self.onScreen = onScreen
       self.givenName = givenName
       self.folded = folded
+      self.color = color
       self.panes = panes
     }
   }
@@ -223,7 +229,7 @@ public struct Roster: Equatable {
     /// Whether reaching a pane in this window takes two presses.
     ///
     /// What decides how much room the list reserves for a chord. In a window of one tab one
-    /// press names a pane, the tab has no caption, and there is no gutter to reserve.
+    /// press names a pane, so the pane row needs space for a single keycap.
     public var takesTwoPresses: Bool { self != .panes }
   }
 
@@ -384,12 +390,14 @@ public enum SidebarModel {
     }
   }
 
-  /// A row's place in the raised panel behind the tab on screen and the rows under its caption,
-  /// which the list draws as one rounded rectangle a row at a time.
-  public enum PanelPlace: Equatable {
-    case top, middle, bottom
-    /// A caption with nothing under it.
-    case only
+  public struct TabBlock: Equatable {
+    public enum Place: Equatable {
+      case top, middle, bottom, only
+    }
+
+    public let place: Place
+    public let onScreen: Bool
+    public let color: String
   }
 
   /// One of a pane's hidden helpers, or a helper of one of those, as its maker's entry draws it: a
@@ -597,14 +605,9 @@ public enum SidebarModel {
     /// passing changes the row's value and is redrawn exactly when it shows something different.
     public var stateLine = ""
 
-    /// Where this row sits in the raised panel the tab on screen is drawn on, or nil when it is
-    /// not part of one.
-    public var panel: PanelPlace?
-
-    /// On a tab caption: whether it can be folded, and whether it is. A window with one tab draws a
-    /// caption only when a chord names it, and folding its only tab would hide every agent, so
-    /// that caption has no control.
-    public var foldable = false
+    public var tabBlock: TabBlock?
+    public var panel: TabBlock.Place? { tabBlock?.onScreen == true ? tabBlock?.place : nil }
+    public var paneColor = ""
     public var folded = false
 
     /// On a folded caption, the panes it is folded over, in the order the roster lists them, so
@@ -657,20 +660,8 @@ public enum SidebarModel {
   /// the answer is the same on every row and says nothing, which is the common case and reads
   /// exactly as it did before.
   ///
-  /// **A window with one tab draws no caption, unless a chord names it.** There is nothing to
-  /// navigate between, so a row saying which tab you are in is a line that answers a question
-  /// nobody has - and this is the common case, so paying a level of nesting for it would make
-  /// the list worse for most people to make it better for some. The moment a second tab exists
-  /// anywhere in the window, every tab gets a caption: captions in patches would read as a
-  /// boundary that comes and goes.
-  ///
-  /// The exception is a numbered tab, which is drawn whatever else this rule says: a number
-  /// nothing draws is a chord nobody can find. The core stopped producing one in a window of a
-  /// single tab - such a window numbers panes, because with one tab a pane's place in the
-  /// window and in its tab are the same number - so the exception guards a
-  /// state rather than describing one. It stays because which rows carry numbers is the core's
-  /// answer and not this one's, and a list that hid one would be worse than a caption nobody
-  /// needed.
+  /// **Every tab gets a caption.** It labels the block around the tab's panes and can fold
+  /// them even when the window holds a single tab.
   ///
   /// **What reaches a row is the core's answer, not this one's.** Every row arrives with the
   /// presses that reach it or with none, so a row drawing a chord the core did not give it is
@@ -706,7 +697,6 @@ public enum SidebarModel {
     groups: [MessageGroup] = [], hiddenCollapsed: Bool = false, helpersOpen: Set<PaneKey> = [],
     members: Set<PaneKey> = [], now: Date = Date()
   ) -> [Row] {
-    let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.press > 0 }
     // Reserved from what a kind of row can carry in this window rather than from what each row
     // happens to carry, so the column is a property of the list - which is the whole point of
     // reserving it.
@@ -766,33 +756,21 @@ public enum SidebarModel {
     }
     for tab in roster.tabs {
       let first = rows.count
-      defer {
-        if captions && tab.onScreen { markPanel(&rows, from: first) }
-      }
-      let foldable = roster.tabs.count > 1
-      let folded = foldable && tab.folded
-      if captions {
-        var caption = Row(
-          kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
-          label: tab.label, subtitle: "", givenName: tab.givenName, state: "", agent: nil,
-          onScreen: tab.onScreen, hasKeyboard: false, reservedPresses: twoPress ? 1 : 0,
-          machine: nil,
-          // A caption carries the one press that reaches its tab, which is a first press or
-          // none - so there is no such thing as a second press onto a caption.
-          isSecondPress: false)
-        caption.foldable = foldable
-        caption.folded = folded
-        if folded {
-          caption.foldedPanes = tab.panes.map {
-            FoldedPane(
-              key: $0.key, name: $0.callsign.isEmpty ? $0.label : $0.callsign,
-              state: (agents[$0.key] ?? "unknown").state)
-          }
+      var caption = Row(
+        kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
+        label: tab.label, subtitle: "", givenName: tab.givenName, state: "", agent: nil,
+        onScreen: tab.onScreen, hasKeyboard: false, reservedPresses: 1, machine: nil,
+        isSecondPress: false)
+      caption.folded = tab.folded
+      if tab.folded {
+        caption.foldedPanes = tab.panes.map {
+          FoldedPane(
+            key: $0.key, name: $0.callsign.isEmpty ? $0.label : $0.callsign,
+            state: (agents[$0.key] ?? "unknown").state)
         }
-        rows.append(caption)
       }
-      // A folded tab draws no pane of its own: its caption says what they are doing.
-      for pane in tab.panes where !(captions && folded) {
+      rows.append(caption)
+      for pane in tab.panes where !tab.folded {
         // A pane the core has said nothing about is unknown, not idle. An agent we have not
         // heard from is not an agent that finished (`corpus/conformance/agent-state.json`).
         rows.append(
@@ -803,6 +781,13 @@ public enum SidebarModel {
             machine: mark(pane.key.daemon), isSecondPress: tab.armed,
             member: members.contains(pane.key)))
         appendHelpers(of: pane)
+      }
+      let last = rows.count - 1
+      for index in first...last {
+        rows[index].tabBlock = TabBlock(
+          place: first == last
+            ? .only : (index == first ? .top : (index == last ? .bottom : .middle)),
+          onScreen: tab.onScreen, color: tab.color)
       }
     }
     for machine in roster.machines where machine.worthDrawing {
@@ -868,18 +853,8 @@ public enum SidebarModel {
       directory: pane.directory, directoryName: directoryName(pane.directory),
       tier: Tier(state: agent.state), stateLine: stateLine(for: agent, now: now))
     row.title = pane.subtitle
+    row.paneColor = pane.color
     return row
-  }
-
-  /// Marks the rows from `first` to the end as one raised panel: the tab on screen's caption, its
-  /// panes and the helper lines under them.
-  private static func markPanel(_ rows: inout [Row], from first: Int) {
-    guard first < rows.count else { return }
-    let last = rows.count - 1
-    for index in first...last {
-      rows[index].panel =
-        first == last ? .only : (index == first ? .top : (index == last ? .bottom : .middle))
-    }
   }
 
   /// Whether a row's second line shows a time, which is whether a minute passing can change it.
@@ -1216,21 +1191,9 @@ public enum SidebarModel {
     fromThisWindow
   }
 
-  /// The tab a dragged row takes with it into another window, or nil for none.
-  ///
-  /// A caption takes its own tab. So does every pane row of a list with no caption at all,
-  /// which is a window holding one tab: there the list *is* the tab, and with no caption to grab
-  /// it by, the only tab of a window could not be dragged anywhere (kan a_2WEHsAdQb). Drawing a
-  /// caption whenever a second window is open was the other way to give it a handle, and it
-  /// would have been a boundary that comes and goes with windows opened somewhere else - the
-  /// thing `rows` keeps captions from being.
-  ///
-  /// Under a caption a pane row takes no tab, because there the caption is how to move one.
-  public static func draggedTab(of row: Row, in rows: [Row]) -> String? {
-    if row.isTab { return row.tab }
-    // A hidden pane's tab is one no window holds, so there is nothing to take into another.
-    guard row.isPane, !row.hidden, !rows.contains(where: \.isTab) else { return nil }
-    return row.tab
+  /// A tab's caption takes the tab with it into another window.
+  public static func draggedTab(of row: Row) -> String? {
+    row.isTab ? row.tab : nil
   }
 
   /// What a drop onto this window's list is asking for.
@@ -1242,10 +1205,7 @@ public enum SidebarModel {
   }
 
   /// Which of the things a drag carries a drop means, or nil for nothing.
-  ///
-  /// A pane row of a window holding one tab carries both its pane and its tab, so where the
-  /// drag came from decides: within its own list it is a pane being arranged, and in another
-  /// window's list it is that window's tab arriving.
+
   public static func drop(tab: String?, pane: PaneKey?, fromThisWindow: Bool) -> Drop? {
     if let pane, acceptsPane(fromThisWindow: fromThisWindow) { return .pane(pane) }
     if let tab, acceptsTab(fromThisWindow: fromThisWindow) { return .tab(tab) }
@@ -1853,15 +1813,13 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
   /// every agent state rebuilds the whole list, and one of those arriving mid-drag would leave
   /// the index pointing at a different agent by the time the drop lands. A key survives that,
   /// because it names the pane rather than its position.
-  ///
-  /// A row can carry a tab too (`SidebarModel.draggedTab`), and a pane row in a window holding
-  /// one tab carries both.
+
   public func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int)
     -> NSPasteboardWriting?
   {
     guard rows.indices.contains(row) else { return nil }
     let item = NSPasteboardItem()
-    if let tab = SidebarModel.draggedTab(of: rows[row], in: rows) {
+    if let tab = SidebarModel.draggedTab(of: rows[row]) {
       item.setString(tab, forType: SidebarView.draggedTab)
     }
     if let pane = rows[row].pane {

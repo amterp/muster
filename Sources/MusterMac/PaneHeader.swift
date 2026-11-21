@@ -75,6 +75,7 @@ final class PaneHeaderView: NSView, NSDraggingSource {
   private let icon = StateIcon()
   private let canvasIcon = NSImageView()
   private let name = NSTextField(labelWithString: "")
+  private var callsignChip: CallsignChip?
   private let directory = NSTextField(labelWithString: "")
   private let stateWord = NSTextField(labelWithString: "")
   private let grip = NSImageView()
@@ -106,6 +107,7 @@ final class PaneHeaderView: NSView, NSDraggingSource {
   var showsDirectory: Bool { directory.superview != nil && !directory.isHidden }
   var showsContext: Bool { contextBar.map { $0.superview != nil && !$0.isHidden } ?? false }
   var shownName: String { name.stringValue }
+  var shownChip: RGB? { callsignChip?.superview == nil ? nil : callsignChip?.fill }
   var shownStateWord: String? { stateWord.superview == nil ? nil : stateWord.stringValue }
 
   override init(frame: NSRect) {
@@ -150,6 +152,7 @@ final class PaneHeaderView: NSView, NSDraggingSource {
 
   private func draw() {
     for layer in [tintLayer, edgeBar, icon] { layer.removeFromSuperlayer() }
+    callsignChip?.removeFromSuperview()
     for key in keys { key.removeFromSuperview() }
     keys = []
     contextBar?.removeFromSuperview()
@@ -163,7 +166,8 @@ final class PaneHeaderView: NSView, NSDraggingSource {
       needsLayout = true
       return
     }
-    let palette = ChromePalette.current(for: effectiveAppearance).header
+    let chrome = ChromePalette.current(for: effectiveAppearance)
+    let palette = chrome.header
     // Every header is painted, not only a tinted one: its text was worked out against this color
     // (the terminal's background moved toward its foreground), and on the window's own background
     // a light terminal under a dark appearance, or the reverse, is unreadable.
@@ -183,7 +187,10 @@ final class PaneHeaderView: NSView, NSDraggingSource {
       addSubview(canvasIcon)
       name.textColor = palette.text.color
       name.stringValue = canvasTitle
-      let label = canvasTitle.isEmpty ? "Canvas" : "Canvas, \(canvasTitle)"
+      var label = canvasTitle.isEmpty ? "Canvas" : "Canvas, \(canvasTitle)"
+      if let row = shown, showChip(for: row, on: palette.background, chrome: chrome) {
+        label = "\(row.callsign), \(label)"
+      }
       toolTip = label
       setAccessibilityElement(true)
       setAccessibilityRole(.group)
@@ -211,8 +218,16 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     icon.show(state: row.state, color: PaneAppearance.borderColor(state: row.state))
     layer?.addSublayer(icon)
 
-    name.attributedStringValue = SidebarRowView.firstLine(
-      for: row, color: palette.text.color, withBeside: true)
+    if showChip(
+      for: row, on: (tinted ? palette.tint[row.state] : nil) ?? palette.background,
+      chrome: chrome)
+    {
+      name.textColor = palette.text.color
+      name.stringValue = row.besideCallsign
+    } else {
+      name.attributedStringValue = SidebarRowView.firstLine(
+        for: row, color: palette.text.color, withBeside: true)
+    }
     if !row.stateLine.isEmpty {
       let loud = row.tier == .asks || row.tier == .look
       stateWord.attributedStringValue = NSAttributedString(
@@ -243,6 +258,17 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     setAccessibilityRole(.group)
     setAccessibilityLabel(details)
     needsLayout = true
+  }
+
+  private func showChip(for row: SidebarModel.Row, on surface: RGB, chrome: ChromePalette) -> Bool {
+    guard !row.callsign.isEmpty, let hue = chrome.personalHue(row.paneColor) else { return false }
+    let colors = chrome.callsignChip(hue: hue, on: surface, text: chrome.header.text)
+    let chip = callsignChip ?? CallsignChip()
+    chip.show(
+      SidebarRowView.firstLine(for: row, color: colors.text.color), fill: colors.background)
+    callsignChip = chip
+    addSubview(chip)
+    return true
   }
 
   override func viewDidChangeEffectiveAppearance() {
@@ -309,6 +335,14 @@ final class PaneHeaderView: NSView, NSDraggingSource {
       let width = min(ceil(directory.fittingSize.width), max(0, (right - left) * 0.35))
       place(directory, x: right - width, width: width)
       right -= width + 8
+    }
+    if let chip = callsignChip, chip.superview != nil {
+      let size = chip.fittingSize
+      let width = min(size.width, max(0, right - left))
+      chip.frame = CGRect(
+        x: left, y: ((bounds.height - size.height) / 2).rounded(), width: width, height: size.height
+      )
+      left += width + 5
     }
     place(name, x: left, width: max(0, right - left))
   }

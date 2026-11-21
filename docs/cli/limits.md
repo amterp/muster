@@ -429,9 +429,8 @@ hands the click to. Questions are answered by whichever window was asked.
 
 `muster tab move --tab <TAB> --window <WINDOW>` hands a tab to another window with every pane in it
 still running, and without `--window` it brings the tab here. Move Tab to Window in the Tab menu does
-the same, and so does dragging a tab's caption into another window's agent list. A window holding
-a single tab draws no caption, so any of its rows drags that tab. A pane on its own cannot be
-dragged to another window.
+the same, and so does dragging a tab's caption into another window's agent list. Every tab has
+a caption, including when the window holds only one. Pane rows can be dragged within their window.
 
 So `muster window new` is not a way to look at the same agents twice: the window you ask for holds
 nothing until it makes a tab of its own.

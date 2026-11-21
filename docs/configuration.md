@@ -829,11 +829,14 @@ above, so the list does not reorder. The strip is not there while nothing asks, 
 its header folds it to one line of icons; that fold is kept under `[window]` too. A quiet pane,
 a pane this window is showing and anything on a machine that cannot be reached are not in it.
 
-**Fold any tab in the agent list with the chevron on its caption.** A window with two or more tabs
-draws one on every caption; a window with one tab draws none, since folding its only tab would hide
-every agent. A folded tab keeps its caption and draws each of its agents' state icons in a row at
-the caption's end, in the order the tab lists them, so a blocked agent inside it still shows; if
-they do not all fit, the most urgent keep their icons and a count says how many more there are.
+**Each tab in the agent list has a caption and an outline around its panes.** A tab color fills
+its caption and colors the outline. An uncolored tab has a plain caption and a neutral outline.
+A pane's own color appears as a small chip behind its callsign in the list and in its pane header.
+The pane's tint and edge still show its state. Named colors follow the terminal's palette.
+
+**Fold any tab in the agent list with the chevron on its caption.** A folded tab keeps its caption
+and draws its agents' state icons at the caption's end, in the order the tab lists them. If they
+do not all fit, the most urgent keep their icons and a count says how many more there are.
 Hovering the caption names each agent and its state. Clicking the caption still shows the tab, and
 folding is not hiding: the chords still reach a folded tab's agents, and moving the keyboard into
 one unfolds its tab. Each window folds on its own, and the folds are kept under `[window]`; a tab

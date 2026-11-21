@@ -9,12 +9,19 @@ import Testing
 
 @Suite("the sidebar lists what exists")
 struct SidebarTests {
-  @Test("the roster keeps the core's tab fold")
+  @Test("the roster keeps the core's tab fold and colors")
   func readsTabFold() {
     var tab = Muster_RosterTab()
     tab.tabID = "t1"
     tab.folded = true
-    #expect(Roster.Tab(tab).folded)
+    tab.color = "blue"
+    var pane = Muster_RosterPane()
+    pane.color = "#315864"
+    tab.panes = [pane]
+    let read = Roster.Tab(tab)
+    #expect(read.folded)
+    #expect(read.color == "blue")
+    #expect(read.panes.first?.color == "#315864")
   }
 
   @Test("the asking list keeps the core's entry")
@@ -44,12 +51,12 @@ struct SidebarTests {
   private func pane(
     _ daemon: String, _ id: String, place: Int = 1, tabPress: Int = 0, press: Int? = nil,
     label: String? = nil, subtitle: String = "", givenName: String = "", onScreen: Bool = false,
-    callsign: String = "", directory: String = ""
+    callsign: String = "", directory: String = "", color: String = ""
   ) -> Roster.Pane {
     Roster.Pane(
       key: PaneKey(daemon: daemon, pane: id), place: place, tabPress: tabPress,
       press: press ?? place, label: label ?? id, subtitle: subtitle, givenName: givenName,
-      onScreen: onScreen, callsign: callsign, directory: directory)
+      onScreen: onScreen, callsign: callsign, directory: directory, color: color)
   }
 
   /// One tab, numbered as the core would have numbered it.
@@ -61,11 +68,12 @@ struct SidebarTests {
   private func tab(
     _ daemon: String, _ id: String = "w1:t1", place: Int = 1, press: Int = 0,
     armed: Bool = false, label: String? = nil, onScreen: Bool = false, folded: Bool = false,
+    color: String = "",
     panes: [Roster.Pane]
   ) -> Roster.Tab {
     Roster.Tab(
       id: id, daemons: [daemon], place: place, press: press, armed: armed, label: label ?? id,
-      onScreen: onScreen, folded: folded, panes: panes)
+      onScreen: onScreen, folded: folded, color: color, panes: panes)
   }
 
   /// The color the core draws for the two machine names these cases use.
@@ -249,21 +257,64 @@ struct SidebarTests {
     #expect(SidebarModel.rows(roster: bare, agents: [:]).isEmpty)
   }
 
-  @Test("a window with one tab draws no caption for it")
-  func oneTabIsNotWorthALevel() {
-    // The common case, and the reason this rule exists: with nothing to navigate between, a
-    // row saying which tab you are in answers a question nobody has, and it costs a level of
-    // indentation off every label in a 200pt column.
-    let roster = roster([
-      tab("local", onScreen: true, panes: [pane("local", "w1:p1")])
-    ])
-    let rows = SidebarModel.rows(roster: roster, agents: [:])
+  @Test("a lone tab keeps its caption and its panes still have direct chords")
+  func oneTabHasAnUnnumberedCaption() {
+    let one = tab("local", onScreen: true, panes: [pane("local", "w1:p1")])
+    let rows = SidebarModel.rows(roster: roster([one]), agents: [:])
+    let two = SidebarModel.rows(
+      roster: roster([one, tab("local", "w1:t2", panes: [])], numbering: .tabs),
+      agents: [:])
 
-    #expect(rows.map(\.kind) == [.pane(tabPress: 0, press: 1)])
+    #expect(rows.map(\.kind) == [.tab(press: 0), .pane(tabPress: 0, press: 1)])
+    #expect(rows.first?.reservedPresses == 1)
+    #expect(rows.first == two.first, "adding a tab leaves the first caption in place")
   }
 
-  @Test("a second tab anywhere in the window gives every tab a caption")
-  func tabsAppearTogetherOrNotAtAll() {
+  @Test("a band colors the caption and outline while state colors stay on the pane")
+  @MainActor func tabColorsAndStateColorsStaySeparate() throws {
+    let blocked = pane("local", "w1:p1", callsign: "otter")
+    let stuck = pane("local", "w1:p2", callsign: "lynx", color: "#58948a")
+    let agents: [PaneKey: PaneAgent] = [blocked.key: "blocked", stuck.key: "stuck"]
+    func rows(color: String, folded: Bool = false) -> [SidebarModel.Row] {
+      let tab = tab("local", onScreen: true, folded: folded, color: color, panes: [blocked, stuck])
+      return SidebarModel.rows(roster: roster([tab]), agents: agents)
+    }
+    let plain = rows(color: "")
+    let colored = rows(color: "magenta")
+    #expect(colored.map { $0.tabBlock?.place } == [.top, .middle, .bottom])
+    #expect(colored.map(\.paneColor) == ["", "", "#58948a"])
+
+    let view = SidebarRowView()
+    view.show(plain[0])
+    let neutral = try #require(view.shownTabOutline)
+    #expect(view.shownBand == nil)
+    #expect(view.showsFoldControl && view.shownKeys.isEmpty)
+    view.show(colored[0])
+    let outline = try #require(view.shownTabOutline)
+    #expect(outline != neutral)
+    #expect(view.shownBand != nil)
+    let folded = try #require(rows(color: "magenta", folded: true).first)
+    view.show(folded)
+    #expect(folded.tabBlock?.place == .only)
+    #expect(view.shownBand != nil && view.shownTabOutline == outline)
+
+    for index in [1, 2] {
+      view.show(plain[index])
+      let state = view.shownStateColors
+      #expect(state.tint != nil && state.edge != nil)
+      view.show(colored[index])
+      #expect(view.shownBand == nil)
+      #expect(view.shownTabOutline == outline)
+      #expect(view.shownStateColors.tint == state.tint)
+      #expect(view.shownStateColors.edge == state.edge)
+      #expect((view.shownChip != nil) == (index == 2))
+    }
+    view.show(plain[1])
+    #expect(view.shownChip == nil)
+  }
+
+  @Test("every tab has its own caption across all machines")
+  func everyTabGetsACaption() {
     // Including the tabs on a daemon that only holds one. Captions in patches would read as a
     // boundary that comes and goes, which is worse than one that is always there.
     let roster = roster([
@@ -354,25 +405,6 @@ struct SidebarTests {
       live.map(\.pane) == [
         PaneKey(daemon: "local", pane: "w1:p2"), PaneKey(daemon: "local", pane: "w1:p3"),
       ])
-  }
-
-  @Test("a numbered tab is drawn even in a window that would hide its caption")
-  func oneTabStillShowsACaptionWhenItIsNumbered() {
-    // A press nothing draws is a chord nobody can find, so the rule that a single tab needs
-    // no caption gives way to a tab that carries one. The core no longer numbers the tab in a
-    // window that holds only one - such a window numbers panes, because with one tab a pane's
-    // place in the window and in its tab are the same number - so this pins the guard rather
-    // than a state a running window reaches. What reaches a row is the core's answer, and the
-    // list has to draw whatever it is handed.
-    let roster = roster([
-      tab(
-        "local", "w1:t1", place: 1, press: 1, onScreen: true,
-        panes: [pane("local", "w1:p1", place: 1, press: 0)])
-    ])
-
-    let rows = SidebarModel.rows(roster: roster, agents: [:])
-
-    #expect(rows.map(\.kind) == [.tab(press: 1), .pane(tabPress: 0, press: 0)])
   }
 
   @Test("a row can be dropped on a pane row on either machine, and on a caption")
@@ -493,7 +525,7 @@ struct SidebarTests {
     let rows = SidebarModel.rows(roster: roster, agents: [:], groups: groups)
     // What waits in a group reaches the person through the Needs you strip, and every group is
     // in the Conversations menus (Fencil `conversations-menus`).
-    #expect(rows.map(\.label) == ["w1:p1"])
+    #expect(rows.map(\.label) == ["w1:t1", "w1:p1"])
     #expect(rows == SidebarModel.rows(roster: roster, agents: [:]))
     #expect(
       ConversationsMenu.entries(groups: groups, roster: roster).map(\.title)
@@ -512,21 +544,21 @@ struct SidebarTests {
     let groups = [SidebarModel.MessageGroup(daemon: "local", group: "review", unread: 0, toYou: 0)]
     let rows = SidebarModel.rows(roster: roster, agents: [:], groups: groups)
 
-    #expect(rows.map(\.label) == ["w1:p1", "Hidden", "w1:p9"])
-    let caption = rows[1]
+    #expect(rows.map(\.label) == ["w1:t1", "w1:p1", "Hidden", "w1:p9"])
+    let caption = rows[2]
     #expect(caption.kind == .hidden(panes: 1, urgent: 0, collapsed: false))
     #expect(caption.isHiddenCaption && caption.isHeader && !caption.isDestination)
     #expect(caption.state.isEmpty, "an open caption's rows carry their own states")
     #expect(SidebarModel.accessories(of: caption) == [.disclosure(collapsed: false)])
-    let hidden = rows[2]
+    let hidden = rows[3]
     #expect(hidden.hidden && hidden.isPane && hidden.isDestination)
     #expect(hidden.kind == .pane(tabPress: 0, press: 0), "no chord reaches a hidden pane")
-    #expect(!rows[0].hidden)
+    #expect(!rows[1].hidden)
     #expect(roster.panes.map(\.key.pane) == ["w1:p1"], "a hidden pane is drawn by nothing")
     #expect(
       roster.pane(PaneKey(daemon: "local", pane: "w1:p9"))?.key.pane == "w1:p9",
       "a hidden pane's entry is found, so renaming its row starts from its name")
-    #expect(SidebarModel.draggedTab(of: hidden, in: rows) == nil)
+    #expect(SidebarModel.draggedTab(of: hidden) == nil)
     #expect(!SidebarModel.canArrange(PaneKey(daemon: "local", pane: "w1:p1"), onto: hidden))
 
     let none = SidebarModel.rows(roster: base, agents: [:])
@@ -549,8 +581,9 @@ struct SidebarTests {
     ]
 
     let rows = SidebarModel.rows(roster: roster, agents: agents, hiddenCollapsed: true)
-    #expect(rows.map(\.label) == ["w1:p1", "Hidden"], "a folded caption still drew its panes")
-    let caption = rows[1]
+    #expect(
+      rows.map(\.label) == ["w1:t1", "w1:p1", "Hidden"], "a folded caption still drew its panes")
+    let caption = rows[2]
     #expect(caption.kind == .hidden(panes: 3, urgent: 1, collapsed: true))
     #expect(caption.state == "blocked", "a blocked hidden agent was lost behind the fold")
     #expect(
@@ -558,8 +591,8 @@ struct SidebarTests {
     #expect(SidebarModel.summary(of: caption) == "3 hidden panes · 1 blocked")
 
     let open = SidebarModel.rows(roster: roster, agents: agents)
-    #expect(open.map(\.label) == ["w1:p1", "Hidden"] + ids)
-    #expect(SidebarModel.summary(of: open[1]) == nil)
+    #expect(open.map(\.label) == ["w1:t1", "w1:p1", "Hidden"] + ids)
+    #expect(SidebarModel.summary(of: open[2]) == nil)
   }
 
   /// The panes and hidden helpers the helper cases share: `w1:p1` made `w1:h1` and `w1:h2`, and
@@ -596,14 +629,14 @@ struct SidebarTests {
     ]
 
     let folded = SidebarModel.rows(roster: roster, agents: agents, now: now)
-    #expect(folded.map(\.label) == ["w1:p1", "w1:p2"], "helpers took rows of their own")
-    let entry = folded[0]
+    #expect(folded.map(\.label) == ["w1:t1", "w1:p1", "w1:p2"], "helpers took rows of their own")
+    let entry = folded[1]
     // Depth-first in the roster's order: a helper, then the helpers it made, then the next.
     #expect(entry.helpers.map(\.name) == ["w1:h1", "w1:g1", "w1:h2"])
     #expect(entry.helpers.map(\.state) == ["working", "blocked", "idle"])
     #expect(entry.helpers.map(\.madeBy) == ["w1:p1", "w1:h1", "w1:p1"])
     #expect(!entry.helpersOpen)
-    #expect(folded[1].helpers.isEmpty)
+    #expect(folded[2].helpers.isEmpty)
     #expect(!folded.contains { $0.isHiddenCaption }, "only helpers were hidden")
     #expect(
       SidebarModel.details(of: entry.helpers[1]) == "w1:g1: Blocked 2m\n/src/g1\nmade by w1:h1")
@@ -613,20 +646,20 @@ struct SidebarTests {
     // The pill's hover text shows a time though the entry's own lines show none, so the entry
     // counts as timed and a minute passing draws it again.
     #expect(SidebarModel.showsTime(in: entry), "a timed helper's hover text would go stale")
-    #expect(!SidebarModel.showsTime(in: folded[1]))
+    #expect(!SidebarModel.showsTime(in: folded[2]))
     let later = SidebarModel.rows(
       roster: roster, agents: agents, now: now.addingTimeInterval(60))
-    #expect(SidebarModel.changes(from: folded, to: later)?.redraw == IndexSet(integer: 0))
+    #expect(SidebarModel.changes(from: folded, to: later)?.redraw == IndexSet(integer: 1))
 
     let open = SidebarModel.rows(roster: roster, agents: agents, helpersOpen: [key("w1:p1")])
-    #expect(open.map(\.label) == ["w1:p1", "w1:h1", "w1:g1", "w1:h2", "w1:p2"])
-    #expect(open[0].helpersOpen && open[0].helpers.count == 3)
-    for row in open[1...3] {
+    #expect(open.map(\.label) == ["w1:t1", "w1:p1", "w1:h1", "w1:g1", "w1:h2", "w1:p2"])
+    #expect(open[1].helpersOpen && open[1].helpers.count == 3)
+    for row in open[2...4] {
       #expect(row.isHelper && row.hidden && row.depth == 1, "\(row.label) is not listed flat")
       #expect(row.kind == .pane(tabPress: 0, press: 0))
       #expect(row.helpers.isEmpty, "a listed helper draws no pills of its own")
     }
-    #expect(!open[0].isHelper && !open[4].isHelper)
+    #expect(!open[1].isHelper && !open[5].isHelper)
     #expect(
       roster.helpers(of: key("w1:p1")) == ContextMenuModel.Helpers(canShow: true, canHide: false))
     #expect(roster.helpers(of: key("w1:p2")) == nil, "a pane with no helpers has nothing to offer")
@@ -683,7 +716,8 @@ struct SidebarTests {
       callsign: "maple", besideCallsign: "muster · claude")
     let uncalled = Roster.Pane(key: key("w1:p3"), place: 3, label: "muster", onScreen: true)
     let rows = SidebarModel.rows(
-      roster: roster([tab("local", panes: [named, unnamed, uncalled])]), agents: [:])
+      roster: roster([tab("local", panes: [named, unnamed, uncalled])]), agents: [:]
+    ).filter(\.isPane)
 
     // The callsign alone: a name is the task line's to say, and the directory the state line's.
     let lines = rows.map { SidebarRowView.firstLine(for: $0, color: .labelColor).string }
@@ -710,6 +744,7 @@ struct SidebarTests {
       key: PaneKey(daemon: "local", pane: "w1:p1"), place: 1, press: 1, label: "w1:p1",
       onScreen: true, quiet: true)
     let rows = SidebarModel.rows(roster: roster([tab("local", panes: [quiet])]), agents: [:])
+      .filter(\.isPane)
 
     #expect(rows.first?.quiet == true)
     #expect(SidebarModel.accessories(of: rows[0]) == [.quiet])
@@ -1230,9 +1265,8 @@ struct SidebarTests {
       agents: [:])
 
     let changed = SidebarModel.changes(from: before, to: after)
-    // One tab, so no caption: the pane is row 0 and the machine is row 1.
-    #expect(changed?.redraw == IndexSet(integer: 1))
-    #expect(changed?.remeasure == IndexSet(integer: 1))
+    #expect(changed?.redraw == IndexSet(integer: 2))
+    #expect(changed?.remeasure == IndexSet(integer: 2))
   }
 
   @Test("a second line leaving asks for the same thing")
@@ -1249,8 +1283,8 @@ struct SidebarTests {
       agents: [:])
 
     let changed = SidebarModel.changes(from: before, to: after)
-    #expect(changed?.redraw == IndexSet(integer: 1))
-    #expect(changed?.remeasure == IndexSet(integer: 1))
+    #expect(changed?.redraw == IndexSet(integer: 2))
+    #expect(changed?.remeasure == IndexSet(integer: 2))
   }
 
   @Test("an agent blinking is drawn again and never measured again")
@@ -1265,7 +1299,7 @@ struct SidebarTests {
     let after = SidebarModel.rows(roster: roster(panes), agents: [key: "working"])
 
     let changed = SidebarModel.changes(from: before, to: after)
-    #expect(changed?.redraw == IndexSet(integer: 0))
+    #expect(changed?.redraw == IndexSet(integer: 1))
     #expect(changed?.remeasure.isEmpty == true)
   }
 
@@ -1289,13 +1323,19 @@ struct SidebarTests {
     sidebar.apply(
       roster: roster([tab("local", panes: panes)], machines: machines(restarted: "")),
       agents: [:])
-    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.entry, SidebarModel.oneLine])
+    #expect(
+      sidebar.drawnRows.map(\.height) == [
+        SidebarModel.oneLine, SidebarModel.entry, SidebarModel.oneLine,
+      ])
 
     sidebar.apply(
       roster: roster(
         [tab("local", panes: panes)], machines: machines(restarted: "restarted 2m ago")),
       agents: [:])
-    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.entry, SidebarModel.twoLines])
+    #expect(
+      sidebar.drawnRows.map(\.height) == [
+        SidebarModel.oneLine, SidebarModel.entry, SidebarModel.twoLines,
+      ])
   }
 
   @Test("rows are drawn against the width the list was given, not the one it was born with")
@@ -1327,15 +1367,14 @@ struct SidebarTests {
       "rows drawn at \(drawn.map(\.width)), the list leaves \(sidebar.rowSpace) for them")
   }
 
-  @Test("every row of a window holding one tab takes that tab along when dragged")
-  func aLoneTabIsDraggedByAnyRow() {
+  @Test("a lone tab is dragged by its caption")
+  func aLoneTabIsDraggedByItsCaption() {
     let rows = SidebarModel.rows(
       roster: roster([
         tab("local", "w1:t1", panes: [pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)])
       ]), agents: [:])
 
-    #expect(rows.allSatisfy { $0.isPane })
-    #expect(rows.map { SidebarModel.draggedTab(of: $0, in: rows) } == ["w1:t1", "w1:t1"])
+    #expect(rows.map { SidebarModel.draggedTab(of: $0) } == ["w1:t1", nil, nil])
   }
 
   @Test("under a caption, only the caption takes a tab along")
@@ -1347,7 +1386,7 @@ struct SidebarTests {
       ]), agents: [:])
 
     #expect(
-      rows.map { SidebarModel.draggedTab(of: $0, in: rows) } == ["w1:t1", nil, "w1:t2", nil])
+      rows.map { SidebarModel.draggedTab(of: $0) } == ["w1:t1", nil, "w1:t2", nil])
   }
 
   @Test("a row carrying a pane and its tab is a pane at home and the tab elsewhere")
@@ -1369,13 +1408,13 @@ struct SidebarTests {
     ]
     sidebar.apply(roster: roster(panes), agents: [:], keyboard: panes[0].key)
     _ = sidebar.drawnRows
-    let before = panes.indices.map { sidebar.rowView(at: $0) }
+    let before = panes.indices.map { sidebar.rowView(at: $0 + 1) }
     #expect(before.allSatisfy { $0 != nil })
     #expect(before.map { $0?.marksKeyboard } == [true, false, false])
 
     sidebar.apply(roster: roster(panes), agents: [:], keyboard: panes[1].key)
 
-    let after = panes.indices.map { sidebar.rowView(at: $0) }
+    let after = panes.indices.map { sidebar.rowView(at: $0 + 1) }
     #expect(zip(before, after).allSatisfy { $0 === $1 })
     #expect(after.map { $0?.marksKeyboard } == [false, true, false])
   }
@@ -1392,7 +1431,7 @@ struct SidebarTests {
     agent.progress = PaneAgent.Progress(state: "running", percent: 30)
     sidebar.apply(roster: roster([busy]), agents: [busy.key: agent])
     _ = sidebar.drawnRows
-    let row = sidebar.rowView(at: 0)
+    let row = sidebar.rowView(at: 1)
     #expect(row?.shownStateLine == "Blocked 2m")
     #expect(row?.shownDirectory == "muster")
     #expect(row?.shownIcon == "blocked")
@@ -1403,7 +1442,7 @@ struct SidebarTests {
 
     sidebar.apply(roster: roster([pane("local", "w1:p1")]), agents: [busy.key: "idle"])
 
-    #expect(sidebar.rowView(at: 0) === row)
+    #expect(sidebar.rowView(at: 1) === row)
     #expect(row?.shownStateLine == nil)
     #expect(row?.shownDirectory == nil)
     #expect(row?.shownIcon == "idle")
@@ -1437,7 +1476,7 @@ struct SidebarTests {
     let timed = min(count, 2)
 
     sidebar.apply(roster: roster(panes), agents: agents(lastIs: "idle"))
-    #expect(sidebar.redrawCount == count, "the first draw is every row")
+    #expect(sidebar.redrawCount == count + 1, "the first draw is every row")
     #expect(sidebar.showsTime, "a blocked row shows a time, so the minute has to be counted")
 
     // The same roster and states again, as a republish that changed nothing sends them.
@@ -1472,14 +1511,14 @@ struct SidebarTests {
     busy.contextUsed = 100
     sidebar.apply(roster: roster([one]), agents: [one.key: busy])
     _ = sidebar.drawnRows
-    let view = try #require(sidebar.rowView(at: 0))
+    let view = try #require(sidebar.rowView(at: 1))
     let before = try #require(view.contextBarFill)
 
     PaneAppearance.adopt(
       chrome: Core.Chrome(
         divider: nil, focusRing: nil, agents: Core.AgentColors(), contextFull: "#00ff00"))
     // What a reload of the colors does to a row the table hands back for reuse.
-    view.show(sidebar.rows[0])
+    view.show(sidebar.rows[1])
     let after = try #require(view.contextBarFill)
 
     #expect(before != after, "the bar kept the color it was made with")
@@ -1531,10 +1570,10 @@ struct SidebarTests {
     #expect(rows.filter(\.isTab).count == 2)
     #expect(rows.filter(\.isPane).count == 1, "only the other tab's pane is a row")
     let caption = rows[0]
-    #expect(caption.folded && caption.foldable)
+    #expect(caption.folded && caption.isTab)
     #expect(caption.foldedPanes.map(\.state) == ["working", "blocked", "idle"])
     #expect(caption.foldedPanes.map(\.name) == ["w1:p1", "w1:p2", "w1:p3"], "the roster's order")
-    #expect(!rows[1].folded && rows[1].foldable, "the other tab can be folded and is not")
+    #expect(rows[1].isTab && !rows[1].folded)
     #expect(SidebarModel.height(of: caption) == SidebarModel.oneLine)
   }
 
@@ -1546,16 +1585,16 @@ struct SidebarTests {
     #expect(rows.allSatisfy { !$0.folded && $0.foldedPanes.isEmpty })
   }
 
-  @Test("a window of one tab has no fold control, even if the roster says folded")
-  func aLoneTabCannotBeFolded() {
-    // The core clears a lone tab's fold; this is the shell not trusting a stale one with the only
-    // thing there is to show.
+  @Test("a lone tab can fold and still shows the state of its panes")
+  func aLoneTabCanFold() throws {
     let one = pane("local", "w1:p1", place: 1)
-    let roster = roster([tab("local", press: 1, folded: true, panes: [one])], numbering: .tabs)
+    let roster = roster([tab("local", folded: true, panes: [one])])
     let rows = SidebarModel.rows(roster: roster, agents: [one.key: PaneAgent(state: "blocked")])
-    let caption = rows[0]
-    #expect(!caption.foldable && !caption.folded)
-    #expect(rows.contains { $0.isPane }, "its agent is still listed")
+    let caption = try #require(rows.first)
+    #expect(rows.count == 1)
+    #expect(caption.isTab && caption.folded)
+    #expect(caption.foldedPanes.map(\.state) == ["blocked"])
+    #expect(caption.tabBlock?.place == .only)
   }
 
   @Test("a folded caption's hover names each pane and its state")
@@ -1935,7 +1974,7 @@ struct SidebarTests {
     if open { sidebar.helpersOpen = [maker.key] }
     sidebar.apply(roster: roster, agents: agents)
     _ = sidebar.drawnRows
-    let view = try #require(sidebar.rowView(at: 0))
+    let view = try #require(sidebar.rowView(at: 1))
     view.frame.size.width = width
     view.needsLayout = true
     view.layoutSubtreeIfNeeded()
@@ -1996,7 +2035,7 @@ struct SidebarTests {
     sidebar.helpersOpen = [maker.key]
     sidebar.apply(roster: roster, agents: [maker.key: busy, helper.key: building])
     _ = sidebar.drawnRows
-    let view = try #require(sidebar.rowView(at: 1))
+    let view = try #require(sidebar.rowView(at: 2))
     view.layoutSubtreeIfNeeded()
     let drawn = try #require(view.progressFrames)
     #expect(drawn.track.width > 100)
@@ -2004,9 +2043,9 @@ struct SidebarTests {
 
     // The same view shown an entry at 90% and then the helper again, as a reused row is.
     let rows = sidebar.rows
-    view.show(rows[0])
-    view.layoutSubtreeIfNeeded()
     view.show(rows[1])
+    view.layoutSubtreeIfNeeded()
+    view.show(rows[2])
     view.layoutSubtreeIfNeeded()
     let again = try #require(view.progressFrames)
     #expect(abs(again.bar.width - again.track.width * 0.5) < 0.5, "it kept the entry's percent")
@@ -2028,8 +2067,8 @@ struct SidebarTests {
     #expect(asked == [true, false])
 
     // Listed, each helper is one line under the entry: its name, then its state or directory.
-    #expect(opened.drawnRows.map(\.height) == [73, 22, 22])
-    let helper = try #require(opened.rowView(at: 2))
+    #expect(opened.drawnRows.map(\.height) == [SidebarModel.oneLine, 73, 22, 22])
+    let helper = try #require(opened.rowView(at: 3))
     #expect(helper.shownFirstLine == "helper-1")
     #expect(helper.shownStateLine == "Done")
     #expect(helper.helperPills == nil)
@@ -2189,13 +2228,13 @@ struct SidebarTests {
       let rows = SidebarModel.rows(
         roster: roster([pane("local", "w1:p1")]),
         agents: [PaneKey(daemon: "local", pane: "w1:p1"): agent(state)])
-      #expect(rows[0].isTinted == false, "\(state)")
+      #expect(rows[1].isTinted == false, "\(state)")
     }
     for state in ["blocked", "stuck"] {
       let rows = SidebarModel.rows(
         roster: roster([pane("local", "w1:p1")]),
         agents: [PaneKey(daemon: "local", pane: "w1:p1"): agent(state)])
-      #expect(rows[0].isTinted, "\(state)")
+      #expect(rows[1].isTinted, "\(state)")
     }
   }
 
@@ -2214,9 +2253,7 @@ struct SidebarTests {
     #expect(rows.map(\.panel) == [nil, nil, .top, .middle, .bottom, nil])
   }
 
-  @Test(
-    "a showing caption with nothing under it is a panel of one, and a window with no captions has none"
-  )
+  @Test("an empty tab is one row, and a lone tab draws its caption and its panes on a panel")
   func panelEdgeCases() {
     let lonely = roster([
       tab("local", "w1:t1", press: 1, onScreen: true, panes: []),
@@ -2225,7 +2262,7 @@ struct SidebarTests {
     #expect(SidebarModel.rows(roster: lonely, agents: [:]).map(\.panel).first == .only)
 
     let single = roster([tab("local", onScreen: true, panes: [pane("local", "w1:p1")])])
-    #expect(SidebarModel.rows(roster: single, agents: [:]).allSatisfy { $0.panel == nil })
+    #expect(SidebarModel.rows(roster: single, agents: [:]).map(\.panel) == [.top, .bottom])
   }
 
   @Test("a minute passing redraws the rows that show a time and no others")
@@ -2244,7 +2281,7 @@ struct SidebarTests {
     let same = SidebarModel.rows(
       roster: roster(panes), agents: agents, now: now.addingTimeInterval(10))
 
-    #expect(SidebarModel.changes(from: before, to: later)?.redraw == IndexSet(integer: 0))
+    #expect(SidebarModel.changes(from: before, to: later)?.redraw == IndexSet(integer: 1))
     #expect(SidebarModel.changes(from: before, to: same)?.redraw.isEmpty == true)
   }
 

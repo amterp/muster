@@ -17,18 +17,35 @@ func testHeaderRow(
   _ id: String, state: String = "working", since: Double? = nil, tabPress: Int = 0,
   press: Int = 0, callsign: String = "otter", givenName: String = "",
   directory: String = "/Users/me/src/muster", context: Float? = nil, subtitle: String = "",
-  now: Date = epoch
+  now: Date = epoch, color: String = ""
 ) -> SidebarModel.Row {
   let pane = Roster.Pane(
     key: PaneKey(daemon: "local", pane: id), place: press, tabPress: tabPress, press: press,
     label: givenName.isEmpty ? callsign : givenName, subtitle: subtitle, givenName: givenName,
     onScreen: true, callsign: callsign,
-    besideCallsign: givenName.isEmpty ? "muster · claude" : givenName, directory: directory)
+    besideCallsign: givenName.isEmpty ? "muster · claude" : givenName, directory: directory,
+    color: color)
   var agent = PaneAgent(state: state)
   agent.sinceMS = since.map { Int64((now.timeIntervalSince1970 - $0) * 1000) } ?? 0
   agent.contextUsed = context
   return SidebarModel.paneRow(
     pane, in: "w1:t1", agent: agent, now: now, presses: (tabPress, press), onScreen: true)
+}
+
+@Test("the pane header chips just the callsign, beside the agent name or canvas title")
+@MainActor func theHeaderShowsAColorChip() {
+  let header = PaneHeaderView(frame: CGRect(x: 0, y: 0, width: 240, height: 24))
+  header.show(testHeaderRow("p1", state: "blocked", color: "cyan"))
+  #expect(header.shownChip != nil)
+  #expect(header.shownName == "muster · claude")
+  #expect(header.showsTint)
+  header.showCanvas(title: "Build log")
+  #expect(header.shownChip != nil)
+  #expect(header.shownName == "Build log")
+  #expect(!header.showsTint)
+  header.show(testHeaderRow("p1", state: "blocked"))
+  #expect(header.shownChip == nil)
+  #expect(header.shownName == "Build log")
 }
 
 @MainActor
