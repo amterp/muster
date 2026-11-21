@@ -687,6 +687,54 @@ struct SidebarTests {
     #expect(rows.last?.kind == .hidden(panes: 1, urgent: 0, collapsed: true))
   }
 
+  @Test("showing a helper tab keeps each helper line and its place under the maker")
+  func shownHelpersKeepTheirRows() throws {
+    let maker = PaneKey(daemon: "local", pane: "w1:p1")
+    let first = PaneKey(daemon: "local", pane: "w1:h1")
+    let second = PaneKey(daemon: "devenv", pane: "w1:h2")
+    func rows(shown: PaneKey?, keyboard: PaneKey, expanded: Bool) -> [SidebarModel.Row] {
+      let base = tab(
+        "local", "w1:t1",
+        onScreen: keyboard == maker,
+        panes: [
+          pane("local", maker.pane, onScreen: keyboard == maker), pane("local", "w1:p2", place: 2),
+        ])
+      let tabs = [first, second].enumerated().map { at, key in
+        let helper = Roster.Pane(
+          key: key, label: key.pane, onScreen: key == keyboard, maker: maker.pane,
+          under: maker.pane)
+        return tab(
+          key.daemon, "w1:t\(at + 2)", place: 0, onScreen: key == keyboard, panes: [helper])
+      }
+      let (visible, hidden) = (
+        tabs.filter { $0.panes[0].key == shown },
+        tabs.filter { $0.panes[0].key != shown }
+      )
+      let roster = Roster(
+        tabs: [base] + visible, hidden: hidden)
+      return SidebarModel.rows(
+        roster: roster, agents: [:], keyboard: keyboard,
+        helpersOpen: expanded ? [maker] : [], now: now)
+    }
+
+    let hidden = rows(shown: nil, keyboard: maker, expanded: true)
+    let shown = rows(shown: second, keyboard: second, expanded: true)
+    #expect(shown.map(\.label) == ["w1:t1", "w1:p1", "w1:h1", "w1:h2", "w1:p2"])
+    try #require(hidden.map(\.label) == shown.map(\.label))
+    #expect(shown[1].helpers == hidden[1].helpers)
+    #expect(shown[2].isHelper && shown[2].hidden && !shown[2].onScreen)
+    #expect(shown[3].isHelper && !shown[3].hidden && shown[3].onScreen && shown[3].hasKeyboard)
+    #expect(SidebarModel.changes(from: hidden, to: shown)?.remeasure == IndexSet())
+    let away = rows(shown: second, keyboard: maker, expanded: true)
+    #expect(away.map(\.label) == shown.map(\.label))
+    let awayHelper = try #require(away.first { $0.pane == second })
+    #expect(!awayHelper.hidden && !awayHelper.onScreen && !awayHelper.hasKeyboard)
+    #expect(rows(shown: first, keyboard: first, expanded: true).map(\.label) == shown.map(\.label))
+    #expect(
+      rows(shown: second, keyboard: second, expanded: false).map(\.label)
+        == ["w1:t1", "w1:p1", "w1:p2"])
+  }
+
   /// Hide Helpers takes back only a tab holding nothing but the pane's helpers, so a helper moved
   /// beside somebody's own panes does not make the item live.
   @Test("Hide Helpers is offered while a tab on screen holds nothing but the pane's helpers")

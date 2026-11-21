@@ -74,7 +74,7 @@ public struct Roster: Equatable {
     public let maker: String
 
     /// The id of the row it is listed beneath rather than where its tab puts it, as the core
-    /// decided: its maker's, for a hidden helper whose maker has a row. Empty for most panes.
+    /// decided: its maker's, for a helper listed under its maker. Empty for most panes.
     public let under: String
     public let canvas: CanvasInfo?
     public let color: String
@@ -587,8 +587,7 @@ public enum SidebarModel {
       givenName.isEmpty || callsign.isEmpty ? title : givenName
     }
 
-    /// On a pane's entry, its hidden helpers and theirs in one flat list, in the order the roster
-    /// lists them, and whether the list of them under the entry is open.
+    /// On a pane's entry, its helpers and theirs in one flat list.
     public var helpers: [HelperPill] = []
     public var helpersOpen = false
 
@@ -686,12 +685,11 @@ public enum SidebarModel {
   /// instead: how many there are, and the dot of the most urgent state among them, so a hidden
   /// agent that is blocked is still something the list shows.
   ///
-  /// **A pane's hidden helpers are pills on its own entry**, one each, helpers of helpers among
+  /// **A pane's nested helpers are pills on its own entry**, one each, helpers of helpers among
   /// them in one flat list, and `helpersOpen` holding the pane lists them under it a line apiece
   /// (MIP-7, section 3; Fencil `helper-pills`). Which helpers go under which pane is the
-  /// core's answer (`Roster.Pane.under`), the one `muster window` lists them by, and their order
-  /// is the roster's. They leave the Hidden caption, which keeps the panes somebody hid by hand,
-  /// and carry no presses, as no hidden pane does.
+  /// core's answer (`Roster.Pane.under`), the one `muster window` lists them by. A helper
+  /// under its maker keeps that row when shown, with no numbered chord.
   public static func rows(
     roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil,
     groups: [MessageGroup] = [], hiddenCollapsed: Bool = false, helpersOpen: Set<PaneKey> = [],
@@ -707,18 +705,27 @@ public enum SidebarModel {
       roster.spansMachines ? MachineMark(daemon: daemon, color: colors[daemon] ?? "") : nil
     }
     var rows: [Row] = []
-    var under: [String: [(pane: Roster.Pane, tab: String)]] = [:]
-    for tab in roster.hidden {
+    struct Helper {
+      let pane: Roster.Pane
+      let tab: String
+      let hidden: Bool
+    }
+    var under: [String: [Helper]] = [:]
+    let hiddenTabs = Set(roster.hidden.map(\.id))
+    // A tab moves between the roster's two lists when shown. Order the tabs by id so
+    // that move cannot reorder a maker's pills.
+    for tab in (roster.tabs + roster.hidden).sorted(by: { $0.id < $1.id }) {
       for pane in tab.panes where !pane.under.isEmpty {
-        under[pane.under, default: []].append((pane, tab.id))
+        under[pane.under, default: []].append(
+          Helper(pane: pane, tab: tab.id, hidden: hiddenTabs.contains(tab.id)))
       }
     }
     func name(_ pane: Roster.Pane) -> String {
       pane.callsign.isEmpty ? pane.label : pane.callsign
     }
-    func everyHelper(of maker: Roster.Pane) -> [(pane: Roster.Pane, tab: String, madeBy: String)] {
+    func everyHelper(of maker: Roster.Pane) -> [(helper: Helper, madeBy: String)] {
       (under[maker.key.pane] ?? []).flatMap {
-        [($0.pane, $0.tab, name(maker))] + everyHelper(of: $0.pane)
+        [($0, name(maker))] + everyHelper(of: $0.pane)
       }
     }
     func appendHidden(_ pane: Roster.Pane, tab: String) {
@@ -735,26 +742,28 @@ public enum SidebarModel {
       let helpers = everyHelper(of: maker)
       guard !helpers.isEmpty else { return }
       let open = helpersOpen.contains(maker.key)
-      rows[rows.count - 1].helpers = helpers.map { helper in
+      rows[rows.count - 1].helpers = helpers.map { helper, madeBy in
         let agent = agents[helper.pane.key] ?? "unknown"
         return HelperPill(
           key: helper.pane.key, name: name(helper.pane), state: agent.state,
           stateLine: stateLine(for: agent, now: now), timed: showsTime(of: agent),
           directory: helper.pane.directory,
-          madeBy: helper.madeBy)
+          madeBy: madeBy)
       }
       rows[rows.count - 1].helpersOpen = open
       guard open else { return }
-      for helper in helpers {
+      for (helper, _) in helpers {
         var row = paneRow(
           helper.pane, in: helper.tab, agent: agents[helper.pane.key] ?? "unknown", now: now,
-          presses: (0, 0), onScreen: false, machine: mark(helper.pane.key.daemon), hidden: true,
-          depth: 1, member: members.contains(helper.pane.key))
+          presses: (0, 0), onScreen: helper.pane.onScreen, hasKeyboard: helper.pane.key == keyboard,
+          machine: mark(helper.pane.key.daemon), hidden: helper.hidden, depth: 1,
+          member: members.contains(helper.pane.key))
         row.isHelper = true
         rows.append(row)
       }
     }
-    for tab in roster.tabs {
+    for tab in roster.tabs
+    where tab.panes.isEmpty || tab.panes.contains(where: { $0.under.isEmpty }) {
       let first = rows.count
       var caption = Row(
         kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
@@ -763,14 +772,14 @@ public enum SidebarModel {
         isSecondPress: false)
       caption.folded = tab.folded
       if tab.folded {
-        caption.foldedPanes = tab.panes.map {
+        caption.foldedPanes = tab.panes.filter { $0.under.isEmpty }.map {
           FoldedPane(
             key: $0.key, name: $0.callsign.isEmpty ? $0.label : $0.callsign,
             state: (agents[$0.key] ?? "unknown").state)
         }
       }
       rows.append(caption)
-      for pane in tab.panes where !tab.folded {
+      for pane in tab.panes where !tab.folded && pane.under.isEmpty {
         // A pane the core has said nothing about is unknown, not idle. An agent we have not
         // heard from is not an agent that finished (`corpus/conformance/agent-state.json`).
         rows.append(

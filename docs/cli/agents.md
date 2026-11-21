@@ -586,14 +586,17 @@ no helpers is refused. Showing one helper with `pane show --pane`, or going to i
 notification or the chord, brings back the tab it shares with the others in the same way, and the
 keyboard lands on the helper you asked for.
 
-The agent list draws a maker's hidden helpers on its own entry rather than under Hidden, as a row
-of pills, one for each helper and for each helper of a helper, in the order `muster window` lists
-them. A pill's height and fill say its helper's state, and hovering one names the helper, its
-state, its directory and who made it. A click on the pills lists the helpers under the entry, a
-line each. No chord reaches them, as none reaches a hidden
-pane, and a helper in a tab on screen keeps its row and its number there. The maker's right-click
-menu, and the pills', offer Show Helpers and Hide Helpers. A helper still running after its maker
-closed is listed under Hidden, since there is no row to list it under.
+The agent list shows helpers as pills on their maker's row. Click the pills to open a flat list
+of helper lines, including helpers of helpers. When a helper is hidden or in a tab shared only by
+its maker's helpers, it stays under its maker in the list. Clicking the helper's line or choosing
+Show Helpers brings its tab forward without moving those lines or changing the numbered
+shortcuts. The line highlights when the helper has the keyboard. A helper split beside other
+panes in a regular tab keeps its row there.
+
+A pill's height and fill show its helper's state. Hovering a pill shows the helper's name,
+state, directory and maker. The maker's row and its pills offer Show Helpers and Hide Helpers in
+their right-click menus. If a helper's maker is gone, the helper appears in its own tab when
+shown and under Hidden when hidden.
 
 A helper is quiet because its maker hears from it instead of you. When a helper becomes blocked or
 stuck, or goes idle without having posted since it last went to work, and stays so
