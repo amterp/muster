@@ -3601,6 +3601,48 @@
       }
     },
     {
+      "name": "a helper stays hidden until its part of a spanning tab is shown",
+      "why": "Show Helpers can reach one daemon sooner. The shared arrangement still names a hidden foreign pane, but that pane must have only one row while the daemons disagree about visibility.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              { "id": "w1:t1", "root": "w1:p1" },
+              { "id": "w1:t2", "root": "w1:p2", "copy": "[~w1:p3@devenv|w1:p2 0.50]", "layoutGeneration": 1 }
+            ],
+            "panes": [
+              { "id": "w1:p1", "cwd": "/src/alpha" },
+              { "id": "w1:p2", "cwd": "/src/beta", "maker": "w1:p1" }
+            ]
+          },
+          "dev": {
+            "tabs": [
+              { "id": "w1:t2", "root": "w1:p3", "copy": "[w1:p3|~w1:p2@local 0.50]", "layoutGeneration": 1, "hidden": true }
+            ],
+            "panes": [{ "id": "w1:p3", "cwd": "/src/gamma", "maker": "w1:p1" }]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }, { "id": "devenv", "world": "dev" }],
+        "showingTab": "w1:t2",
+        "showing": ["local/w1:p2"]
+      },
+      "expect": {
+        "machines": ["local connected 2 panes", "devenv connected 1 panes"],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" off-screen",
+          "local/w1:p2 place=0 tab=w1:t2 label=\"beta\" on-screen maker=w1:p1 under=w1:p1"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"Tab 1\" off-screen",
+          "w1:t2 on=local place=0 label=\"Helpers\" on-screen"
+        ],
+        "hidden": [
+          "w1:t2 on=devenv place=0 label=\"\" off-screen",
+          "devenv/w1:p3 place=0 tab=w1:t2 label=\"gamma\" off-screen maker=w1:p1 under=w1:p1"
+        ]
+      }
+    },
+    {
       "name": "a pane can be restarted when its daemon knows how its agent resumes",
       "why": "The agent row's menu offers Restart Agent and greys it out where there is nothing to resume: a pane running no agent, or an agent that reported no session its harness resumes. The daemon builds the resume from what the agent reported and the manifests it holds, so the row carries the daemon's word, and the command it would run is what the window says before it ends anything.",
       "given": {

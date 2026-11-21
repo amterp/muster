@@ -811,7 +811,10 @@ fn nest_helpers<'a>(
             .collect();
         let makers: Vec<(&str, Option<&str>)> = tabs
             .iter()
-            .filter(|tab| is_helpers_tab(tab, mirror))
+            .filter(|tab| {
+                let hidden_part = hidden.iter().find(|part| part.id == tab.id);
+                is_helpers_tab(tab, hidden_part, mirror)
+            })
             .chain(hidden.iter())
             .flat_map(|tab| tab.panes.iter())
             .map(|pane| (pane.key.pane.as_str(), pane.maker.as_ref().map(PaneId::as_str)))
@@ -826,31 +829,42 @@ fn nest_helpers<'a>(
     }
 }
 
-fn is_helpers_tab<'a>(tab: &RosterTab, mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>) -> bool {
+fn is_helpers_tab<'a>(
+    tab: &RosterTab,
+    hidden_part: Option<&RosterTab>,
+    mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
+) -> bool {
     let Some(maker) = tab.panes.first().and_then(|pane| pane.maker.as_ref()) else {
         return false;
     };
-    tab.panes.iter().all(|pane| pane.maker.as_ref() == Some(maker) && &pane.key.pane != maker)
-        && tab.daemons.iter().all(|daemon| {
+    // A spanning tab can be partly hidden while its daemons answer Show or Hide.
+    let panes = || tab.panes.iter().chain(hidden_part.into_iter().flat_map(|part| &part.panes));
+    let mut daemons =
+        tab.daemons.iter().chain(hidden_part.into_iter().flat_map(|part| &part.daemons));
+    let listed = |id: &PaneId, daemon: &str| {
+        panes().any(|pane| &pane.key.pane == id && pane.key.daemon.as_str() == daemon)
+    };
+    panes().all(|pane| pane.maker.as_ref() == Some(maker) && &pane.key.pane != maker)
+        && daemons.all(|daemon| {
             mirror(daemon)
                 .filter(|held| {
                     held.health() == Health::Connected && !held.restoring() && !held.stopping()
                 })
                 .and_then(|held| held.tab(&tab.id))
-                .is_some_and(|part| copy_is_listed(&part.copy, daemon.as_str(), &tab.panes))
+                .is_some_and(|part| copy_is_listed(&part.copy, daemon.as_str(), &listed))
         })
 }
 
 /// An unreachable foreign pane may exist in the saved tree before its machine has a roster row.
-fn copy_is_listed(copy: &CopyNode, owner: &str, panes: &[RosterPane]) -> bool {
+fn copy_is_listed(copy: &CopyNode, owner: &str, listed: &impl Fn(&PaneId, &str) -> bool) -> bool {
     let (id, daemon) = match copy {
         CopyNode::Own(pane) => (pane, owner),
         CopyNode::Foreign { pane, daemon } => (pane, daemon.as_str()),
         CopyNode::Split { first, second, .. } => {
-            return copy_is_listed(first, owner, panes) && copy_is_listed(second, owner, panes);
+            return copy_is_listed(first, owner, listed) && copy_is_listed(second, owner, listed);
         }
     };
-    panes.iter().any(|pane| &pane.key.pane == id && pane.key.daemon.as_str() == daemon)
+    listed(id, daemon)
 }
 
 /// What somebody named a tab, trimmed, and nothing for a tab nobody named.
@@ -881,8 +895,12 @@ fn tab_panes<'a>(
     tab: &MusterTab,
     mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
 ) -> Vec<(DaemonId, &'a Pane)> {
+    let shown = |daemon: &DaemonId| {
+        let held = mirror(daemon)?;
+        held.tab(&tab.id).is_none_or(|part| !part.hidden).then_some(held)
+    };
     let by_region = || {
-        tab.regions().filter_map(|region| Some((&region.daemon, mirror(&region.daemon)?))).flat_map(
+        tab.regions().filter_map(|region| Some((&region.daemon, shown(&region.daemon)?))).flat_map(
             |(daemon, held)| {
                 ordered_panes(held, &tab.id).into_iter().map(move |pane| (daemon.clone(), pane))
             },
@@ -898,7 +916,7 @@ fn tab_panes<'a>(
         .leaves()
         .into_iter()
         .filter_map(|(pane, daemon)| {
-            let held = mirror(daemon)?.pane(pane).filter(|held| held.tab == tab.id)?;
+            let held = shown(daemon)?.pane(pane).filter(|held| held.tab == tab.id)?;
             Some((daemon.clone(), held))
         })
         .collect();
