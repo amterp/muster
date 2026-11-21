@@ -1,0 +1,26 @@
+id = "lone-tab-caption"
+question = "Does a window with one tab draw that tab's caption in the agent list?"
+tags = ["ui", "agent-list"]
+paths = ["Sources/MusterMac/Sidebar.swift"]
+
+[[revisions]]
+id = "w5vtvbdi"
+date = 2026-11-21
+recorded_by = "other"
+discussion = "person-colors-2026-11"
+level = "owner-nodded"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = '''
+Yes. A window's only tab draws its caption, with its band and outline, as any other tab does, so
+adding a second tab changes nothing about how the first is drawn.'''
+why = '''
+Before this, a window with one tab drew no caption, which left a tab's color nowhere to appear and
+made the list rearrange when a second tab was added. The owner found always drawing it more
+cohesive: only the appended tab changes.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-21
+  quote = "I would actually say that we, in that case, continue showing ... the caption. So that's a bit of a change, but I think that's just more cohesive. And if you then add a second tab, there's less things moving around, only the second tab that gets appended to the sidebar is what changes. The first tab visuals don't change ... I think that's probably the way to go"
+  note = "Told that a window with a single tab draws no caption today, so a tab's Band color would have nowhere to appear there, and that the builder would propose what such a window shows."
