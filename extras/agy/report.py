@@ -23,15 +23,18 @@ STATES = {
 
 def send(daemon, cwd, arguments, state=None):
     agent = ["--agent", "agy"] if state is None else ["--agent", "agy", "--state", state]
-    return subprocess.run(
-        [daemon, "report", *agent, *arguments],
-        cwd=cwd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=3,
-        check=False,
-    ).returncode in (0, 4)
+    try:
+        return subprocess.run(
+            [daemon, "report", *agent, *arguments],
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+        ).returncode in (0, 4)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def hook_report(daemon, payload, seen, sampled_at):
@@ -47,7 +50,7 @@ def hook_report(daemon, payload, seen, sampled_at):
     args = []
     state = None
     if event == "PreInvocation":
-        if known and changed:
+        if known and changed and seen.get("pending_conversation") != conversation:
             return
         state = "working"
     elif event == "Stop":
@@ -71,13 +74,22 @@ def hook_report(daemon, payload, seen, sampled_at):
         if has_transcript:
             args.extend(("--session-transcript", transcript, "--session-directory", payload["cwd"]))
 
-    if (args or state) and send(daemon, payload["cwd"], args, state):
-        seen["conversation"] = conversation
-        seen["hook_sampled_at"] = sampled_at
-        seen["sampled_at"] = max(seen.get("sampled_at", 0), sampled_at)
-        if changed or state is not None:
-            seen["turn_stopped"] = state == "idle"
-            seen.pop("status", None)
+    if not (args or state):
+        return
+    if not send(daemon, payload["cwd"], args, state):
+        if event == "SessionStart" and known and changed:
+            # The next PreInvocation can retry this transition if the start report failed.
+            seen["pending_conversation"] = conversation
+            seen["hook_sampled_at"] = sampled_at
+        return
+    seen["conversation"] = conversation
+    seen["hook_sampled_at"] = sampled_at
+    seen["sampled_at"] = max(seen.get("sampled_at", 0), sampled_at)
+    if changed:
+        seen.pop("pending_conversation", None)
+    if changed or state is not None:
+        seen["turn_stopped"] = state == "idle"
+        seen.pop("status", None)
 
 
 def status_state(payload):
@@ -194,7 +206,7 @@ def main():
         if mode == "status" and sys.argv[2:] == ["--background"] and os.fork() != 0:
             return
         report(mode, daemon, socket, pane, payload, sampled_at)
-    except (OSError, ValueError, TypeError, OverflowError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, TypeError, OverflowError):
         pass
 
 
