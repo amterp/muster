@@ -1177,7 +1177,7 @@ struct SidebarTests {
     let open = SidebarModel.rows(roster: helped, agents: [:], helpersOpen: [key("w1:p1")])
     #expect(open.map(SidebarModel.height(of:)) == [20, 57, 22, 22, 22, 42])
 
-    var titled = try #require(folded.first(where: \.isPane))
+    var titled = try #require(folded.first { $0.isPane })
     titled.title = "integrate the round"
     #expect(SidebarModel.height(of: titled) == 73)
   }
