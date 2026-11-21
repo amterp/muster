@@ -302,6 +302,14 @@ import Testing
     #expect(
       terminalColors(of: bare) == TerminalColors(background: "#282c34", foreground: "#ffffff"))
   }
+
+  @Test func hueNamesReadTheEffectiveANSIPalette() throws {
+    let config = try loaded(["palette = 1=#112233", "palette = 6=#445566"])
+    defer { ghostty_config_free(config) }
+    #expect(
+      terminalHues(of: config)
+        == ["#112233", "#b5bd68", "#f0c674", "#81a2be", "#b294bb", "#445566"])
+  }
 }
 
 // Readers for the C API's several shapes. `ghostty_config_get` writes through a void pointer whose

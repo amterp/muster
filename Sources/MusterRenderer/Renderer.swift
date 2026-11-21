@@ -370,12 +370,16 @@ public final class Renderer {
   /// The colors a pane is painted with now: what the config file set, or libghostty's own default
   /// for whichever of the two it left out.
   ///
-  /// The one place Muster reads a color back from libghostty. Chrome that sits beside a pane -
+  /// Chrome that sits beside a pane -
   /// headers, the conversation - takes its colors from these so that it follows the terminal, and
   /// the appearance Muster holds only knows what the file said, which for a config that sets
   /// neither is nothing at all.
   public func terminalColors() -> TerminalColors? {
     MusterRenderer.terminalColors(of: config)
+  }
+
+  public func terminalHues() -> [String] {
+    MusterRenderer.terminalHues(of: config)
   }
 
   /// Creates a surface that renders into `view`, running `command`.
@@ -902,4 +906,15 @@ public func terminalColors(of config: ghostty_config_t) -> TerminalColors? {
     return nil
   }
   return TerminalColors(background: background, foreground: foreground)
+}
+
+/// The six ANSI hues from red through cyan, including the defaults for unset entries.
+public func terminalHues(of config: ghostty_config_t) -> [String] {
+  var palette = ghostty_config_palette_s()
+  guard ghostty_config_get(config, &palette, "palette", 7) else { return [] }
+  return withUnsafeBytes(of: &palette.colors) { bytes in
+    bytes.bindMemory(to: ghostty_config_color_s.self).dropFirst().prefix(6).map {
+      String(format: "#%02x%02x%02x", $0.r, $0.g, $0.b)
+    }
+  }
 }

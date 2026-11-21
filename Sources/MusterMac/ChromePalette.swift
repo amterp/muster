@@ -105,15 +105,18 @@ public struct ChromePalette: Equatable, Sendable {
   static let raisedAmount = 0.06
   static let keycapFillAmount = 0.08
   static let keycapEdgeAmount = 0.26
+  static let keyboardHighlightOpacity = 0.22
 
   /// The terminal's colors, as the config file or libghostty's default has them.
   public struct Terminal: Equatable, Sendable {
     public var background: RGB
     public var foreground: RGB
+    public var hues: [RGB]
 
-    public init(background: RGB, foreground: RGB) {
+    public init(background: RGB, foreground: RGB, hues: [RGB] = []) {
       self.background = background
       self.foreground = foreground
+      self.hues = hues
     }
   }
 
@@ -162,6 +165,53 @@ public struct ChromePalette: Equatable, Sendable {
   public var header: Surface
   /// The pane area: what the group conversation and the message banner are drawn on.
   public var pane: Surface
+  private var hues: [RGB]
+  private var accent: RGB
+
+  struct PersonalFill: Equatable {
+    let background: RGB
+    let text: RGB
+  }
+
+  func personalHue(_ color: String) -> RGB? {
+    if let index = ["red", "green", "yellow", "blue", "magenta", "cyan"].firstIndex(of: color) {
+      return hues[index]
+    }
+    guard color.utf8.count == 7, color.hasPrefix("#"),
+      color.utf8.dropFirst().allSatisfy({ (48...57).contains($0) || (97...102).contains($0) })
+    else { return nil }
+    return RGB(hex: color)
+  }
+
+  func tabOutline(hue: RGB?) -> RGB {
+    guard let hue else { return list.keycapEdge }
+    return list.keycapEdge.mixed(toward: hue, 0.52)
+      .pushed(toward: list.text, until: 1.25, on: [list.background, list.raised])
+  }
+
+  func tabBand(hue: RGB, onScreen: Bool) -> PersonalFill {
+    Self.personalFill(
+      hue: hue, on: onScreen ? list.raised : list.background,
+      text: onScreen ? list.text : list.dimText, amount: 0.16)
+  }
+
+  func listRowBackground(raised: Bool, tint: RGB?, keyboard: Bool) -> RGB {
+    let background = tint ?? (raised ? list.raised : list.background)
+    return keyboard ? background.mixed(toward: accent, Self.keyboardHighlightOpacity) : background
+  }
+
+  func callsignChip(hue: RGB, on background: RGB, text: RGB) -> PersonalFill {
+    Self.personalFill(hue: hue, on: background, text: text, amount: 0.24)
+  }
+
+  private static func personalFill(hue: RGB, on surface: RGB, text: RGB, amount: Double)
+    -> PersonalFill
+  {
+    let fill = surface.mixed(toward: hue, amount)
+      .pushed(toward: text, until: 1.12, on: [surface])
+    return PersonalFill(
+      background: fill, text: text.pushed(toward: text, until: minimumContrast, on: [fill]))
+  }
 
   /// Every derived color for these three inputs.
   ///
@@ -179,7 +229,9 @@ public struct ChromePalette: Equatable, Sendable {
         text: terminal.foreground, agents: agents, accent: appearance.accent),
       pane: surface(
         background: terminal.background, text: terminal.foreground, agents: agents,
-        accent: appearance.accent))
+        accent: appearance.accent),
+      hues: terminal.hues.count == 6 ? terminal.hues : PaneAppearance.defaultHues,
+      accent: appearance.accent)
   }
 
   private static func surface(
@@ -223,6 +275,10 @@ public struct ChromePalette: Equatable, Sendable {
 
 /// Where the palette's inputs come from in the running app.
 extension PaneAppearance {
+  // ANSI indexes 1–6 of the pinned renderer's default palette.
+  static let defaultHues = ["#cc6666", "#b5bd68", "#f0c674", "#81a2be", "#b294bb", "#8abeb7"]
+    .compactMap { RGB(hex: $0) }
+
   /// libghostty's own default colors, for a pane when neither the file nor a renderer says.
   static let defaultTerminal = ChromePalette.Terminal(
     background: RGB(hex: "#282c34") ?? .black, foreground: RGB(hex: "#ffffff") ?? .white)
@@ -232,11 +288,19 @@ extension PaneAppearance {
   @MainActor
   static var terminal: ChromePalette.Terminal {
     let read = Renderer.current?.terminalColors()
+    let hues = Renderer.current?.terminalHues() ?? []
+    let configured = configuredPane.palette
     return ChromePalette.Terminal(
       background: RGB(hex: configuredPane.background) ?? RGB(hex: read?.background)
         ?? defaultTerminal.background,
       foreground: RGB(hex: configuredPane.foreground) ?? RGB(hex: read?.foreground)
-        ?? defaultTerminal.foreground)
+        ?? defaultTerminal.foreground,
+      hues: defaultHues.enumerated().map { index, fallback in
+        let slot = index + 1
+        return (hues.indices.contains(index) ? RGB(hex: hues[index]) : nil)
+          ?? (configured.indices.contains(slot) ? RGB(hex: configured[slot]) : nil)
+          ?? fallback
+      })
   }
 }
 

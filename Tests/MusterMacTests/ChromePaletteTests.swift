@@ -106,6 +106,56 @@ struct ChromePaletteTests {
     #expect(checked > 100, "so few pairs were checked that a loop must have run empty")
   }
 
+  @Test("named personal colors follow the terminal palette and exact hex values keep their hue")
+  func personalHues() {
+    let terminal = PaneAppearance.defaultTerminal
+    let list = lists[0].list
+    let standard = ChromePalette.make(terminal: terminal, agents: [:], appearance: list)
+    var changed = terminal
+    changed.hues = [rgb("#117799")] + PaneAppearance.defaultHues.dropFirst()
+    let rethemed = ChromePalette.make(terminal: changed, agents: [:], appearance: list)
+    #expect(standard.personalHue("red") == rgb("#cc6666"))
+    #expect(rethemed.personalHue("red") == rgb("#117799"))
+    #expect(rethemed.personalHue("cyan") == standard.personalHue("cyan"))
+    #expect(standard.personalHue("#117799") == rethemed.personalHue("red"))
+    for invalid in ["", "none", "orange", "Red", "117799", "#ABCDEF", "#+17799", "#123"] {
+      #expect(standard.personalHue(invalid) == nil)
+    }
+  }
+
+  @Test("bands and chips keep their text readable on light, dark and default themes")
+  func personalColorContrast() {
+    for theme in themes {
+      for list in lists {
+        let palette = ChromePalette.make(
+          terminal: theme.terminal, agents: list.agents, appearance: list.list)
+        for hue in [RGB.black, .white, rgb("#ab38ef"), list.list.background] {
+          for onScreen in [false, true] {
+            let band = palette.tabBand(hue: hue, onScreen: onScreen)
+            #expect(band.text.contrast(with: band.background) >= ChromePalette.minimumContrast)
+            for tint in [nil, palette.list.tint["blocked"], palette.list.tint["stuck"]] {
+              for keyboard in [false, true] {
+                let surface = palette.listRowBackground(
+                  raised: onScreen, tint: tint, keyboard: keyboard)
+                let chip = palette.callsignChip(hue: hue, on: surface, text: palette.list.text)
+                #expect(chip.background != surface)
+                #expect(chip.text.contrast(with: chip.background) >= ChromePalette.minimumContrast)
+              }
+            }
+          }
+          for surface in [
+            palette.header.background, palette.header.tint["blocked"]!,
+            palette.header.tint["stuck"]!,
+          ] {
+            let chip = palette.callsignChip(hue: hue, on: surface, text: palette.header.text)
+            #expect(chip.background != surface)
+            #expect(chip.text.contrast(with: chip.background) >= ChromePalette.minimumContrast)
+          }
+        }
+      }
+    }
+  }
+
   @Test("a tint is the state's color mixed into the surface, so repainting the state repaints it")
   func tintFollowsTheAgentColor() {
     let list = lists[0]
