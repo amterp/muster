@@ -2968,7 +2968,7 @@ mod tests {
 
     #[test]
     fn the_listing_uses_the_helper_order_shared_with_the_sidebar() {
-        use muster_proto::{RosterChanged, RosterPane, RosterTab};
+        use muster_proto::{RosterChanged, RosterPane, RosterTab, Window};
         let fixture = include_str!("../../../corpus/snapshots/helper-list-order.txt");
         let mut lines = fixture.lines().skip(1);
         let expected: Vec<_> = lines.next().unwrap().split_whitespace().collect();
