@@ -1,0 +1,18 @@
+{
+  "_v": 4,
+  "alias": "presence-a-window",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1795298504995,
+  "creator": "Alexander Terp",
+  "description": "Filed by the Antigravity lead (kayak), 2026-11-21. Running the whole muster-seam seam binary on local main at 539e9b3a (RUST_TEST_THREADS=1, machine shared with four other projects' gates; the binary took 600 s against its usual 270 s), this test failed at crates/muster-seam/tests/seam/presence.rs:49 with 'used at 1795298331904, typed after 1795298335093': the presence it waited for carried a last_input_ms 3.2 s EARLIER than the time the test took just before pressing the key. The other 337 tests passed. Alone, the test passed in 0.6 s. Cause not established. The wait is 'last_input_ms.is_some()', so any input time recorded before the keypress satisfies it and then fails the comparison; what recorded one 3 s earlier in this run is the open question (the focus request, an earlier report, or a clock difference between the window and the test). The commits under test touch only agy files. Suggested check: wait for last_input_ms \u003e= before, and find what sets an input time before a key is pressed.",
+  "id": "a_33z6Uuhc3",
+  "position": "b3V",
+  "provenance": "ai-proposed",
+  "title": "🎲 presence::a_window_tells_its_daemon_of_the_person_at_the_desk reports an input time before the keystroke",
+  "type": "bug",
+  "updated_at_millis": 1795298504995,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795298504995}
+  ]
+}

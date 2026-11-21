@@ -1,0 +1,18 @@
+{
+  "_v": 4,
+  "alias": "antigravity-deliver-messages",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1795295258629,
+  "creator": "Alexander Terp",
+  "description": "Raised by the Antigravity lead (kayak), 2026-11-21. The reviewed design ~/src/antigravity-project/design-muster.md, section 'Offer mid-turn delivery after approval and a proof probe' and build step 6, specifies an optional route: an attributed PreInvocation hook obtains a bounded batch of unread messages, injects them with injectSteps, and the daemon advances places only on a verified receipt. Not built in the Antigravity round: agy panes get messages by the typed wake at idle, like any harness with a readable prompt. Trigger: build this when a busy agy pane not receiving urgent posts actually costs something, or when Foreman needs a brief receipt stronger than a place advance. First step is the proof probe the design lists (how to confirm an injection was applied; counter reuse across turns and compaction; a timed-out or malformed hook). The lead's ruling, delegated by the owner: this is an agy-only exception to message-delivery-path, to be enabled only after that probe; marked for owner review.",
+  "id": "a_33xk2h4LR",
+  "position": "b3U",
+  "provenance": "ai-proposed",
+  "title": "Antigravity: deliver messages mid-turn through PreInvocation, with a receipt",
+  "type": "feature",
+  "updated_at_millis": 1795295258629,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795295258629}
+  ]
+}

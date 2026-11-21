@@ -12,6 +12,12 @@
       "body": "2026-11-21: Alex asked for this as part of Antigravity support across all his tools, with harness differences behind one interface. Program plan: ~/src/antigravity-project/plan.md. What agy offers (probed on 1.5.14): ~/src/tai-personal/docs/antigravity.md. Inventory of harness-specific code here: ~/src/antigravity-project/inventory/muster.md. Starts with a design doc, agreed with the sidebar work's lead before any build.",
       "author": "Alexander Terp",
       "created_at_millis": 1795283060545
+    },
+    {
+      "id": "c_33ycm081H",
+      "body": "2026-11-21 kayak (AGY lead): design steps 1-5 are on local main at 539e9b3a, final gate running: manifest-defined screen regions, the muster-adapters crate and harness catalog (install, refresh, copy inspection for all harnesses), public API 0.7 and daemon protocol 1.19 (pane.session_transcript, msg.post.recipient_outcomes), and Antigravity: manifest and 1.5.14 recordings, plugin and status line under extras/agy, muster harness install/refresh agy, transcript provenance and clear reports from hooks. Not pushed, not installed. Step 6 (mid-turn delivery) is deferred to card a_33xk2h4LR. Not verified: agy on Linux at runtime (Docker was down; left to CI), status line loaded from a saved settings file, sign-in screens. Owner-review items: Fencil harness-catalog, agy-adapter-ownership, agy-background-task-state, agy-context-change-evidence, manifest-defined-regions, harness-inbox-and-hook-formats; compaction is a command without a receipt for agy. The audit of agy-specific lines outside the adapter is in the lead's handover.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795297362329
     }
   ],
   "created_at_millis": 1793589609486,
@@ -25,7 +31,7 @@
   ],
   "title": "Antigravity CLI (agy): an adapter, as Claude Code, Codex and OpenCode have",
   "type": "feature",
-  "updated_at_millis": 1795283300308,
+  "updated_at_millis": 1795297362329,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793589609486},
     {"field":"column","value":"in-progress","at":1795283060394}
