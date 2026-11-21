@@ -2912,7 +2912,7 @@ mod tests {
         assert!(!rows[lead + 3].contains("hidden"), "{text}");
         assert!(!text.contains("t2"), "{text}");
 
-        let leaf = |pane: &str| ViewTree {
+        let pane_leaf = |pane: &str| ViewTree {
             node: Some(view_tree::Node::Pane(ViewTreePane {
                 pane: Some(ViewPane { pane_id: pane.to_string(), ..ViewPane::default() }),
                 ..ViewTreePane::default()
@@ -2924,8 +2924,8 @@ mod tests {
                 node: Some(view_tree::Node::Split(Box::new(ViewTreeSplit {
                     axis: "columns".to_string(),
                     ratio: 0.5,
-                    first: Some(Box::new(leaf("p3"))),
-                    second: Some(Box::new(leaf("p4"))),
+                    first: Some(Box::new(pane_leaf("p3"))),
+                    second: Some(Box::new(pane_leaf("p4"))),
                 }))),
             }),
             ..muster_proto::TabLayout::default()
