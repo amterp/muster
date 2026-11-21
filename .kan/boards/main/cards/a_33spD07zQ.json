@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "a-covering-notice-is",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_33spDLK6L",
+      "body": "agent-approved: it fixes a defect (a flaky test); it overturns no decision, adds no interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795283540878
+    }
+  ],
+  "created_at_millis": 1795283540750,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-21 in a full ./dev run on main at a86a5892, with load at 38 against 6 performance cores. muster-cli's waiting_on_agents::a_covering_notice_is_named_in_window_and_wait_until_it_clears panicked at crates/muster-cli/tests/cli/waiting_on_agents.rs:409: its pane send of \"menu\" was refused with 'the prompt in pane ... already holds \"idle\"'. The test reports the agent idle just before, and the fake agent's echo of that word was still on the prompt row when the send looked. It passed alone in 6 s straight after; the other 138 cli tests passed in the same run. The test should wait for the prompt to be empty before sending, not rely on the echo having cleared.",
+  "id": "a_33spD07zQ",
+  "position": "b24",
+  "provenance": "agent-approved",
+  "title": "🎲 a_covering_notice_is_named_in_window_and_wait_until_it_clears had its send refused under load",
+  "type": "bug",
+  "updated_at_millis": 1795283540878,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795283540750}
+  ]
+}
