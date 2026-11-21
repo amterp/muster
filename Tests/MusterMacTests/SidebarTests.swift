@@ -705,9 +705,11 @@ struct SidebarTests {
       let tabs = [first, second].enumerated().map { at, key in
         let helper = Roster.Pane(
           key: key, label: key.pane, onScreen: key == keyboard, maker: maker.pane,
-          under: maker.pane)
-        return tab(
-          key.daemon, spanning ? "w1:t2" : "w1:t\(at + 2)", place: 0, onScreen: key == keyboard,
+          under: maker.pane, helperOrder: UInt32(at + 1))
+        let id = spanning ? "w1:t2" : "w1:t\(at + 2)"
+        return Roster.Tab(
+          id: id, daemons: [key.daemon], place: 0, label: id,
+          onScreen: key == keyboard, nestedHelpers: true,
           panes: [helper])
       }
       let (visible, hidden) = (
@@ -753,29 +755,63 @@ struct SidebarTests {
     #expect(!marker.isEmpty && view.bounds.contains(marker))
   }
 
-  @Test("a collapsed Hidden caption identifies the shown helper of a hidden maker")
-  @MainActor func shownHelperUnderHiddenMaker() throws {
+  @Test("the shown helper of a hidden maker has its own numbered row")
+  func shownHelperUnderHiddenMaker() {
     let maker = pane("local", "w1:p1")
     let helperKey = PaneKey(daemon: "local", pane: "w1:h1")
     let helper = Roster.Pane(
-      key: helperKey, label: "helper", onScreen: true, maker: maker.key.pane,
-      under: maker.key.pane)
+      key: helperKey, place: 1, press: 1, label: "helper", onScreen: true, maker: maker.key.pane)
     let roster = Roster(
       tabs: [tab("local", "w1:t2", onScreen: true, panes: [helper])],
       hidden: [tab("local", "w1:t1", place: 0, panes: [maker])])
     let rows = SidebarModel.rows(
       roster: roster, agents: [:], keyboard: helperKey,
       hiddenCollapsed: true)
-    let caption = try #require(rows.first)
-    #expect(rows.map(\.label) == ["Hidden"])
-    #expect(caption.hasKeyboard)
-    #expect(SidebarModel.summary(of: caption) == "1 hidden pane\nhelper: on screen")
-    let view = SidebarRowView()
-    view.frame = NSRect(x: 0, y: 0, width: 200, height: SidebarModel.height(of: caption))
-    view.show(caption)
-    view.layoutSubtreeIfNeeded()
-    let marker = try #require(view.keyboardMarkFrame)
-    #expect(!marker.isEmpty && view.bounds.contains(marker))
+    #expect(rows.map(\.label) == ["w1:t2", "helper", "Hidden"])
+    #expect(rows.filter(\.hasKeyboard).map(\.kind) == [.pane(tabPress: 0, press: 1)])
+  }
+
+  @Test("the sidebar uses the helper order shared with muster window")
+  func readsHelperOrder() throws {
+    let fixture = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      .appending(path: "corpus/snapshots/helper-list-order.txt")
+    let lines = try String(contentsOf: fixture, encoding: .utf8).split(separator: "\n").dropFirst()
+    let expected = lines[lines.startIndex].split(separator: " ").map(String.init)
+    var maker = Muster_RosterPane()
+    maker.paneID = "maker"
+    maker.label = maker.paneID
+    var work = Muster_RosterTab()
+    work.tabID = "work"
+    work.label = work.tabID
+    work.place = 1
+    work.panes = [maker]
+    var roster = Muster_RosterChanged()
+    roster.tabs = [work]
+    for line in lines.dropFirst() {
+      let fields = line.split(separator: " ").map(String.init)
+      var helper = Muster_RosterPane()
+      helper.paneID = fields[2]
+      helper.label = helper.paneID
+      helper.maker = maker.paneID
+      helper.under = maker.paneID
+      helper.helperOrder = try #require(UInt32(fields[0]))
+      var part = Muster_RosterTab()
+      part.tabID = fields[1]
+      part.label = part.tabID
+      part.color = "blue"
+      part.panes = [helper]
+      if fields[3] == "shown" {
+        part.nestedHelpers = true
+        roster.tabs.append(part)
+      } else {
+        roster.hidden.append(part)
+      }
+    }
+    let rows = SidebarModel.rows(
+      roster: Roster(roster), agents: [:],
+      helpersOpen: [PaneKey(daemon: "", pane: maker.paneID)])
+    #expect(rows.map(\.label) == [work.label] + expected)
   }
 
   /// Hide Helpers takes back only a tab holding nothing but the pane's helpers, so a helper moved

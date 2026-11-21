@@ -101,6 +101,7 @@ extension Roster.Tab {
       givenName: tab.givenName,
       folded: tab.folded,
       color: tab.color,
+      nestedHelpers: tab.nestedHelpers,
       panes: tab.panes.map(Roster.Pane.init))
   }
 }
@@ -126,6 +127,7 @@ extension Roster.Pane {
       directory: pane.directory,
       maker: pane.maker,
       under: pane.under,
+      helperOrder: pane.helperOrder,
       canvas: pane.hasCanvas ? CanvasInfo(pane.canvas) : nil,
       color: pane.color)
   }

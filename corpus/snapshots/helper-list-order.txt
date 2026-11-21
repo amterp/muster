@@ -1,0 +1,4 @@
+# Expected pane labels, then one helper per line. Columns are rank, tab ID, pane ID, and visibility.
+maker first second
+2 t-a second shown
+1 t-z first hidden

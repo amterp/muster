@@ -588,11 +588,12 @@ keyboard lands on the helper you asked for.
 
 The agent list shows helpers as pills on their maker's row. Click the pills to open a flat list
 of helper lines, including helpers of helpers. When a helper is hidden or in a tab shared only by
-its maker's helpers, it stays under its maker in the list. Clicking the helper's line or choosing
+its maker's helpers, it stays under its maker in the list while the maker has a tab in this
+window. Clicking the helper's line or choosing
 Show Helpers brings its tab forward without moving those lines or changing the numbered
-shortcuts. The line highlights when the helper has the keyboard. If the maker's tab is folded,
-its caption shows the helper among its panes and carries the highlight. A helper split beside
-other panes in a regular tab keeps its row there.
+shortcuts. The line highlights when the helper has the keyboard. Closing the helper list moves
+the highlight to the maker's row. When the maker's tab is folded, its caption carries the
+highlight. A helper split beside other panes in a regular tab keeps its row there.
 
 A pill's height and fill show its helper's state. Hovering a pill shows the helper's name,
 state, directory and maker. The maker's row and its pills offer Show Helpers and Hide Helpers in

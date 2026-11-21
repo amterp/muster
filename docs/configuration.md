@@ -838,6 +838,9 @@ its caption and colors the outline. An uncolored tab has a plain caption and a n
 A pane's own color appears as a small chip behind its callsign in the list and in its pane header.
 The pane's tint and edge still show its state. Named colors follow the terminal's palette.
 
+A helpers-only tab listed under its maker has no caption or tab color in the sidebar.
+If it has a saved color, `muster window` prints the tab ID and color.
+
 Right-click a tab caption or an agent row and open **Color**. Pick a named hue, choose **None** to
 clear the color, or pick **Custom Color…** and click **Apply** to save a specific color.
 

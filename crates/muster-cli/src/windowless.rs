@@ -1517,8 +1517,25 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
             ..muster_proto::RosterTab::default()
         }
     };
-    let tabs = shown.into_iter().map(roster_tab).collect();
-    let hidden = hidden.into_iter().map(roster_tab).collect();
+    let mut tabs: Vec<_> = shown.into_iter().map(roster_tab).collect();
+    let mut hidden: Vec<_> = hidden.into_iter().map(roster_tab).collect();
+    let ranks = muster_core::helpers::order(
+        tabs.iter()
+            .chain(&hidden)
+            .flat_map(|tab| {
+                tab.panes.iter().filter(|pane| !pane.maker.is_empty()).map(|pane| {
+                    (tab.tab_id.as_str(), pane.daemon_id.as_str(), pane.pane_id.as_str())
+                })
+            })
+            .collect(),
+    );
+    let ranks: BTreeMap<_, _> =
+        ranks.into_iter().map(|(id, rank)| (id.to_string(), rank)).collect();
+    for pane in tabs.iter_mut().chain(&mut hidden).flat_map(|tab| &mut tab.panes) {
+        if let Some(rank) = ranks.get(&pane.pane_id) {
+            pane.helper_order = u32::try_from(*rank).unwrap_or_default();
+        }
+    }
     let directories: BTreeSet<String> =
         snapshot.panes.iter().map(|pane| pane.cwd.clone()).filter(|cwd| !cwd.is_empty()).collect();
     muster_proto::Window {

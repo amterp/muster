@@ -76,6 +76,7 @@ public struct Roster: Equatable {
     /// The id of the row it is listed beneath rather than where its tab puts it, as the core
     /// decided: its maker's, for a helper listed under its maker. Empty for most panes.
     public let under: String
+    public let helperOrder: UInt32
     public let canvas: CanvasInfo?
     public let color: String
 
@@ -85,7 +86,8 @@ public struct Roster: Equatable {
       clearable: Bool = false, agent: String = "", resumesAs: String = "", quiet: Bool = false,
       callsign: String = "",
       besideCallsign: String? = nil, directory: String = "",
-      maker: String = "", under: String = "", canvas: CanvasInfo? = nil, color: String = ""
+      maker: String = "", under: String = "", helperOrder: UInt32 = 0, canvas: CanvasInfo? = nil,
+      color: String = ""
     ) {
       self.key = key
       self.place = place
@@ -105,6 +107,7 @@ public struct Roster: Equatable {
       self.directory = directory
       self.maker = maker
       self.under = under
+      self.helperOrder = helperOrder
       self.canvas = canvas
       self.color = color
     }
@@ -148,12 +151,13 @@ public struct Roster: Equatable {
     public let givenName: String
 
     public let color: String
+    public let nestedHelpers: Bool
     public let panes: [Pane]
 
     public init(
       id: String, daemons: [String] = [], place: Int, press: Int = 0, armed: Bool = false,
       label: String, onScreen: Bool, givenName: String = "", folded: Bool = false,
-      color: String = "",
+      color: String = "", nestedHelpers: Bool = false,
       panes: [Pane]
     ) {
       self.id = id
@@ -166,6 +170,7 @@ public struct Roster: Equatable {
       self.givenName = givenName
       self.folded = folded
       self.color = color
+      self.nestedHelpers = nestedHelpers
       self.panes = panes
     }
   }
@@ -496,12 +501,9 @@ public enum SidebarModel {
     /// the reason the list exists, and they are drawn as reachable rather than as absent.
     public let onScreen: Bool
 
-    /// Whether this is the pane the keyboard feeds.
-    ///
-    /// Exactly one row can carry it, and it answers a question the window already answers
-    /// with a border - which is the point. A list of a dozen panes beside a window of two is
-    /// hard to read back against; marking the same pane in both is what joins them.
-    public let hasKeyboard: Bool
+    /// Carries the keyboard highlight for the row's pane or a helper under its closed list.
+    /// A folded tab caption carries it when its maker's row is folded away.
+    public var hasKeyboard: Bool
 
     /// How many presses this row leaves room for, whether or not it carries them.
     ///
@@ -722,10 +724,8 @@ public enum SidebarModel {
       pane.callsign.isEmpty ? pane.label : pane.callsign
     }
     func everyHelper(of maker: Roster.Pane) -> [(helper: Helper, madeBy: String)] {
-      // Keep each daemon part's pane order. The order of the parts can differ between
-      // the hidden roster and the combined tree of a shown tab.
       let ordered = (under[maker.key.pane] ?? []).sorted {
-        ($0.tab, $0.pane.key.daemon) < ($1.tab, $1.pane.key.daemon)
+        $0.pane.helperOrder < $1.pane.helperOrder
       }
       return ordered.flatMap {
         [($0, name(maker))] + everyHelper(of: $0.pane)
@@ -757,7 +757,12 @@ public enum SidebarModel {
           madeBy: madeBy)
       }
       rows[rows.count - 1].helpersOpen = open
-      guard open else { return }
+      guard open else {
+        if helpers.contains(where: { $0.helper.pane.key == keyboard }) {
+          rows[rows.count - 1].hasKeyboard = true
+        }
+        return
+      }
       for (helper, _) in helpers {
         var row = paneRow(
           helper.pane, in: helper.tab, agent: agents[helper.pane.key] ?? "unknown", now: now,
@@ -768,8 +773,7 @@ public enum SidebarModel {
         rows.append(row)
       }
     }
-    for tab in roster.tabs
-    where tab.panes.isEmpty || tab.panes.contains(where: { $0.under.isEmpty }) {
+    for tab in roster.tabs where !tab.nestedHelpers {
       let first = rows.count
       let panes = tab.panes.filter { $0.under.isEmpty }
       let foldedHelpers =
@@ -819,19 +823,14 @@ public enum SidebarModel {
     if !hiddenRows.isEmpty {
       let states = hiddenRows.map { (agents[$0.key] ?? "unknown").state }
       let urgent = hiddenCollapsed ? mostUrgent(states) : nil
-      let shownHelpers =
-        hiddenCollapsed
-        ? hiddenRows.flatMap { everyHelper(of: $0).map { $0.helper.pane }.filter(\.onScreen) } : []
-      var caption = Row(
-        kind: .hidden(
-          panes: states.count, urgent: states.filter { $0 == urgent }.count,
-          collapsed: hiddenCollapsed),
-        daemon: "", tab: "", pane: nil, label: "Hidden", subtitle: "",
-        givenName: "", state: urgent ?? "", agent: nil, onScreen: false,
-        hasKeyboard: shownHelpers.contains { $0.key == keyboard }, reservedPresses: 0,
-        machine: nil, isSecondPress: false)
-      caption.foldedPanes = shownHelpers.map(foldedPane)
-      rows.append(caption)
+      rows.append(
+        Row(
+          kind: .hidden(
+            panes: states.count, urgent: states.filter { $0 == urgent }.count,
+            collapsed: hiddenCollapsed),
+          daemon: "", tab: "", pane: nil, label: "Hidden", subtitle: "",
+          givenName: "", state: urgent ?? "", agent: nil, onScreen: false,
+          hasKeyboard: false, reservedPresses: 0, machine: nil, isSecondPress: false))
     }
     for tab in roster.hidden where !hiddenCollapsed {
       for pane in tab.panes where pane.under.isEmpty {
@@ -1021,8 +1020,7 @@ public enum SidebarModel {
       return nil
     }
     let count = panes == 1 ? "1 hidden pane" : "\(panes) hidden panes"
-    let hidden = row.state.isEmpty ? count : "\(count) · \(urgent) \(row.state)"
-    return ([hidden] + row.foldedPanes.map { "\($0.name): on screen" }).joined(separator: "\n")
+    return row.state.isEmpty ? count : "\(count) · \(urgent) \(row.state)"
   }
 
   /// A pane row's second line: what a waiting agent waits on, which says more than its title

@@ -722,7 +722,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool, local:
                     lines.extend(drawing.tab(layout, tab, &states, terminal_width()));
                 }
             }
-            None => lines.extend(rows.tab(tab, keyboard.as_deref(), drawn)),
+            None => lines.extend(rows.tab(tab, keyboard.as_deref(), drawn, !tab.nested_helpers)),
         }
     }
 
@@ -742,7 +742,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool, local:
                     lines.push(drawn_tab_line(&widths, tab, layout));
                     lines.extend(drawing.tab(layout, tab, &states, terminal_width()));
                 }
-                None => lines.extend(rows.tab(tab, None, drawn)),
+                None => lines.extend(rows.tab(tab, None, drawn, !tab.nested_helpers)),
             }
         }
     }
@@ -759,7 +759,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool, local:
         }
         lines.push(styled("hidden", NAME));
         for tab in hidden {
-            lines.extend(rows.tab(tab, keyboard.as_deref(), drawn));
+            lines.extend(rows.tab(tab, keyboard.as_deref(), drawn, false));
         }
     }
 
@@ -1001,9 +1001,10 @@ impl Rows<'_> {
         tab: &muster_proto::RosterTab,
         keyboard: Option<&str>,
         drawn: bool,
+        caption: bool,
     ) -> Vec<String> {
         let mut panes = tab.panes.iter().filter(|pane| !self.helpers.moved(pane)).peekable();
-        if panes.peek().is_none() && !tab.panes.is_empty() {
+        if !caption && tab.color.is_empty() && panes.peek().is_none() {
             return Vec::new();
         }
         let mut lines = vec![tab_line(self.widths, tab)];
@@ -1139,13 +1140,12 @@ impl<'a> Helpers<'a> {
         let other_tabs = window.windows.iter().filter(|other| others.include(other));
         let hidden: Vec<&muster_proto::RosterPane> =
             hidden_tabs(window).flat_map(|tab| tab.panes.iter()).collect();
-        let mut listed: Vec<_> = tabs(window)
+        let listed: Vec<_> = tabs(window)
             .chain(other_tabs.flat_map(|other| other.tabs.iter()))
             .filter(|tab| !drawn(tab))
             .chain(hidden_tabs(window))
-            .flat_map(|tab| tab.panes.iter().map(move |pane| (tab.tab_id.as_str(), pane)))
+            .flat_map(|tab| &tab.panes)
             .collect();
-        listed.sort_by_key(|(tab, pane)| (*tab, pane.daemon_id.as_str()));
         let every = tabs(window)
             .chain(window.windows.iter().flat_map(|other| other.tabs.iter()))
             .flat_map(|tab| tab.panes.iter())
@@ -1161,12 +1161,12 @@ impl<'a> Helpers<'a> {
                 *helpers.counts.entry(&pane.maker).or_default() += 1;
             }
         }
-        let ids: Vec<&str> = listed.iter().map(|(_, pane)| pane.pane_id.as_str()).collect();
-        let candidates: Vec<_> = listed
+        let ids: Vec<&str> = listed.iter().map(|pane| pane.pane_id.as_str()).collect();
+        let mut candidates: Vec<_> = listed
             .into_iter()
-            .map(|(_, pane)| pane)
             .filter(|pane| !pane.under.is_empty() || helpers.hidden.contains(pane.pane_id.as_str()))
             .collect();
+        candidates.sort_by_key(|pane| pane.helper_order);
         let makers: Vec<(&str, Option<&str>)> = candidates
             .iter()
             .map(|pane| {
@@ -2899,6 +2899,7 @@ mod tests {
             pane.on_screen = true;
         }
         shown.on_screen = true;
+        shown.nested_helpers = true;
         roster.tabs.push(shown);
         window.view.get_or_insert_default().keyboard_pane_id = "p4".to_string();
 
@@ -2948,6 +2949,7 @@ mod tests {
                 pane.under.clone_from(&pane.maker);
             }
             if shown {
+                helpers.nested_helpers = true;
                 roster.tabs.push(helpers);
             } else {
                 roster.hidden.push(helpers);
@@ -2962,6 +2964,58 @@ mod tests {
             }
             assert_eq!(text.matches("🤖 otter").count(), 1, "{text}");
         }
+    }
+
+    #[test]
+    fn the_listing_uses_the_helper_order_shared_with_the_sidebar() {
+        use muster_proto::{RosterChanged, RosterPane, RosterTab};
+        let fixture = include_str!("../../../corpus/snapshots/helper-list-order.txt");
+        let mut lines = fixture.lines().skip(1);
+        let expected: Vec<_> = lines.next().unwrap().split_whitespace().collect();
+        let mut roster = RosterChanged {
+            tabs: vec![RosterTab {
+                tab_id: "work".to_string(),
+                place: 1,
+                panes: vec![RosterPane {
+                    pane_id: "maker".to_string(),
+                    callsign: "maker".to_string(),
+                    ..RosterPane::default()
+                }],
+                ..RosterTab::default()
+            }],
+            ..RosterChanged::default()
+        };
+        for line in lines {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            let shown = fields[3] == "shown";
+            let tab = RosterTab {
+                tab_id: fields[1].to_string(),
+                nested_helpers: shown,
+                panes: vec![RosterPane {
+                    pane_id: fields[2].to_string(),
+                    callsign: fields[2].to_string(),
+                    maker: "maker".to_string(),
+                    under: "maker".to_string(),
+                    helper_order: fields[0].parse().unwrap(),
+                    ..RosterPane::default()
+                }],
+                ..RosterTab::default()
+            };
+            if shown {
+                roster.tabs.push(tab);
+            } else {
+                roster.hidden.push(tab);
+            }
+        }
+        let window = Window { roster: Some(roster), ..Window::default() };
+        let text = unstyled(&window_text(&window, 0, Others::All, true, &Local::default()));
+        let labels: Vec<_> = text
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .filter(|label| expected.contains(label))
+            .collect();
+        assert_eq!(labels, expected, "{text}");
+        assert!(!text.contains("t-a") && !text.contains("t-z"), "{text}");
     }
 
     /// The columns stay in line through an indented helper: its state starts where its maker's
