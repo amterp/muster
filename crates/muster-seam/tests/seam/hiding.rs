@@ -495,6 +495,23 @@ fn going_to_a_hidden_helper_brings_its_helpers_tab_back_whole_beside_its_maker()
         || format!("hidden: {:?}", roster().hidden),
     );
     let helpers = hidden();
+    let ordinary_chords = |roster: &RosterChanged| {
+        roster
+            .tabs
+            .iter()
+            .flat_map(|tab| tab.panes.iter())
+            .filter(|pane| pane.maker.is_empty())
+            .map(|pane| (pane.pane_id.clone(), pane.tab_press, pane.pane_press))
+            .collect::<Vec<_>>()
+    };
+    let chords_before = ordinary_chords(&roster());
+    let check_helpers_in_roster = || {
+        let shown = roster();
+        assert_eq!(ordinary_chords(&shown), chords_before);
+        let helpers_tab = &shown.tabs[1];
+        assert!(helpers_tab.panes.iter().all(|pane| pane.under == "p1"), "{helpers_tab:?}");
+        assert!(helpers_tab.panes.iter().all(|pane| pane.tab_press == 0 && pane.pane_press == 0));
+    };
     let beside_the_maker = || {
         let listed: Vec<Vec<String>> = roster()
             .tabs
@@ -521,6 +538,7 @@ fn going_to_a_hidden_helper_brings_its_helpers_tab_back_whole_beside_its_maker()
             )
         },
     );
+    check_helpers_in_roster();
 
     let hide = || {
         assert_ok(&answer(request::Payload::HideHelpers(HideHelpers {
@@ -541,6 +559,7 @@ fn going_to_a_hidden_helper_brings_its_helpers_tab_back_whole_beside_its_maker()
         || format!("tabs: {:?}, hidden: {:?}", roster().tabs, hidden()),
     );
     assert_eq!(keyboard(), keyboard_was, "showing without the keyboard moved it");
+    check_helpers_in_roster();
 
     hide();
     assert_ok(&answer(request::Payload::ShowHelpers(ShowHelpers {
@@ -552,6 +571,7 @@ fn going_to_a_hidden_helper_brings_its_helpers_tab_back_whole_beside_its_maker()
         || hidden().is_empty() && beside_the_maker(),
         || format!("tabs: {:?}, hidden: {:?}", roster().tabs, hidden()),
     );
+    check_helpers_in_roster();
 }
 
 /// A maker closing with a helper still running tells the person once, and the banner the window
