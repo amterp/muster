@@ -3548,7 +3548,7 @@
         "step": { "from": "w1:t1", "direction": "next" }
       },
       "expect": {
-        "machines": ["local connected 1 panes", "devenv connected 1 panes"],
+        "machines": ["devenv connected 1 panes", "local connected 1 panes"],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" off-screen",
           "devenv/w1:p2 place=0 tab=w1:t2 label=\"beta\" on-screen maker=w1:p1 under=w1:p1"
@@ -3589,7 +3589,7 @@
         "showing": ["local/w1:p2"]
       },
       "expect": {
-        "machines": ["local connected 2 panes", "devenv disconnected 0 panes"],
+        "machines": ["devenv disconnected 0 panes", "local connected 2 panes"],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" off-screen",
           "local/w1:p2 place=2 tab=w1:t2 label=\"beta\" on-screen maker=w1:p1"
@@ -3627,7 +3627,7 @@
         "showing": ["local/w1:p2"]
       },
       "expect": {
-        "machines": ["local connected 2 panes", "devenv connected 1 panes"],
+        "machines": ["devenv connected 1 panes", "local connected 2 panes"],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" off-screen",
           "local/w1:p2 place=0 tab=w1:t2 label=\"beta\" on-screen maker=w1:p1 under=w1:p1"
