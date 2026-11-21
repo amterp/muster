@@ -96,6 +96,13 @@ struct RowRegion {
     otherwise: Fallback,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) enum LocatedRow {
+    Unsearched,
+    Missing,
+    Found(usize),
+}
+
 #[derive(Debug, Clone, Default)]
 pub(in crate::manifest) struct Definitions {
     selectors: Vec<FindRow>,
@@ -167,7 +174,7 @@ impl Definitions {
         index: usize,
         text: &'a str,
         lines: &[&'a str],
-        selected: &mut [Option<Option<usize>>],
+        selected: &mut [LocatedRow],
     ) -> &'a str {
         let region = self.regions[index].1;
         let span = match region.select {
@@ -200,7 +207,7 @@ impl Definitions {
         edge: Option<Edge>,
         default: usize,
         lines: &[&str],
-        selected: &mut [Option<Option<usize>>],
+        selected: &mut [LocatedRow],
     ) -> Option<usize> {
         let Some(edge) = edge else { return Some(default) };
         match self.find(edge.row, lines, selected) {
@@ -212,14 +219,11 @@ impl Definitions {
         }
     }
 
-    fn find(
-        &self,
-        index: usize,
-        lines: &[&str],
-        selected: &mut [Option<Option<usize>>],
-    ) -> Option<usize> {
-        if let Some(previous) = selected[index] {
-            return previous;
+    fn find(&self, index: usize, lines: &[&str], selected: &mut [LocatedRow]) -> Option<usize> {
+        match selected[index] {
+            LocatedRow::Found(row) => return Some(row),
+            LocatedRow::Missing => return None,
+            LocatedRow::Unsearched => {}
         }
         let rule = &self.selectors[index];
         let bounds = self.edge(rule.start, 0, lines, selected).zip(self.edge(
@@ -229,7 +233,7 @@ impl Definitions {
             selected,
         ));
         let found = bounds.and_then(|(start, end)| rule.find_in(lines, start, end.max(start)));
-        selected[index] = Some(found);
+        selected[index] = found.map_or(LocatedRow::Missing, LocatedRow::Found);
         found
     }
 }

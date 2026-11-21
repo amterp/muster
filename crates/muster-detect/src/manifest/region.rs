@@ -6,6 +6,7 @@
 mod rows;
 
 use super::Input;
+use rows::LocatedRow;
 pub(super) use rows::{Definitions, RawRegion, RawRow};
 
 const MAX_TOP_REGION_LINE_COUNT: usize = u16::MAX as usize;
@@ -53,8 +54,8 @@ pub(super) struct Screen<'a, 'm> {
     input: Input<'a>,
     definitions: &'m Definitions,
     lines: Option<Vec<&'a str>>,
-    legacy_rows: Vec<Option<Option<usize>>>,
-    defined_rows: Vec<Option<Option<usize>>>,
+    legacy_rows: Vec<LocatedRow>,
+    defined_rows: Vec<LocatedRow>,
 }
 
 impl<'a, 'm> Screen<'a, 'm> {
@@ -79,7 +80,7 @@ impl<'a, 'm> Screen<'a, 'm> {
             Region::Defined(index) => (self.definitions, &mut self.defined_rows, index),
         };
         let lines = self.lines.get_or_insert_with(|| text.lines().collect());
-        selected.resize(definitions.row_count(), None);
+        selected.resize(definitions.row_count(), LocatedRow::Unsearched);
         definitions.slice(index, text, lines, selected)
     }
 }
