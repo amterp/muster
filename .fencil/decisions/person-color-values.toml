@@ -1,0 +1,24 @@
+id = "person-color-values"
+question = "Which colors can a person give a tab or a pane, and how are they named?"
+tags = ["ui", "theming", "configuration", "cli"]
+paths = ["Sources/MusterMac/Sidebar.swift", "proto/muster.proto"]
+
+[[revisions]]
+id = "m3l9l98s"
+date = 2026-11-21
+recorded_by = "other"
+discussion = "person-colors-2026-11"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Any color. The Color menu on a tab's caption and on an agent's entry, and `muster tab color` /
+`muster pane color`, offer the six hues of the terminal's palette by name (red, green, yellow, blue,
+magenta, cyan), stored as that name and drawn from the terminal's [colors], so they follow a theme
+change; and any other color, from the macOS color picker or as `#rrggbb` on the CLI, stored as
+itself. `none` removes a color.'''
+why = '''
+Named palette hues keep to chrome-colors: they derive from colors the person already set, so a
+theme change recolors them with everything else. The picker keeps the owner's practice of setting a
+value directly rather than choosing only from presets.'''
+review = "Chosen by an agent while building what the owner asked for; the mock-up's question 3 asked the owner and got no answer."

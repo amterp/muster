@@ -1,0 +1,25 @@
+{
+  "_v": 4,
+  "alias": "let-a-person-color-a",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1795228881641,
+  "creator": "Alexander Terp",
+  "description": "The owner asked on 2026-11-20 to color a tab or a single pane and to make tabs read more clearly as groups in the agent list, then chose from mock-ups. What to build is recorded in Fencil (`fencil show \u003cid\u003e`):\n\n- `tab-color-look` (owner-decided): Band. A tab's caption is filled with its color and an outline runs round the tab and its entries; a tab without a color keeps a plain caption and a neutral outline, so every tab reads as a block.\n- `pane-color-look` (owner-decided): Chip. A pane's callsign sits on a small block of its color, in its agent-list entry and its pane header.\n- `person-color-values` (agent, marked for review): the terminal palette's six hues by name, following [colors], plus any color from the macOS picker or `#rrggbb`; `none` removes it.\n- `person-color-in-window` (agent, marked for review): no strip above the panes for a tab's color; a pane does not take its tab's color.\n\nThe color is set from a Color submenu on a tab caption's and an agent entry's right-click menus, and by `muster tab color \u003ctab\u003e \u003ccolor\u003e` and `muster pane color --pane \u003cref\u003e \u003ccolor\u003e`, through the one shared action path. The daemon keeps it with the tab or pane, beside its name, so it survives a restart, a reopen and a daemon replacement; a tab spanning two machines keeps it on both daemons, as it keeps its name. Every derived color goes through the chrome-colors function with its minimum-contrast rule; check light, dark and default themes, and that no tab color reaches an entry's blocked or stuck tint or edge.\n\nThe owner did not ask for named groups of several tabs (drawn on the mock-up as another reading of \"group tabs\"); that is not part of this card.",
+  "id": "a_33VtH7wPF",
+  "position": "b1y",
+  "provenance": "approved",
+  "related": [
+    "a_33V7y0osK"
+  ],
+  "title": "Let a person color a tab or a pane: a Band caption for tabs, a Chip callsign for panes",
+  "type": "feature",
+  "updated_at_millis": 1795228902195,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795228881641}
+  ]
+}

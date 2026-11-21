@@ -1,0 +1,28 @@
+id = "pane-color-look"
+question = "How does Muster draw a color a person gives a pane?"
+tags = ["ui", "agent-list", "panes", "theming"]
+paths = ["Sources/MusterMac/Sidebar.swift", "Sources/MusterMac/PaneHeader.swift"]
+
+[[revisions]]
+id = "ed8mu23s"
+date = 2026-11-21
+recorded_by = "other"
+discussion = "person-colors-2026-11"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Chip. The pane's callsign sits on a small rounded block of the pane's color, mixed into the surface
+under it so the callsign's text keeps its contrast, in the pane's agent-list entry and in its pane
+header. A pane with no color draws its callsign as before.'''
+why = '''
+The owner chose it from three drawn directions (Chip, Dot, Ink). A dot after the callsign is easily
+confused with the machine tag's colored square, and inked letters would undo the neutral callsigns
+of agent-identity-colors; a chip marks the pane without either. agent-identity-colors still holds
+for a color Muster gives an agent on its own: this is a color the person picks.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-20
+  quote = "I really like the band approach that looks really nice. Let's do the bands and let's do the chip for the per agent or per pane coloring"
+  note = "Choosing among mock-ups of three ways to draw a tab's color (Rail, Band, Card) and three ways to draw a pane's color (Chip, Dot, Ink), after viewing the rendered boards."

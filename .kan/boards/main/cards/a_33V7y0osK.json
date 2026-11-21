@@ -5,20 +5,30 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "review",
+  "comments": [
+    {
+      "id": "c_33Vtoqhf9",
+      "body": "Mock-ups drawn 2026-11-20: three ways to color a tab (Rail, Band, Card), three to color a pane (Chip, Dot, Ink), a whole window, the Color menu, and named groups of tabs. The owner chose Band and Chip from the rendered boards (Fencil tab-color-look and pane-color-look); the page was not published to Lectern, at the owner's word. The build is a_33VtH7wPF. What to check: that the build card and the four Fencil decisions it lists match what you meant.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795228902442
+    }
+  ],
   "created_at_millis": 1795227063088,
   "creator": "Alexander Terp",
   "description": "The owner asked on 2026-11-20 (chat note) to color a tab or a single pane and to group tabs more visibly in the sidebar, and to settle it with mock-ups first: the mock-up defines the task, then it gets built.\n\nSo this card is the mock-up, as a Lectern page like muster-ui-redesign was: a color the person assigns to a tab, one assigned to a single pane, and how a tab's panes read as one group in the agent list. Show where each color appears (row, pane header, tab) and how it sits beside state colors and machine dots. The redesign's chrome-colors decision (`fencil show chrome-colors`) says Muster takes on no theme and new surfaces derive their colors from existing settings; a color the person picks is a setting, so this fits it, but the mock-up should say so. Once the owner picks, file the build as cards under this one.",
   "id": "a_33V7y0osK",
-  "position": "b1z",
+  "position": "Zu",
   "provenance": "approved",
   "related": [
     "a_2wKW8eBfM"
   ],
   "title": "Mock up tab and pane colors and more visible tab groups in the sidebar",
   "type": "feature",
-  "updated_at_millis": 1795227070307,
+  "updated_at_millis": 1795228902761,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1795227063088}
+    {"field":"column","value":"backlog-hi","at":1795227063088},
+    {"field":"column","value":"in-progress","at":1795227695100},
+    {"field":"column","value":"review","at":1795228902761}
   ]
 }

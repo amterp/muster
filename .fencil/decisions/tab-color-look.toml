@@ -1,0 +1,29 @@
+id = "tab-color-look"
+question = "How does the agent list draw a color a person gives a tab?"
+tags = ["ui", "agent-list", "theming"]
+paths = ["Sources/MusterMac/Sidebar.swift"]
+
+[[revisions]]
+id = "y2dlpzfd"
+date = 2026-11-21
+recorded_by = "other"
+discussion = "person-colors-2026-11"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Band. The tab's caption in the agent list is filled with a band of the tab's color, mixed into the
+list's background so its text keeps its contrast, and an outline in the same color, mixed lighter,
+runs round the whole tab and its entries. A tab with no color keeps a plain caption and a neutral
+outline, so every tab reads as one block whether or not it has a color. Entries inside are drawn as
+before: no tab color reaches an entry's tint or its edge, which mean state.'''
+why = '''
+The owner chose it from three drawn directions (Rail, Band, Card). It makes a tab read as a block,
+which the owner also asked for, and keeps the color on the caption and outline, away from the
+blocked and stuck tints and edges that already carry state in the list.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-20
+  quote = "I really like the band approach that looks really nice. Let's do the bands and let's do the chip for the per agent or per pane coloring"
+  note = "Choosing among mock-ups of three ways to draw a tab's color (Rail, Band, Card) and three ways to draw a pane's color (Chip, Dot, Ink), after viewing the rendered boards."

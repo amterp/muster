@@ -1,0 +1,23 @@
+id = "person-color-in-window"
+question = "Where do a tab's and a pane's colors appear outside the agent list?"
+tags = ["ui", "panes", "theming"]
+paths = ["Sources/MusterMac/PaneHeader.swift", "Sources/MusterMac/Sidebar.swift"]
+
+[[revisions]]
+id = "w1o3w0ff"
+date = 2026-11-21
+recorded_by = "other"
+discussion = "person-colors-2026-11"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+A pane's color appears as the chip on its callsign in its pane header as well as in the agent list.
+A tab's color appears only in the agent list: no strip above the panes is added for it. A pane with
+no color of its own does not take its tab's color.'''
+why = '''
+The window draws one tab at a time, so a tab color in the pane area says little the agent list does
+not, and a strip would cost the panes about 38 pt of height the owner wanted kept for terminal text
+when pane headers were decided. Not inheriting keeps a pane's color meaning that somebody picked it
+for that pane.'''
+review = "Chosen by an agent; the mock-up drew a new strip above the panes for the tab's color and asked the owner (question 4), who did not answer it."
