@@ -33,8 +33,10 @@ and set `stack_with_default: true` so agy still draws its built-in status line.
 
 The wrapper keeps daemon I/O off the status command's output path and suppresses repeated samples.
 Context and title samples count once a hook identifies their conversation. On an explicit resume,
-the next invocation identifies the conversation to the adapter. The wrapper uses agy's shell
-command semantics, and both scripts are quiet outside a foreground Muster pane.
+the next invocation identifies the conversation to the adapter. After a fully idle Stop, the
+status line reports facts until the next invocation. When Escape or a background task leaves a
+turn without a fully idle Stop, an idle sample can still report the turn's end. The wrapper
+uses agy's shell command semantics, and reporting is quiet outside a foreground Muster pane.
 
 [Antigravity plugin reference](https://antigravity.google/docs/plugins?tab=cli) ·
 [Antigravity status-line settings](https://antigravity.google/docs/cli/statusline/)

@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 
 
 STATES = {
@@ -33,7 +34,7 @@ def send(daemon, cwd, arguments, state=None):
     ).returncode in (0, 4)
 
 
-def hook_report(daemon, payload, seen):
+def hook_report(daemon, payload, seen, sampled_at):
     conversation = payload.get("conversationId")
     if not conversation or conversation != os.environ.get("ANTIGRAVITY_CONVERSATION_ID"):
         return
@@ -53,20 +54,30 @@ def hook_report(daemon, payload, seen):
 
     if (args or state) and send(daemon, payload["cwd"], args, state):
         seen["conversation"] = conversation
+        seen["turn_stopped"] = state == "idle"
+        seen["sampled_at"] = max(seen.get("sampled_at", 0), sampled_at)
         seen.pop("status", None)
 
 
-def status_report(daemon, payload, seen):
+def status_state(payload):
+    if payload.get("tool_confirmation_pending") is True:
+        return "blocked"
+    return STATES.get(payload.get("agent_state"))
+
+
+def status_report(daemon, payload, seen, state, sampled_at):
     conversation = payload.get("conversation_id")
     known = seen.get("conversation")
     if known and conversation != known:
         return
-    state = STATES.get(payload.get("agent_state"))
-    if payload.get("tool_confirmation_pending") is True:
-        state = "blocked"
+    if sampled_at < seen.get("sampled_at", 0):
+        return
     if not state:
         seen.pop("status", None)
         return
+    # agy can finish drawing the old turn after its Stop hook already reported idle.
+    if seen.get("turn_stopped"):
+        state = None
 
     args = []
     model = payload.get("model")
@@ -84,8 +95,11 @@ def status_report(daemon, payload, seen):
         args.extend(("--session-name", title))
 
     status = [state, args]
-    if seen.get("status") != status and send(daemon, payload["cwd"], args, state):
+    if seen.get("status") == status or not (args or state):
+        return
+    if send(daemon, payload["cwd"], args, state):
         seen["status"] = status
+        seen["sampled_at"] = sampled_at
 
 
 def foreground_group(mode):
@@ -99,7 +113,7 @@ def foreground_group(mode):
         os.close(tty)
 
 
-def report(mode, daemon, socket, pane, payload):
+def report(mode, daemon, socket, pane, payload, sampled_at):
     cwd = payload.get("cwd")
     if not isinstance(cwd, str) or not os.path.isabs(cwd):
         return
@@ -115,8 +129,15 @@ def report(mode, daemon, socket, pane, payload):
     key = hashlib.sha256(f"{socket}\0{pane}".encode()).hexdigest()
     fd = os.open(directory / key, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "r+") as cache:
-        lock = fcntl.LOCK_EX if mode == "hook" else fcntl.LOCK_EX | fcntl.LOCK_NB
+        state = status_state(payload) if mode == "status" else None
+        lock = fcntl.LOCK_EX
+        # Esc and a Stop that still has background tasks can leave idle to the status line.
+        # Let that final sample reach the daemon even if the preceding report is still sending.
+        if mode == "status" and state != "idle":
+            lock |= fcntl.LOCK_NB
         fcntl.flock(cache, lock)
+        if state == "idle" and foreground_group(mode) != group:
+            return
         try:
             seen = json.load(cache)
         except ValueError:
@@ -126,9 +147,9 @@ def report(mode, daemon, socket, pane, payload):
         previous = seen.copy()
 
         if mode == "hook":
-            hook_report(daemon, payload, seen)
+            hook_report(daemon, payload, seen, sampled_at)
         else:
-            status_report(daemon, payload, seen)
+            status_report(daemon, payload, seen, state, sampled_at)
         if seen != previous:
             cache.seek(0)
             json.dump(seen, cache)
@@ -136,6 +157,7 @@ def report(mode, daemon, socket, pane, payload):
 
 
 def main():
+    sampled_at = time.monotonic_ns()
     mode = sys.argv[1]
     daemon = os.environ.get("MUSTER_DAEMON")
     socket = os.environ.get("MUSTER_DAEMON_SOCKET")
@@ -146,8 +168,11 @@ def main():
         return
     try:
         payload = json.load(sys.stdin)
-        if isinstance(payload, dict):
-            report(mode, daemon, socket, pane, payload)
+        if not isinstance(payload, dict):
+            return
+        if mode == "status" and sys.argv[2:] == ["--background"] and os.fork() != 0:
+            return
+        report(mode, daemon, socket, pane, payload, sampled_at)
     except (OSError, ValueError, TypeError, OverflowError, subprocess.TimeoutExpired):
         pass
 
