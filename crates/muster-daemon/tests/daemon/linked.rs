@@ -24,6 +24,50 @@ struct HoldCarriedReply {
 
 struct OldPostOutcomes;
 
+struct OverlapReplication;
+
+impl muster_harness::Pump for OverlapReplication {
+    fn carry(&self, mut client: std::os::unix::net::UnixStream, daemon: &std::path::Path) {
+        use std::net::Shutdown;
+
+        use proto::connection::{receive, send};
+        use proto::msg_answer::entry::What;
+        use proto::peer_call::Call;
+        use proto::peer_frame::Frame;
+
+        let mut upstream = std::os::unix::net::UnixStream::connect(daemon).unwrap();
+        let mut reading = upstream.try_clone().unwrap();
+        let mut sending = client.try_clone().unwrap();
+        std::thread::spawn(move || {
+            let _ = std::io::copy(&mut reading, &mut sending);
+            let _ = sending.shutdown(Shutdown::Both);
+        });
+        let hello = receive::<proto::Hello>(&mut client).unwrap().unwrap();
+        send(&mut upstream, &hello).unwrap();
+
+        let mut last = None;
+        while let Ok(Some(mut frame)) = receive::<proto::PeerFrame>(&mut client) {
+            if let Some(Frame::Call(proto::PeerCall {
+                call: Some(Call::Replicate(caught)), ..
+            })) = &mut frame.frame
+                && let [entry] = caught.entries.as_slice()
+                && matches!(entry.what, Some(What::Message(_)))
+                && let Some(earlier) = last.replace(entry.clone())
+                && earlier.seq + 1 == entry.seq
+            {
+                // A concurrent refetch can produce this overlap when its answer is applied
+                // after another batch has applied the first entry.
+                caught.entries.insert(0, earlier);
+            }
+            if send(&mut upstream, &frame).is_err() {
+                break;
+            }
+        }
+        let _ = upstream.shutdown(Shutdown::Both);
+        let _ = client.shutdown(Shutdown::Both);
+    }
+}
+
 impl muster_harness::Pump for OldPostOutcomes {
     fn carry(&self, mut client: std::os::unix::net::UnixStream, daemon: &std::path::Path) {
         use std::net::Shutdown;
@@ -420,6 +464,42 @@ fn post_outcomes_distinguish_a_new_peer_an_old_peer_and_a_cut_link() {
         proto::Outcome::Done,
     );
     assert_eq!(reached(&asked), [("critic@far".to_string(), msg_answer::Reach::Waiting)]);
+}
+
+#[test]
+fn overlapping_replication_returns_one_outcome_for_the_new_post() {
+    let (near, far) = (daemon(), daemon());
+    let relay = muster_harness::Relay::start(
+        far.root(),
+        far.socket_path(),
+        std::sync::Arc::new(OverlapReplication),
+    );
+    let _holding = link_at(&near, relay.socket_path(), &mut following(&near), 1);
+    join(&mut near.connect(), &named("builder"), "builder", "review");
+    join(&mut far.connect(), &named("critic"), "critic", "review");
+    let mut far_log = following(&far);
+    let mut waiting = far.connect();
+    waiting.send(msg(&named("critic"), Asked::Wait(msg_request::Wait::default())));
+    far_log.logged_until("msg.waiting", LINKING);
+
+    let mut client = near.api();
+    for (operation, disposition) in
+        [("first", api::PostDisposition::Woken), ("next", api::PostDisposition::Waiting)]
+    {
+        let answered = client.ask(crate::support::post(api::NewPost {
+            operation: operation.into(),
+            group: "review".into(),
+            to: vec!["critic@far".into()],
+            r#as: "builder".into(),
+            body: "review this".into(),
+            ..Default::default()
+        }));
+        assert_eq!(answered.outcome(), api::Outcome::Done, "{:?}", answered.answer);
+        let outcomes = &answered.posted().recipient_outcomes;
+        assert_eq!(outcomes.len(), 1, "{operation}: {outcomes:?}");
+        assert_eq!(outcomes[0].recipient, "critic@far");
+        assert_eq!(outcomes[0].disposition(), disposition);
+    }
 }
 
 /// The callsign the daemon `control` is connected to drew for `pane`.
