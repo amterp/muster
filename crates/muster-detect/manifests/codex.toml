@@ -1,7 +1,7 @@
 id = "codex"
-version = "2026.11.13.3"
-min_engine_version = 20
-updated_at = "2026-11-13T00:00:00Z"
+version = "2026.11.21.1"
+min_engine_version = 21
+updated_at = "2026-11-21T00:00:00Z"
 
 # Stop runs before Codex accepts commands again; its working spinner covers the remaining hooks.
 defer_idle_while_working = true
@@ -11,6 +11,45 @@ defer_idle_while_working = true
 # codex-linux-sandbox, in a process group of its own, and would read as a nested Codex
 # reporting into the pane.
 helpers = ["codex-linux-sandbox", "codex-execve-wrapper", "codex-code-mode-host"]
+
+# A result marker after the last composer marker makes it stale. The last blank before
+# the footer ends the composer even when a multiline draft has blank lines of its own.
+[[rows]]
+id = "last_prompt"
+regex = '^›(?: |$)'
+
+[[rows]]
+id = "current_prompt"
+regex = '^›(?: |$)'
+reject_after = '^[•■✗✓]'
+
+[[rows]]
+id = "footer"
+regex = '\S'
+start = { row = "current_prompt" }
+
+[[rows]]
+id = "gap"
+regex = '^\s*$'
+start = { row = "current_prompt" }
+end = { row = "footer" }
+
+[regions.after_last_composer_marker]
+start = { row = "last_prompt", offset = 1 }
+otherwise = "whole_recent"
+
+[regions.before_composer]
+end = { row = "current_prompt" }
+otherwise = "whole_recent"
+
+[regions.screen_without_composer]
+start = { row = "current_prompt" }
+end = { row = "current_prompt" }
+otherwise = "whole_recent"
+
+[regions.composer]
+start = { row = "current_prompt" }
+end = { row = "gap", if_missing = "bottom" }
 
 # Codex 0.160.0 runs every session's commands and hooks in one app-server, `codex app-server
 # --listen unix:// --managed-daemon`, which the first session starts and later ones join, so they
@@ -79,7 +118,7 @@ regex = ['(?:^| )[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?: |$)']
 id = "transcript_viewer"
 state = "unknown"
 priority = 1000
-region = "after_last_prompt_marker"
+region = "after_last_composer_marker"
 skip_state_update = true
 contains = ["↑/↓ to scroll", "pgup/pgdn to", "home/end to jump", "q to quit"]
 any = [
@@ -185,7 +224,7 @@ line_regex = ['^\s*enter [a-z]+ · esc [a-z]+\s*$']
 id = "live_strong_blocker"
 state = "blocked"
 priority = 900
-region = "after_last_prompt_marker"
+region = "after_last_composer_marker"
 visible_blocker = true
 any = [
   { contains = ["press enter to confirm or esc to cancel"] },
@@ -199,7 +238,7 @@ any = [
 id = "weak_blocker"
 state = "blocked"
 priority = 600
-region = "whole_recent_without_current_prompt_marker"
+region = "screen_without_composer"
 # Sparkles can replace the space after ›. A later response marker makes that prompt stale.
 not = [{ regex = ['(?m)^›[⠁⠂⠄⠈⠐⠠⡀⢀][^\n]*(?:\n(?:[^•■✗✓\n][^\n]*)?)*\z'] }]
 any = [
@@ -213,7 +252,7 @@ any = [
 id = "screen_working_fallback"
 state = "working"
 priority = 500
-region = "before_current_prompt_marker"
+region = "before_composer"
 visible_working = true
 # Support animated and reduced-motion status, including dynamic activity labels.
 # The interrupt hint can be remapped, unbound, or hidden, and queued inputs can
@@ -226,7 +265,7 @@ not = [{ line_regex = ['^(?:[•◦][ \t]+)?Reconnect failed — check the endpo
 # "to be submitted after next tool call" and empties the composer (docs/observations/
 # codex-0.154.0.md, section 6). An urgent ring is typed here, read in the composer alone.
 prompt = '^›\s?'
-prompt_region = "current_prompt"
+prompt_region = "composer"
 
 # Codex at its composer, which the doorbell reads before typing: the composer alone, down to the
 # blank line above its footer, since earlier requests are drawn above it with the same caret and
@@ -236,6 +275,6 @@ prompt_region = "current_prompt"
 id = "live_prompt"
 state = "idle"
 priority = 400
-region = "current_prompt"
+region = "composer"
 line_regex = ['^›(?: |$)']
 prompt = '^›\s?'

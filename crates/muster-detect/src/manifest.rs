@@ -13,13 +13,14 @@
 mod region;
 
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::fmt;
 
 use regex::Regex;
 use serde::Deserialize;
 
 use crate::{State, resume};
-use region::Region;
+use region::{Definitions, RawRegion, RawRow, Region, Screen};
 
 /// The manifest engine this crate implements. 1 to 3 are herdr's, so herdr's manifests keep
 /// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`, 5 adds a
@@ -39,9 +40,11 @@ use region::Region;
 /// and 18 `[session] image_paste`, allowing image paths in a readable composer. Engine 19 adds
 /// `defer_idle_while_working`, holding idle reports behind a positive working signal. Engine 20
 /// adds `[session]` `clear`, the line that empties the session's context, and `resume_files`, the
-/// flags whose value may name a file a resume drops once it has gone.
-pub const ENGINE_VERSION: u32 = 20;
+/// flags whose value may name a file a resume drops once it has gone. Engine 21 lets manifests
+/// define their own screen regions.
+pub const ENGINE_VERSION: u32 = 21;
 
+const DEFINED_REGIONS_ENGINE_VERSION: u32 = 21;
 const DEFER_IDLE_ENGINE_VERSION: u32 = 19;
 
 /// The engine version that introduced a rule's `prompt`.
@@ -177,6 +180,7 @@ pub struct Manifest {
     helpers: Vec<String>,
     defer_idle_while_working: bool,
     server: Option<Server>,
+    regions: Definitions,
     rules: Vec<Rule>,
     /// What typed at the agent's empty prompt renames its session, with `{name}` for the name.
     rename: Option<String>,
@@ -246,9 +250,20 @@ impl Manifest {
     /// Parses, validates and compiles a manifest. The error is a sentence about the manifest,
     /// for a log line that also names where it came from.
     pub fn parse(text: &str) -> Result<Manifest, String> {
-        let raw = toml::from_str::<RawManifest>(text).map_err(|error| error.to_string())?;
-        validate(&raw)?;
-        compile(raw)
+        let mut raw = toml::from_str::<RawManifest>(text).map_err(|error| error.to_string())?;
+        if (raw.rows.is_some() || raw.regions.is_some())
+            && raw.min_engine_version.unwrap_or(0) < DEFINED_REGIONS_ENGINE_VERSION
+        {
+            return Err(format!(
+                "manifest-defined rows and regions need min_engine_version {DEFINED_REGIONS_ENGINE_VERSION} or newer"
+            ));
+        }
+        let regions = Definitions::new(
+            raw.rows.take().unwrap_or_default(),
+            raw.regions.take().unwrap_or_default(),
+        )?;
+        validate(&raw, &regions)?;
+        compile(raw, regions)
     }
 
     /// The engine a manifest says it needs, read without holding it to this engine's schema -
@@ -294,7 +309,8 @@ impl Manifest {
     /// Every rule is evaluated; the highest priority that matches wins, the earlier of two
     /// equal ones; and a known agent that matches nothing is idle.
     pub fn evaluate(&self, input: Input<'_>) -> Detection {
-        let mut detection = match self.decide(input) {
+        let mut screen = Screen::new(input, &self.regions);
+        let mut detection = match self.decide(&mut screen, true) {
             Some(rule) => Detection {
                 state: rule.state,
                 visible: rule.visible,
@@ -305,7 +321,7 @@ impl Manifest {
             None => Detection::fallback(State::Idle),
         };
         if detection.state == State::Idle {
-            detection.waiting = self.waits_on(input).map(str::to_string);
+            detection.waiting = self.waits_on(&mut screen).map(str::to_string);
         }
         detection
     }
@@ -414,8 +430,9 @@ impl Manifest {
     /// rule is decided and its region found on the screen as drawn, since what frames a prompt
     /// may be drawn faint too; only the prompt's own text is read from `typed`.
     pub fn prompt(&self, input: Input<'_>, typed: &str) -> Option<Prompt> {
-        let rule = self.decide(input).filter(|rule| rule.state == State::Idle)?;
-        read_prompt(rule, input, typed)
+        let mut screen = Screen::new(input, &self.regions);
+        let rule = self.decide(&mut screen, true).filter(|rule| rule.state == State::Idle)?;
+        read_prompt(rule, &mut screen, typed)
     }
 
     /// What the prompt holds of an agent at work, for an agent that takes what is typed while
@@ -427,32 +444,36 @@ impl Manifest {
     /// or a viewer from being read as the prompt: a title says what the agent is doing, never
     /// what a keystroke would land in, so a title rule outranking them must not decide here.
     pub fn prompt_at_work(&self, input: Input<'_>, typed: &str) -> Option<Prompt> {
-        self.decide(input).filter(|rule| rule.state == State::Working)?;
-        let screen = Input { screen: input.screen, title: "", progress: "" };
-        let rule = self.decide(screen).filter(|rule| rule.state == State::Working)?;
-        read_prompt(rule, screen, typed)
+        let mut screen = Screen::new(input, &self.regions);
+        self.decide(&mut screen, true).filter(|rule| rule.state == State::Working)?;
+        let rule = self.decide(&mut screen, false).filter(|rule| rule.state == State::Working)?;
+        read_prompt(rule, &mut screen, typed)
     }
 
     /// The rule that decides: every rule is evaluated, and the highest priority that matches
     /// wins, the earlier of two equal ones.
-    fn decide(&self, input: Input<'_>) -> Option<&Rule> {
-        Self::first(self.rules.iter().filter(|rule| rule.waiting.is_none()), input)
+    fn decide(&self, screen: &mut Screen<'_, '_>, with_osc: bool) -> Option<&Rule> {
+        Self::first(self.rules.iter().filter(|rule| rule.waiting.is_none()), screen, with_osc)
     }
 
     /// What the highest of the rules with `waiting` that match says an agent read as idle is
     /// waiting on. They never decide the state, so a screen another rule reads otherwise - a
     /// menu opened over the prompt - is never made idle by what still runs behind it.
-    fn waits_on(&self, input: Input<'_>) -> Option<&str> {
-        Self::first(self.rules.iter().filter(|rule| rule.waiting.is_some()), input)?
+    fn waits_on(&self, screen: &mut Screen<'_, '_>) -> Option<&str> {
+        Self::first(self.rules.iter().filter(|rule| rule.waiting.is_some()), screen, true)?
             .waiting
             .as_deref()
     }
 
     /// The highest priority of `rules` that matches, the earlier of two equal ones.
-    fn first<'a>(rules: impl Iterator<Item = &'a Rule>, input: Input<'_>) -> Option<&'a Rule> {
+    fn first<'a>(
+        rules: impl Iterator<Item = &'a Rule>,
+        screen: &mut Screen<'_, '_>,
+        with_osc: bool,
+    ) -> Option<&'a Rule> {
         let mut matched: Option<&Rule> = None;
         for rule in rules {
-            if !rule.gate.matches_text(rule.region.slice(input)) {
+            if !rule.gate.matches_text(screen.slice(rule.region, with_osc)) {
                 continue;
             }
             match matched {
@@ -466,10 +487,10 @@ impl Manifest {
 
 /// What the prompt holds, on a screen `rule` decides: read from the line its marker is found
 /// on, in its prompt region, to the region's end.
-fn read_prompt(rule: &Rule, input: Input<'_>, typed: &str) -> Option<Prompt> {
+fn read_prompt(rule: &Rule, screen: &mut Screen<'_, '_>, typed: &str) -> Option<Prompt> {
     let marker = rule.prompt.as_ref()?;
-    let region = rule.prompt_region.unwrap_or(rule.region).slice(input);
-    let screen = input.screen;
+    let region = screen.slice(rule.prompt_region.unwrap_or(rule.region), false);
+    let screen = screen.text();
     let start = (region.as_ptr() as usize).checked_sub(screen.as_ptr() as usize)?;
     if start + region.len() > screen.len() {
         return None;
@@ -604,6 +625,8 @@ struct RawManifest {
     #[serde(default)]
     defer_idle_while_working: bool,
     server: Option<RawServer>,
+    rows: Option<Vec<RawRow>>,
+    regions: Option<BTreeMap<String, RawRegion>>,
     #[serde(default)]
     rules: Vec<RawRule>,
     session: Option<RawSession>,
@@ -733,7 +756,7 @@ fn default_region() -> String {
     "whole_recent".to_string()
 }
 
-fn validate(manifest: &RawManifest) -> Result<(), String> {
+fn validate(manifest: &RawManifest, regions: &Definitions) -> Result<(), String> {
     if manifest.defer_idle_while_working
         && manifest.min_engine_version.unwrap_or(0) < DEFER_IDLE_ENGINE_VERSION
     {
@@ -770,7 +793,7 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
                 ));
             }
         }
-        let region = Region::parse(&rule.region).ok_or_else(|| {
+        let region = Region::parse(&rule.region, regions).ok_or_else(|| {
             format!("rule {} uses invalid region: {}", rule.id, rule.region.trim())
         })?;
         if matches!(region, Region::TopNonEmptyLines(_))
@@ -784,13 +807,13 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
                 rule.id
             ));
         }
-        reads_current_prompt(manifest, rule, region)?;
+        validate_legacy_prompt_region(manifest, rule, &rule.region)?;
         if rule.prompt.is_some()
             || rule.prompt_region.is_some()
             || rule.prompt_margin.is_some()
             || rule.prompt_placeholder.is_some()
         {
-            validate_prompt(manifest, rule, region)?;
+            validate_prompt(manifest, rule, region, regions)?;
         }
         validate_gate(&rule.gate(), "rule", 0, &mut complexity)
             .map_err(|error| format!("rule {} has invalid matcher gates: {error}", rule.id))?;
@@ -1051,14 +1074,15 @@ fn validate_wake(manifest: &RawManifest, wake: &[String]) -> Result<(), String> 
 
 /// An engine before 7 does not know `current_prompt`, nor one before 9 `bar_prompt`, so a
 /// manifest using either says it needs the engine that does.
-fn reads_current_prompt(
+fn validate_legacy_prompt_region(
     manifest: &RawManifest,
     rule: &RawRule,
-    region: Region,
+    name: &str,
 ) -> Result<(), String> {
-    let (name, needs) = match region {
-        Region::CurrentPrompt => ("current_prompt", CURRENT_PROMPT_ENGINE_VERSION),
-        Region::BarPrompt => ("bar_prompt", BAR_PROMPT_ENGINE_VERSION),
+    let name = name.trim();
+    let needs = match name {
+        "current_prompt" => CURRENT_PROMPT_ENGINE_VERSION,
+        "bar_prompt" => BAR_PROMPT_ENGINE_VERSION,
         _ => return Ok(()),
     };
     if manifest.min_engine_version.unwrap_or(0) < needs {
@@ -1072,7 +1096,12 @@ fn reads_current_prompt(
 
 /// A prompt is read off the screen, and only a rule that says the agent is idle, or at work
 /// and taking what is typed into its turn, can say where it is.
-fn validate_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Result<(), String> {
+fn validate_prompt(
+    manifest: &RawManifest,
+    rule: &RawRule,
+    region: Region,
+    regions: &Definitions,
+) -> Result<(), String> {
     let engine = manifest.min_engine_version.unwrap_or(0);
     if rule.prompt.is_none() {
         return Err(format!(
@@ -1101,12 +1130,15 @@ fn validate_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Re
         ));
     }
     let read_in = match &rule.prompt_region {
-        Some(text) => Region::parse(text).ok_or_else(|| {
-            format!("rule {} uses invalid prompt_region: {}", rule.id, text.trim())
-        })?,
+        Some(text) => {
+            let region = Region::parse(text, regions).ok_or_else(|| {
+                format!("rule {} uses invalid prompt_region: {}", rule.id, text.trim())
+            })?;
+            validate_legacy_prompt_region(manifest, rule, text)?;
+            region
+        }
         None => region,
     };
-    reads_current_prompt(manifest, rule, read_in)?;
     if (rule.prompt_margin.is_some() || rule.prompt_placeholder.is_some())
         && engine < BAR_PROMPT_ENGINE_VERSION
     {
@@ -1248,14 +1280,14 @@ impl RawGate {
     }
 }
 
-fn compile(raw: RawManifest) -> Result<Manifest, String> {
+fn compile(raw: RawManifest, regions: Definitions) -> Result<Manifest, String> {
     let rules =
         raw.rules
             .into_iter()
             .map(|rule| {
                 let gate = compile_gate(&rule.gate())
                     .map_err(|error| format!("rule {} could not be compiled: {error}", rule.id))?;
-                let region = Region::parse(&rule.region).ok_or_else(|| {
+                let region = Region::parse(&rule.region, &regions).ok_or_else(|| {
                     format!("rule {} uses invalid region: {}", rule.id, rule.region)
                 })?;
                 let state = rule.state.map_or(State::Unknown, State::from);
@@ -1267,7 +1299,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
                     .prompt_region
                     .as_deref()
                     .map(|text| {
-                        Region::parse(text).ok_or_else(|| {
+                        Region::parse(text, &regions).ok_or_else(|| {
                             format!("rule {} uses invalid prompt_region: {text}", rule.id)
                         })
                     })
@@ -1312,6 +1344,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         server: raw
             .server
             .map(|server| Server { subcommand: server.subcommand, remedy: server.remedy }),
+        regions,
         rules,
         rename: raw.session.as_ref().and_then(|session| session.rename.clone()),
         compact: raw.session.as_ref().and_then(|session| session.compact.clone()),

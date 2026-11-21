@@ -1,8 +1,38 @@
 id = "claude"
-version = "2026.11.13.1"
-min_engine_version = 20
-updated_at = "2026-11-13T00:00:00Z"
+version = "2026.11.21.1"
+min_engine_version = 21
+updated_at = "2026-11-21T00:00:00Z"
 aliases = ["claude-code"]
+
+# The composer sits between the last two horizontal rules. Its lower border may have a label.
+[[rows]]
+id = "box_top"
+regex = '^\s*(?:─{1,2}\s*$|─{3})'
+nth = 2
+
+[[rows]]
+id = "box_bottom"
+regex = '^\s*(?:─{1,2}\s*$|─{3})'
+
+[[rows]]
+id = "above_box"
+regex = '\S'
+end = { row = "box_top", if_missing = "bottom" }
+
+[regions.composer]
+start = { row = "box_top", offset = 1 }
+end = { row = "box_bottom" }
+
+[regions.above_composer]
+end = { row = "box_top" }
+otherwise = "whole_recent"
+
+[regions.last_line_above_composer]
+line = "above_box"
+
+[regions.after_composer_border]
+start = { row = "box_bottom", offset = 1 }
+otherwise = "whole_recent"
 
 # Typed at an empty prompt with a Return, as a person names a session: what `/resume` lists and
 # the prompt box's top rule shows (docs/observations/claude-code-2.1.288.md, section 5).
@@ -72,23 +102,23 @@ any = [
 # turn, so an urgent message may be typed here. Read in the box alone: the request that started
 # the turn is drawn above it with the same caret.
 prompt = '^\s*❯\s?'
-prompt_region = "prompt_box_body"
+prompt_region = "composer"
 
 # The parent takes input while its child keeps the busy title animating (2.1.318 recording).
 [[rules]]
 id = "background_agents_idle"
 state = "idle"
-region = "last_non_empty_above_prompt_box"
+region = "last_line_above_composer"
 priority = 1110
 visible_idle = true
 prompt = '^\s*❯\s?'
-prompt_region = "prompt_box_body"
+prompt_region = "composer"
 line_regex = ['^\s*[\x{002A}\x{00B7}\x{2722}\x{2736}\x{273B}\x{273D}]\s+Waiting for [1-9]\d* background agents? to finish\s*$']
 
 [[rules]]
 id = "background_agents_waiting"
 state = "idle"
-region = "last_non_empty_above_prompt_box"
+region = "last_line_above_composer"
 waiting = "its background agents"
 line_regex = ['^\s*[\x{002A}\x{00B7}\x{2722}\x{2736}\x{273B}\x{273D}]\s+Waiting for [1-9]\d* background agents? to finish\s*$']
 
@@ -144,7 +174,7 @@ state = "unknown"
 # anybody: above live_blocked_form, so the state stays what it was. Keyed on each menu's title,
 # the first line below the last horizontal rule.
 priority = 1160
-region = "after_last_horizontal_rule"
+region = "after_composer_border"
 skip_state_update = true
 shows = "a menu opened from its prompt"
 contains = ["esc to cancel"]
@@ -162,7 +192,7 @@ state = "blocked"
 # The region is what keeps stale text out: once the dialog closes, below the last rule is the
 # status footer again.
 priority = 1150
-region = "after_last_horizontal_rule"
+region = "after_composer_border"
 visible_blocker = true
 contains = ["esc to cancel"]
 any = [
@@ -284,7 +314,7 @@ not = [
 id = "live_prompt_box"
 state = "idle"
 priority = 950
-region = "prompt_box_body"
+region = "composer"
 visible_idle = true
 line_regex = ['^\s*❯']
 # What follows the caret is the prompt's text; 2.1.283 puts a no-break space after it.
@@ -309,7 +339,7 @@ not = [
 [[rules]]
 id = "background_shells_waiting"
 state = "idle"
-region = "above_prompt_box"
+region = "above_composer"
 waiting = "its background shells"
 regex = ['(?m)^[\x{002A}\x{00B7}\x{2722}\x{2733}\x{2736}\x{273B}\x{273D}][ \t]+\S[^\n]*?(?:\n[ \t]+[^\n]*?){0,3}·(?:[ \t]+|\n[ \t]*)(?:[1-9]\d*(?:[ \t]+|\n[ \t]*)\w+,(?:[ \t]+|\n[ \t]*))*[1-9]\d*(?:[ \t]+|\n[ \t]*)shells?(?:,(?:[ \t]+|\n[ \t]*)[1-9]\d*(?:[ \t]+|\n[ \t]*)\w+)*(?:[ \t]+|\n[ \t]*)still(?:[ \t]+|\n[ \t]*)running\s*\z']
 
@@ -362,7 +392,7 @@ state = "blocked"
 # Above every working rule, for live_blocked_form's reason. bash_permission_prompt stays below
 # them, because it reads the whole recent screen.
 priority = 1150
-region = "after_last_horizontal_rule"
+region = "after_composer_border"
 visible_blocker = true
 contains = ["do you want to proceed?", "esc to cancel"]
 all = [
@@ -382,7 +412,7 @@ state = "blocked"
 # pane narrower than itself, so the words are matched across lines: wrapped, nothing else on
 # screen said blocked, and the idle title decided.
 priority = 1150
-region = "after_last_horizontal_rule"
+region = "after_composer_border"
 visible_blocker = true
 regex = ['(?i)would\s+you\s+like\s+to\s+proceed\?']
 line_regex = ['(?i)^\s*❯?\s*1\.\s*yes\b']

@@ -31,7 +31,9 @@ fn deferring_idle_reports_requires_engine_nineteen() {
 }
 
 fn region(content: &str, spec: &str) -> String {
-    Region::parse(spec).expect("a valid region").slice(screen(content)).to_string()
+    let definitions = Definitions::default();
+    let region = Region::parse(spec, &definitions).expect("a valid region");
+    Screen::new(screen(content), &definitions).slice(region, true).to_string()
 }
 
 #[test]
@@ -333,10 +335,129 @@ fn top_non_empty_lines_uses_top_occurrence_for_repeated_text() {
 #[test]
 fn top_non_empty_lines_requires_a_canonical_positive_bounded_count() {
     let name = "top_non_empty_lines";
-    assert!(Region::parse(&format!("{name}(1)")).is_some());
-    assert!(Region::parse(&format!("{name}({})", u16::MAX)).is_some());
+    let definitions = Definitions::default();
+    assert!(Region::parse(&format!("{name}(1)"), &definitions).is_some());
+    assert!(Region::parse(&format!("{name}({})", u16::MAX), &definitions).is_some());
     for count in ["0", "01", "+1", "65536", "999999999999999999999999"] {
-        assert!(Region::parse(&format!("{name}({count})")).is_none(), "accepted {count}");
+        assert!(
+            Region::parse(&format!("{name}({count})"), &definitions).is_none(),
+            "accepted {count}"
+        );
+    }
+}
+
+const CUSTOM_COMPOSER: &str = r#"
+id = "custom-harness"
+min_engine_version = 21
+
+[[rows]]
+id = "marker"
+regex = '^→ '
+reject_after = '^approval$'
+
+[[rows]]
+id = "footer"
+regex = '^status:'
+take = "first"
+start = { row = "marker", offset = 1 }
+
+[regions.composer]
+start = { row = "marker" }
+end = { row = "footer", if_missing = "bottom" }
+
+[[rules]]
+id = "active_composer"
+state = "idle"
+region = "composer"
+line_regex = ['^→ ']
+prompt = '^→ '
+"#;
+
+#[test]
+fn a_custom_region_reads_drawn_rows_and_uses_them_for_typed_text() {
+    let manifest = Manifest::parse(CUSTOM_COMPOSER).unwrap();
+    let drawn = "→ old prompt\nanswer\n→ suggestion\nstatus: ready\n";
+    let typed = "  old prompt\n      \n            \nstatus: ready\n";
+    assert_eq!(manifest.evaluate(screen(drawn)).rule.as_deref(), Some("active_composer"));
+    assert_eq!(manifest.prompt(screen(drawn), typed), Some(Prompt::Empty));
+
+    let drawn = "→ draft\n\n  another line\nstatus: ready\n";
+    assert_eq!(
+        manifest.prompt(screen(drawn), drawn),
+        Some(Prompt::Holds("draft another line".into()))
+    );
+    let drawn = "→ old prompt\napproval\n";
+    assert_eq!(manifest.evaluate(screen(drawn)).rule, None);
+    assert_eq!(manifest.prompt(screen(drawn), drawn), None);
+    assert_eq!(manifest.prompt(screen("→ draft"), "→ draft"), Some(Prompt::Holds("draft".into())));
+}
+
+#[test]
+fn a_custom_region_rejects_invalid_selectors_and_requires_engine_twenty_one() {
+    for (from, to, expected) in [
+        ("min_engine_version = 21", "min_engine_version = 20", "21"),
+        ("row = \"marker\"", "row = \"missing\"", "undefined row missing"),
+        ("row = \"marker\"", "row = \"footer\"", "undefined row footer"),
+        ("offset = 1", "offset = 33", "row offset"),
+        ("take = \"first\"", "take = \"run_start\"\nnth = 2", "nth with run_start"),
+        ("regex = '^→ '", "regex = '['", "invalid regex"),
+        ("regions.composer", "regions.current_prompt", "built-in region name"),
+        ("region = \"composer\"", "region = \"missing\"", "invalid region: missing"),
+    ] {
+        let error = Manifest::parse(&CUSTOM_COMPOSER.replace(from, to)).unwrap_err();
+        assert!(error.contains(expected), "{from} -> {to}: {error}");
+    }
+}
+
+#[test]
+fn migrated_regions_slice_recorded_screens_like_legacy_regions() {
+    type RegionPairs<'a> = &'a [(&'a str, &'a str)];
+    let manifests: &[(&str, &str, RegionPairs<'_>)] = &[
+        (
+            "claude",
+            include_str!("../../manifests/claude.toml"),
+            &[
+                ("composer", "prompt_box_body"),
+                ("above_composer", "above_prompt_box"),
+                ("last_line_above_composer", "last_non_empty_above_prompt_box"),
+                ("after_composer_border", "after_last_horizontal_rule"),
+            ],
+        ),
+        (
+            "codex",
+            include_str!("../../manifests/codex.toml"),
+            &[
+                ("composer", "current_prompt"),
+                ("after_last_composer_marker", "after_last_prompt_marker"),
+                ("before_composer", "before_current_prompt_marker"),
+                ("screen_without_composer", "whole_recent_without_current_prompt_marker"),
+            ],
+        ),
+        ("opencode", include_str!("../../manifests/opencode.toml"), &[("composer", "bar_prompt")]),
+    ];
+    let corpus = conformance::Conformance::load("agent-prompt.json");
+    for (agent, text, names) in manifests {
+        let manifest = Manifest::parse(text).unwrap();
+        let mut compared = 0;
+        for case in &corpus.cases {
+            if case.given["agent"].as_str() != Some(*agent) {
+                continue;
+            }
+            let drawn = case.given["screen"].as_str().expect("recorded screen");
+            let mut screen = Screen::new(screen(drawn), &manifest.regions);
+            for (defined, legacy) in *names {
+                let defined_region = Region::parse(defined, &manifest.regions).unwrap();
+                let legacy_region = Region::parse(legacy, &manifest.regions).unwrap();
+                assert_eq!(
+                    screen.slice(defined_region, true),
+                    screen.slice(legacy_region, true),
+                    "{agent}: {defined} differs from {legacy} in {}",
+                    case.name
+                );
+            }
+            compared += 1;
+        }
+        assert!(compared > 0, "no recorded prompt cases for {agent}");
     }
 }
 

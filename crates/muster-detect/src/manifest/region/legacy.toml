@@ -1,0 +1,91 @@
+# These definitions preserve the standard region names that earlier engines supplied.
+[[rows]]
+id = "codex_last_prompt"
+regex = '^›(?: |$)'
+
+[[rows]]
+id = "codex_current_prompt"
+regex = '^›(?: |$)'
+reject_after = '^[•■✗✓]'
+
+[[rows]]
+id = "codex_block"
+regex = '^[•■✗✓]'
+end = { row = "codex_current_prompt" }
+
+[[rows]]
+id = "codex_footer"
+regex = '\S'
+start = { row = "codex_current_prompt" }
+
+[[rows]]
+id = "codex_gap"
+regex = '^\s*$'
+start = { row = "codex_current_prompt" }
+end = { row = "codex_footer" }
+
+[[rows]]
+id = "box_top"
+regex = '^\s*(?:─{1,2}\s*$|─{3})'
+nth = 2
+
+[[rows]]
+id = "box_bottom"
+regex = '^\s*(?:─{1,2}\s*$|─{3})'
+
+[[rows]]
+id = "above_box"
+regex = '\S'
+end = { row = "box_top", if_missing = "bottom" }
+
+[[rows]]
+id = "bar_bottom"
+regex = '^\s*╹'
+
+[[rows]]
+id = "bar_top"
+regex = '^\s*┃'
+take = "run_start"
+end = { row = "bar_bottom" }
+
+[regions.after_last_prompt_marker]
+start = { row = "codex_last_prompt", offset = 1 }
+otherwise = "whole_recent"
+
+[regions.before_current_prompt_marker]
+end = { row = "codex_current_prompt" }
+otherwise = "whole_recent"
+
+[regions.whole_recent_without_current_prompt_marker]
+start = { row = "codex_current_prompt" }
+end = { row = "codex_current_prompt" }
+otherwise = "whole_recent"
+
+[regions.current_prompt_block_marker]
+line = "codex_block"
+
+[regions.after_current_prompt_block_marker]
+start = { row = "codex_block" }
+
+[regions.current_prompt]
+start = { row = "codex_current_prompt" }
+end = { row = "codex_gap", if_missing = "bottom" }
+
+[regions.bar_prompt]
+start = { row = "bar_top" }
+end = { row = "bar_bottom", offset = -1 }
+
+[regions.prompt_box_body]
+start = { row = "box_top", offset = 1 }
+end = { row = "box_bottom" }
+
+[regions.above_prompt_box]
+end = { row = "box_top" }
+otherwise = "whole_recent"
+
+[regions.last_non_empty_above_prompt_box]
+line = "above_box"
+
+[regions.after_last_horizontal_rule]
+start = { row = "box_bottom", offset = 1 }
+otherwise = "whole_recent"

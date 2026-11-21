@@ -2,10 +2,25 @@
 # agent by, since Muster identifies an agent only by the names its manifest gives; and
 # `prompt_box`, reading OpenCode's prompt for the doorbell.
 id = "opencode"
-version = "2026.11.11.1"
-min_engine_version = 15
-updated_at = "2026-11-11T00:00:00Z"
+version = "2026.11.21.1"
+min_engine_version = 21
+updated_at = "2026-11-21T00:00:00Z"
 aliases = ["open-code", "opencode2", "herdr:opencode"]
+
+# The last barred row above the foot names the agent and model. Exclude it from input.
+[[rows]]
+id = "bar_bottom"
+regex = '^\s*╹'
+
+[[rows]]
+id = "bar_top"
+regex = '^\s*┃'
+take = "run_start"
+end = { row = "bar_bottom" }
+
+[regions.composer]
+start = { row = "bar_top" }
+end = { row = "bar_bottom", offset = -1 }
 
 [session]
 # No compact: `/compact` and its Return in one write leave the command in the box, its Return taken
@@ -81,7 +96,7 @@ all = [{ line_regex = ['\S\s{8,}esc$'] }, { line_regex = ['^\s*Search$'] }]
 id = "prompt_box"
 state = "idle"
 priority = 50
-region = "bar_prompt"
+region = "composer"
 line_regex = ['^\s*┃']
 prompt = '^\s*┃'
 prompt_margin = '^\s*┃'

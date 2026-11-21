@@ -709,6 +709,44 @@ when the app sends manifests on connecting, so a file saved here applies within 
 ends nothing; only panes running an agent whose manifest changed start their detection over, so
 neither an edit nor a reconnect makes a working agent flash idle.
 
+Detection engine 21 lets a manifest define screen regions with `[[rows]]` and `[regions.<name>]`.
+A rule can name one in `region` or `prompt_region`. For example, if a prompt starts with `>` and
+ends just above a status line, the region can include the composer and leave out the status line.
+
+```toml
+min_engine_version = 21
+
+[[rows]]
+id = "prompt"
+regex = '^> '
+
+[[rows]]
+id = "status"
+regex = '^Status:'
+take = "first"
+start = { row = "prompt", offset = 1 }
+
+[regions.composer]
+start = { row = "prompt" }
+end = { row = "status", if_missing = "bottom" }
+```
+
+A row selector uses a regex against one drawn line at a time. By default it takes the last
+match. Set `take = "first"` to search from the start, or use `nth` to take a later match in the
+search order. With `take = "run_start"`, it takes the first row in the run of matching lines
+that reaches the end of the search. `reject_after` discards the selected row if another regex
+matches a later line in the search.
+
+The search and region span the screen unless constrained. A selector can refer to rows declared
+above it. A boundary names a row and can apply a signed `offset` to a match. The start is inclusive
+and the end exclusive. If the row is missing, the boundary fails unless it specifies
+`if_missing = "top"` or `"bottom"`. A region whose boundary fails returns empty text by default.
+Set `otherwise = "whole_recent"` to use the whole screen. Use `line = "row_id"` in place of both
+boundaries to read one line without its final newline.
+
+Muster locates these rows on the drawn screen and reads typed text from the same rows. Standard
+region names from older engines still work in overrides.
+
 **`MUSTER_AGENT` names the agent a process is, whatever its executable is called.** Set it in
 the environment a wrapper script starts its agent with - `MUSTER_AGENT=claude` - and the daemon
 reads it off that process and matches it against the manifests' names. macOS does not show the

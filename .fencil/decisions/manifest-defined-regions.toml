@@ -1,0 +1,25 @@
+id = "manifest-defined-regions"
+question = "Where does a detection manifest describe how to find its harness's prompt and other screen regions?"
+tags = ["detection", "manifests", "harnesses"]
+paths = ["crates/muster-detect/src/manifest.rs", "crates/muster-detect/src/manifest/region.rs", "crates/muster-detect/src/manifest/region/rows.rs", "crates/muster-detect/src/manifest/region/legacy.toml", "crates/muster-detect/manifests/claude.toml", "crates/muster-detect/manifests/codex.toml", "crates/muster-detect/manifests/opencode.toml"]
+
+[[revisions]]
+id = "ykyqtoc4"
+date = 2026-11-21
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+The harness's detection manifest defines screen regions using named row selectors and range
+boundaries. Detection compiles and evaluates a bounded vocabulary shared by every manifest.
+It locates the region on the drawn screen and reads typed text from the same rows. Detection
+engine 21 introduces these definitions. Earlier region names keep their original meanings.
+'''
+why = '''
+Previously, a new composer shape meant changing the Rust evaluator even when a manifest
+could already describe the rest of that harness. Row selectors keep the prompt geometry
+beside the rules that use it. They handle scrollback, footers and dialog overlays without
+branching on the harness name. The old names remain readable so saved overrides and
+manifests arriving from an older app keep the regions they were written against.
+'''
