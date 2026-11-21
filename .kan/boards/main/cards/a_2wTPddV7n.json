@@ -12,6 +12,12 @@
       "body": "2026-11-14: failed again in a `./dev -tl` gate at load 20.7 (muster-seam unreachable::a_quiet_helper_asks_for_the_person_while_its_maker_cannot_be_reached). Alone it failed 1 of 2 at load about 12, then passed 8 of 8, 4 on the branch with the test leak fix and 4 on its base commit. Added by Quartermaster's orchestrator (an agent).",
       "author": "Alexander Terp",
       "created_at_millis": 1794688736928
+    },
+    {
+      "id": "c_33tqUCL8g",
+      "body": "Seen again 2026-11-21 in a full ./dev run on main at ea4ccd67, load 98.6 against 6 performance cores: unreachable::a_quiet_helper_asks_for_the_person_while_its_maker_cannot_be_reached timed out after 20s waiting for the helper to go quiet again once its maker answers, and failed the gate's own rerun too (31.9s). Passed alone in 12s minutes later at load 59.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795285973040
     }
   ],
   "created_at_millis": 1794188632279,
@@ -21,7 +27,7 @@
   "position": "b2U",
   "title": "🎲 A quiet helper's return to quiet can outlive its 20-second wait under load",
   "type": "bug",
-  "updated_at_millis": 1794688736928,
+  "updated_at_millis": 1795285973040,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794188632279}
   ]

@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "review",
   "created_at_millis": 1795281966029,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-21 on the installed build. A maker's row lists its hidden helpers under it when its helpers line is unfolded (whale with gazelle and guppy). Clicking one helper, guppy, shows its pane, and the list rearranges: guppy leaves the lines under whale, a new caption \"MUSTER COLORS's helpers\" appears below as a tab of its own with guppy as a full two-line row, and whale's helper count drops from 2 to 1. Clicking away and back moves things again.\n\nThe owner, 2026-11-21: \"I don't want anything popping around when I click on a helper in the muster sidebar. I think we could just click on a helper and ... that's all that happens. It shows the [pane] and the sidebar doesn't change at all and I can click on another pane and collapse it and the helpers stay where they were before.\"\n\nSo showing a helper must not move it in the list. A helper keeps its line under its maker whether its pane is on screen or put away, the maker's helper count does not change, and the helpers' shared tab does not gain a caption of its own in the list for being shown. Which helper is on screen can be marked on its line, as any on-screen pane is marked.\n\nCheck Fencil helper-pills and MIP-7 (an agent's helpers) before changing it: the helpers tab being brought forward as a tab is deliberate for `muster pane show --helpers-of`, so decide what the list draws for that case too. Screenshots were given in the session that filed this and are not kept.",
   "id": "a_33sAF9Tlr",
-  "position": "b21",
+  "position": "Zt",
   "provenance": "approved",
   "title": "Clicking a helper under its maker rearranges the agent list",
   "type": "bug",
-  "updated_at_millis": 1795281966029,
+  "updated_at_millis": 1795285155684,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1795281966029}
+    {"field":"column","value":"backlog-hi","at":1795281966029},
+    {"field":"column","value":"review","at":1795285155684}
   ]
 }
