@@ -1139,13 +1139,13 @@ impl<'a> Helpers<'a> {
         let other_tabs = window.windows.iter().filter(|other| others.include(other));
         let hidden: Vec<&muster_proto::RosterPane> =
             hidden_tabs(window).flat_map(|tab| tab.panes.iter()).collect();
-        let mut listed_tabs: Vec<_> = tabs(window)
+        let mut listed: Vec<_> = tabs(window)
             .chain(other_tabs.flat_map(|other| other.tabs.iter()))
             .filter(|tab| !drawn(tab))
             .chain(hidden_tabs(window))
+            .flat_map(|tab| tab.panes.iter().map(move |pane| (tab.tab_id.as_str(), pane)))
             .collect();
-        listed_tabs.sort_by_key(|tab| tab.tab_id.as_str());
-        let listed: Vec<_> = listed_tabs.iter().flat_map(|tab| &tab.panes).collect();
+        listed.sort_by_key(|(tab, pane)| (*tab, pane.daemon_id.as_str()));
         let every = tabs(window)
             .chain(window.windows.iter().flat_map(|other| other.tabs.iter()))
             .flat_map(|tab| tab.panes.iter())
@@ -1161,9 +1161,10 @@ impl<'a> Helpers<'a> {
                 *helpers.counts.entry(&pane.maker).or_default() += 1;
             }
         }
-        let ids: Vec<&str> = listed.iter().map(|pane| pane.pane_id.as_str()).collect();
+        let ids: Vec<&str> = listed.iter().map(|(_, pane)| pane.pane_id.as_str()).collect();
         let candidates: Vec<_> = listed
             .into_iter()
+            .map(|(_, pane)| pane)
             .filter(|pane| !pane.under.is_empty() || helpers.hidden.contains(pane.pane_id.as_str()))
             .collect();
         let makers: Vec<(&str, Option<&str>)> = candidates

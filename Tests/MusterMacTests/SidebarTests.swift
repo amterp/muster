@@ -691,13 +691,14 @@ struct SidebarTests {
   func shownHelpersKeepTheirRows() throws {
     let maker = PaneKey(daemon: "local", pane: "w1:p1")
     let first = PaneKey(daemon: "local", pane: "w1:h1")
-    let second = PaneKey(daemon: "devenv", pane: "w1:h2")
+    let second = PaneKey(daemon: "remote", pane: "w1:h2")
     func rows(
-      shown: PaneKey?, keyboard: PaneKey, expanded: Bool, spanning: Bool = false
+      shown: PaneKey?, keyboard: PaneKey, expanded: Bool, spanning: Bool = false,
+      folded: Bool = false
     ) -> [SidebarModel.Row] {
       let base = tab(
         "local", "w1:t1",
-        onScreen: keyboard == maker,
+        onScreen: keyboard == maker, folded: folded,
         panes: [
           pane("local", maker.pane, onScreen: keyboard == maker), pane("local", "w1:p2", place: 2),
         ])
@@ -737,7 +738,32 @@ struct SidebarTests {
       rows(shown: second, keyboard: second, expanded: false).map(\.label)
         == ["w1:t1", "w1:p1", "w1:p2"])
     let settling = rows(shown: second, keyboard: second, expanded: true, spanning: true)
+    #expect(settling.map(\.label) == shown.map(\.label))
     #expect(settling.first { $0.pane == second }?.hidden == false)
+    let folded = rows(shown: second, keyboard: second, expanded: true, folded: true)
+    let caption = try #require(folded.first)
+    #expect(folded.map(\.label) == ["w1:t1"])
+    #expect(caption.foldedPanes.map(\.key).suffix(2) == [first, second])
+    #expect(caption.hasKeyboard)
+  }
+
+  @Test("a collapsed Hidden caption identifies the shown helper of a hidden maker")
+  func shownHelperUnderHiddenMaker() throws {
+    let maker = pane("local", "w1:p1")
+    let helperKey = PaneKey(daemon: "local", pane: "w1:h1")
+    let helper = Roster.Pane(
+      key: helperKey, label: "helper", onScreen: true, maker: maker.key.pane,
+      under: maker.key.pane)
+    let roster = Roster(
+      tabs: [tab("local", "w1:t2", onScreen: true, panes: [helper])],
+      hidden: [tab("local", "w1:t1", place: 0, panes: [maker])])
+    let rows = SidebarModel.rows(
+      roster: roster, agents: [:], keyboard: helperKey,
+      hiddenCollapsed: true)
+    let caption = try #require(rows.first)
+    #expect(rows.map(\.label) == ["Hidden"])
+    #expect(caption.hasKeyboard)
+    #expect(SidebarModel.summary(of: caption) == "1 hidden pane\nhelper: on screen")
   }
 
   /// Hide Helpers takes back only a tab holding nothing but the pane's helpers, so a helper moved

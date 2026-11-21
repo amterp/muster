@@ -711,10 +711,8 @@ public enum SidebarModel {
       let hidden: Bool
     }
     var under: [String: [Helper]] = [:]
-    // A tab moves between the roster's two lists when shown. Order the tabs by id so
-    // that move cannot reorder a maker's pills.
     let tabs = roster.tabs.map { ($0, false) } + roster.hidden.map { ($0, true) }
-    for (tab, hidden) in tabs.sorted(by: { $0.0.id < $1.0.id }) {
+    for (tab, hidden) in tabs {
       for pane in tab.panes where !pane.under.isEmpty {
         under[pane.under, default: []].append(
           Helper(pane: pane, tab: tab.id, hidden: hidden))
@@ -724,9 +722,17 @@ public enum SidebarModel {
       pane.callsign.isEmpty ? pane.label : pane.callsign
     }
     func everyHelper(of maker: Roster.Pane) -> [(helper: Helper, madeBy: String)] {
-      (under[maker.key.pane] ?? []).flatMap {
+      // Keep each daemon part's pane order. The order of the parts can differ between
+      // the hidden roster and the combined tree of a shown tab.
+      let ordered = (under[maker.key.pane] ?? []).sorted {
+        ($0.tab, $0.pane.key.daemon) < ($1.tab, $1.pane.key.daemon)
+      }
+      return ordered.flatMap {
         [($0, name(maker))] + everyHelper(of: $0.pane)
       }
+    }
+    func foldedPane(_ pane: Roster.Pane) -> FoldedPane {
+      FoldedPane(key: pane.key, name: name(pane), state: (agents[pane.key] ?? "unknown").state)
     }
     func appendHidden(_ pane: Roster.Pane, tab: String) {
       rows.append(
@@ -765,21 +771,23 @@ public enum SidebarModel {
     for tab in roster.tabs
     where tab.panes.isEmpty || tab.panes.contains(where: { $0.under.isEmpty }) {
       let first = rows.count
+      let panes = tab.panes.filter { $0.under.isEmpty }
+      let foldedHelpers =
+        tab.folded
+        ? panes.flatMap { everyHelper(of: $0).map { $0.helper.pane } }
+        : []
       var caption = Row(
         kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
         label: tab.label, subtitle: "", givenName: tab.givenName, state: "", agent: nil,
-        onScreen: tab.onScreen, hasKeyboard: false, reservedPresses: 1, machine: nil,
+        onScreen: tab.onScreen, hasKeyboard: foldedHelpers.contains { $0.key == keyboard },
+        reservedPresses: 1, machine: nil,
         isSecondPress: false)
       caption.folded = tab.folded
       if tab.folded {
-        caption.foldedPanes = tab.panes.filter { $0.under.isEmpty }.map {
-          FoldedPane(
-            key: $0.key, name: $0.callsign.isEmpty ? $0.label : $0.callsign,
-            state: (agents[$0.key] ?? "unknown").state)
-        }
+        caption.foldedPanes = (panes + foldedHelpers).map(foldedPane)
       }
       rows.append(caption)
-      for pane in tab.panes where !tab.folded && pane.under.isEmpty {
+      for pane in panes where !tab.folded {
         // A pane the core has said nothing about is unknown, not idle. An agent we have not
         // heard from is not an agent that finished (`corpus/conformance/agent-state.json`).
         rows.append(
@@ -811,14 +819,19 @@ public enum SidebarModel {
     if !hiddenRows.isEmpty {
       let states = hiddenRows.map { (agents[$0.key] ?? "unknown").state }
       let urgent = hiddenCollapsed ? mostUrgent(states) : nil
-      rows.append(
-        Row(
-          kind: .hidden(
-            panes: states.count, urgent: states.filter { $0 == urgent }.count,
-            collapsed: hiddenCollapsed),
-          daemon: "", tab: "", pane: nil, label: "Hidden", subtitle: "",
-          givenName: "", state: urgent ?? "", agent: nil, onScreen: false, hasKeyboard: false,
-          reservedPresses: 0, machine: nil, isSecondPress: false))
+      let shownHelpers =
+        hiddenCollapsed
+        ? hiddenRows.flatMap { everyHelper(of: $0).map { $0.helper.pane }.filter(\.onScreen) } : []
+      var caption = Row(
+        kind: .hidden(
+          panes: states.count, urgent: states.filter { $0 == urgent }.count,
+          collapsed: hiddenCollapsed),
+        daemon: "", tab: "", pane: nil, label: "Hidden", subtitle: "",
+        givenName: "", state: urgent ?? "", agent: nil, onScreen: false,
+        hasKeyboard: shownHelpers.contains { $0.key == keyboard }, reservedPresses: 0,
+        machine: nil, isSecondPress: false)
+      caption.foldedPanes = shownHelpers.map(foldedPane)
+      rows.append(caption)
     }
     for tab in roster.hidden where !hiddenCollapsed {
       for pane in tab.panes where pane.under.isEmpty {
@@ -1008,7 +1021,8 @@ public enum SidebarModel {
       return nil
     }
     let count = panes == 1 ? "1 hidden pane" : "\(panes) hidden panes"
-    return row.state.isEmpty ? count : "\(count) · \(urgent) \(row.state)"
+    let hidden = row.state.isEmpty ? count : "\(count) · \(urgent) \(row.state)"
+    return ([hidden] + row.foldedPanes.map { "\($0.name): on screen" }).joined(separator: "\n")
   }
 
   /// A pane row's second line: what a waiting agent waits on, which says more than its title
