@@ -3537,6 +3537,10 @@ message RosterTab {
   // which is `Tab <place>` for a tab nobody named - a rename has to start from what was
   // typed rather than from what is drawn.
   string given_name = 7;
+
+  // The color somebody gave this tab, as a terminal hue name or lowercase #rrggbb.
+  // Empty when the tab has no color.
+  string color = 13;
 }
 
 message RosterPane {
@@ -3661,6 +3665,10 @@ message RosterPane {
 
   // The canvas role and title, including when this pane is parked.
   CanvasInfo canvas = 22;
+
+  // The color somebody gave this pane, as a terminal hue name or lowercase #rrggbb.
+  // Empty when the pane has no color.
+  string color = 23;
 }
 
 // Everything this window is showing, as one message.
