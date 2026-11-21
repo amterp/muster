@@ -47,6 +47,11 @@ pub(crate) fn pane(record: &proto::Pane, hidden: bool, source: &api::Source) -> 
             bytes: canvas.bytes,
             opened_by: canvas.opened_by.clone(),
         }),
+        session_transcript: record.session_transcript.as_ref().map(|said| api::SessionTranscript {
+            session_id: said.session_id.clone(),
+            path: said.path.clone(),
+            directory: said.directory.clone(),
+        }),
     }
 }
 

@@ -1,0 +1,22 @@
+id = "session-transcript-provenance"
+question = "How does Muster tell a client which transcript belongs to a pane's live session?"
+tags = ["api", "harnesses", "sessions"]
+paths = ["proto/muster_api.proto", "proto/muster_daemon.proto", "crates/muster-daemon/src/report.rs"]
+
+[[revisions]]
+id = "sx76f72y"
+date = 2026-11-21
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+An attributed foreground harness report can attach an absolute transcript path and normalized
+working directory to the session ID it reports. Muster checks the session and directory against
+the live pane and exposes the whole value in the public pane record. A compatible live handoff
+carries the observation. A restored session needs a fresh report.'''
+why = '''
+A client that captures transcripts needs to distinguish the current conversation from old ones
+in the same pane. The adapter knows the path and the client knows where it may open a transcript.
+A saved resume command carries what to run again. The launch's transcript report is live
+evidence and can expire independently of that command.'''

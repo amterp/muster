@@ -36,9 +36,8 @@ A version is a major and a minor. The daemon serves a client of its own major no
 oldest version it still serves, and a newer minor too, saying its own version in the Welcome; the
 client then checks that it can read that daemon. Every change to the schema raises the minor.
 Until Muster's 1.0 the API is 0.x and a minor may break clients; the release notes say when one
-does. `Welcome.machine.features` lists the requests and topics this daemon serves, and the options
-of a request that came in a later minor than the request, so a client asks the Welcome rather than
-finding out from a refusal.
+does. `Welcome.machine.features` lists the requests, topics, and request options this daemon
+serves. Since 0.7, `features.fields` lists optional response data the daemon can provide.
 
 ## A first session
 
@@ -124,6 +123,17 @@ reconnect, a handoff and a restart, and after the group is deleted. A post to a 
 another machine is NOT_SENT when it never left this daemon, and UNKNOWN when it was sent and the
 reply was lost; asking again under the same id is safe in both. Where the human is homed on
 another machine, a post as them is refused UNSUPPORTED: post through that machine's daemon.
+
+Since 0.7, `Posted.recipient_outcomes` describes how the daemon first tried to reach each
+resolved recipient. A held wake reports DEFERRED and can include the reason. A harness with
+no readable prompt and no other wake route reports NO_READABLE_PROMPT. A known unreachable
+machine reports UNREACHABLE. An older peer's answer or a lost reply can give UNKNOWN.
+`features.fields` advertises this as `msg.post.recipient_outcomes`. An older daemon or a
+repeated operation can omit the list.
+
+A client's post answer records routing. To confirm a read, observe the intended recipient's
+continuing membership and place on its daemon through `TOPIC_PLACES`, or check its explicit
+reply. A later join can start the recipient's place past the post.
 
 ### msg.ack
 
@@ -255,6 +265,16 @@ Only what the agent's harness tells Muster counts, never `context_used` falling:
 An agent whose adapter is not installed, or was installed before 0.4, reports neither. A cleared
 agent's `session` changes, in the same event or one just before or after it; a compacted one keeps
 its own.
+
+Since 0.7, `Pane.session_transcript` can carry the session ID, an absolute transcript path on
+the pane's machine, and a normalized working directory. It comes from the pane's foreground
+harness, with the matching session ID and directory. `features.fields` advertises it as
+`pane.session_transcript`. The field stays absent until a matching report arrives.
+
+Live handoff carries the value with the pane. A cold restart, reopen, agent replacement,
+directory change, or session change can leave it absent until a fresh report. The API returns
+the reported path. A client that opens it on the pane's machine must verify the pane, session,
+directory, and containment of the opened file in the harness's transcript directory.
 
 Since 0.4, `name_from_session` says the pane took `name` from its agent's session, rather than
 being given it by `pane new --name` or a rename. A harness may write such a name itself, as Claude

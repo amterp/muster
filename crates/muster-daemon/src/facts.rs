@@ -6,6 +6,8 @@
 //! state: they survive the app quitting, and reach a window from a devenv with nothing else in
 //! between. They are what the agent says, bounded, never what the daemon read off its screen.
 
+use std::path::{Component, Path, PathBuf};
+
 use muster_daemon_proto as proto;
 use proto::pane_request::Report;
 
@@ -15,6 +17,7 @@ const OTHER_KEYS: usize = 16;
 const KEY_BYTES: usize = 64;
 const VALUE_BYTES: usize = 256;
 const SESSION_NAME_BYTES: usize = 128;
+const PATH_BYTES: usize = 4096;
 
 /// The pane's facts after `report`, or why the report is refused. None when nothing is known.
 pub(crate) fn apply(
@@ -109,6 +112,37 @@ pub(crate) fn session_id(id: &str) -> Result<(), String> {
     text("session_id", id, SESSION_NAME_BYTES)
 }
 
+pub(crate) fn session_transcript(
+    mut transcript: proto::SessionTranscript,
+    session: Option<&str>,
+    cwd: &str,
+) -> Option<proto::SessionTranscript> {
+    if transcript.session_id.is_empty()
+        || session != Some(transcript.session_id.as_str())
+        || !absolute_path(&transcript.path)
+        || !transcript_directory_matches(&transcript.directory, cwd)
+    {
+        return None;
+    }
+    transcript.directory = Path::new(&transcript.directory)
+        .components()
+        .collect::<PathBuf>()
+        .into_os_string()
+        .into_string()
+        .ok()?;
+    Some(transcript)
+}
+
+pub(crate) fn transcript_directory_matches(directory: &str, cwd: &str) -> bool {
+    absolute_path(directory)
+        && Path::new(directory) == Path::new(cwd)
+        && !Path::new(directory).components().any(|part| part == Component::ParentDir)
+}
+
+fn absolute_path(path: &str) -> bool {
+    path.len() <= PATH_BYTES && !path.contains('\0') && Path::new(path).is_absolute()
+}
+
 fn text(what: &str, text: &str, most: usize) -> Result<(), String> {
     if text.len() > most {
         return Err(format!("{what} is {} bytes, and may be at most {most}", text.len()));
@@ -129,6 +163,22 @@ mod tests {
 
     fn applied(current: Option<&proto::AgentFacts>, report: Report) -> proto::AgentFacts {
         apply(current, report).expect("a valid report").expect("something known")
+    }
+
+    #[test]
+    fn the_transcript_and_directory_have_to_belong_to_the_reported_session() {
+        let said = proto::SessionTranscript {
+            session_id: "s1".into(),
+            path: "/transcripts/session.jsonl".into(),
+            directory: "/repo/./work/".into(),
+        };
+        assert_eq!(
+            session_transcript(said.clone(), Some("s1"), "/repo/work").unwrap().directory,
+            "/repo/work"
+        );
+        assert!(session_transcript(said.clone(), Some("s2"), "/repo/work").is_none());
+        let ambiguous = proto::SessionTranscript { directory: "/repo/link/../work".into(), ..said };
+        assert!(session_transcript(ambiguous, Some("s1"), "/repo/link/../work").is_none());
     }
 
     #[test]

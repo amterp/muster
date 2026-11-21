@@ -106,6 +106,13 @@ fn a_programs_post_is_logged_as_the_humans_with_the_program_beside_it() {
     assert_eq!(asked.outcome(), api::Outcome::Done, "{:?}", asked.answer);
     let number = asked.posted().number;
     assert_eq!(asked.posted().group, "g");
+    let [recipient] = asked.posted().recipient_outcomes.as_slice() else {
+        panic!("expected one recipient: {:?}", asked.posted());
+    };
+    assert_eq!(
+        (recipient.recipient.as_str(), recipient.disposition()),
+        ("a", api::PostDisposition::Waiting)
+    );
     let logged = asked.events.iter().find_map(|event| match &event.event {
         Some(api::event::Event::Logged(logged)) => Some((event, logged)),
         _ => None,
@@ -161,7 +168,7 @@ fn asking_again_under_an_id_never_posts_twice_and_another_request_cannot_reuse_i
     let first = program.ask(post(post_as_human("op-1", "ship it")));
     let again = program.ask(post(post_as_human("op-1", "ship it")));
     assert_eq!(again.outcome(), api::Outcome::AlreadySo, "{:?}", again.answer);
-    assert_eq!(again.posted(), first.posted());
+    assert_same_post_without_outcomes(&first, &again);
 
     let reused = program.ask(post(post_as_human("op-1", "hold it")));
     assert_eq!(
@@ -190,7 +197,7 @@ fn a_repeat_is_answered_after_its_group_is_deleted_and_during_and_after_a_handof
 
     let again = program.ask(post(post_as_human("op-1", "ship it")));
     assert_eq!(again.outcome(), api::Outcome::AlreadySo, "{:?}", again.answer);
-    assert_eq!(again.posted(), first.posted());
+    assert_same_post_without_outcomes(&first, &again);
 
     let replacing = daemon.start_replacing(None);
     daemon.paused();
@@ -204,7 +211,78 @@ fn a_repeat_is_answered_after_its_group_is_deleted_and_during_and_after_a_handof
 
     let after = foreman(&daemon).ask(post(post_as_human("op-1", "ship it")));
     assert_eq!(after.outcome(), api::Outcome::AlreadySo, "{:?}", after.answer);
-    assert_eq!(after.posted(), first.posted());
+    assert_same_post_without_outcomes(&first, &after);
+}
+
+fn assert_same_post_without_outcomes(first: &ApiAsked, repeat: &ApiAsked) {
+    assert_eq!(repeat.posted().group, first.posted().group);
+    assert_eq!(repeat.posted().number, first.posted().number);
+    assert!(repeat.posted().recipient_outcomes.is_empty());
+}
+
+#[test]
+fn a_deferred_post_identifies_the_resolved_recipient_and_does_not_advance_its_place() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent_at_a_dialog("p1");
+    let worker = msg_request::Caller { pane: Some("p1".into()), ..Default::default() };
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &worker, "a", "g");
+    let callsign = snapshot(&mut control).panes[0].callsign.clone().unwrap();
+    let mut program = foreman(&daemon);
+    let before = program.subscribe(&[api::Topic::Places]);
+    let place = before.snapshot().places[0].places["a"];
+    let asked =
+        program.ask(post(api::NewPost { to: vec![callsign], ..post_as_human("held", "go ahead") }));
+    assert_eq!(asked.outcome(), api::Outcome::Done, "{:?}", asked.answer);
+    let [recipient] = asked.posted().recipient_outcomes.as_slice() else {
+        panic!("expected one recipient: {:?}", asked.posted());
+    };
+    assert_eq!(recipient.recipient, "a");
+    assert_eq!(recipient.disposition(), api::PostDisposition::Deferred);
+    assert!(recipient.reason.is_some());
+    let number = asked.posted().number;
+    assert!(place < number);
+    assert_eq!(program.subscribe(&[api::Topic::Places]).snapshot().places[0].places["a"], place);
+
+    let read = Asked::Read(msg_request::Read { group: Some("g".into()) });
+    expect(&mut control, msg(&worker, read), DONE);
+    assert_eq!(program.subscribe(&[api::Topic::Places]).snapshot().places[0].places["a"], number);
+
+    let pause = Asked::Pause(msg_request::Pause { group: "g".into() });
+    expect(&mut control, msg(&the_human(), pause), DONE);
+    let paused = program.ask(post(post_as_human("paused", "one more")));
+    assert_eq!(paused.outcome(), api::Outcome::Done, "{:?}", paused.answer);
+    assert_eq!(paused.posted().recipient_outcomes[0].disposition(), api::PostDisposition::Paused);
+}
+
+#[test]
+fn a_harness_without_a_prompt_reports_that_no_route_exists() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    let manifest = daemon.root().join("home/.muster/agent-detection/claude.toml");
+    let existing = std::fs::read_to_string(&manifest).unwrap();
+    let no_prompt: String = existing
+        .lines()
+        .filter(|line| !line.starts_with("prompt =") && !line.starts_with("prompt_region ="))
+        .flat_map(|line| [line, "\n"])
+        .collect();
+    std::fs::write(manifest, no_prompt).unwrap();
+    let refresh = proto::session_request::Request::SendManifests(proto::SendManifests::default());
+    let refreshed = control.ask(session(refresh));
+    assert!(matches!(refreshed.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo));
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let worker = msg_request::Caller { pane: Some("p1".into()), ..Default::default() };
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &worker, "a", "g");
+    let posted = foreman(&daemon).ask(post(post_as_human("no-prompt", "hello")));
+    assert_eq!(posted.outcome(), api::Outcome::Done, "{:?}", posted.answer);
+    assert_eq!(
+        posted.posted().recipient_outcomes[0].disposition(),
+        api::PostDisposition::NoReadablePrompt
+    );
 }
 
 #[test]

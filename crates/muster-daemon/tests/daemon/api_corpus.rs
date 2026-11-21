@@ -39,7 +39,7 @@ fn a_client_of_the_shipped_api_can_make_a_terminal_and_subscribe() {
     let directory = conformance::repo_root().join("corpus/api-baseline");
     let schema = shipped_schema(&directory);
     let (major, minor) = shipped_version(&directory);
-    let daemon = daemon();
+    let daemon = Daemon::start_detecting();
     let mut control = daemon.connect();
     let canvas = proto::pane_request::CreateCanvas {
         pane: "canvas".into(),
@@ -74,6 +74,9 @@ fn a_client_of_the_shipped_api_can_make_a_terminal_and_subscribe() {
         }),
     );
     assert!(welcome.get("welcome").is_some(), "{welcome}");
+    if (major, minor) < (0, 7) {
+        assert!(welcome["welcome"]["machine"]["features"].get("fields").is_none());
+    }
 
     let made = ask(
         "Request",
@@ -85,6 +88,33 @@ fn a_client_of_the_shipped_api_can_make_a_terminal_and_subscribe() {
     );
     assert_eq!(made["answer"]["outcome"], "OUTCOME_DONE", "{made}");
     let id = made["answer"]["made"]["pane"].as_str().unwrap();
+    let args = crate::api_panes::transcript_arguments(
+        "s-shipped",
+        &crate::api_panes::current_pane(&daemon, id).directory,
+        "/transcripts/shipped.jsonl",
+    );
+    daemon.run_agent(id);
+    daemon.type_into(id, &format!("hook {args}"));
+    assert_eq!(crate::attribution::until_reported(&daemon, 1)[0], "hook 0");
+    assert!(crate::api_panes::current_pane(&daemon, id).session_transcript.is_some());
+
+    crate::attention::join(&mut control, &the_human(), "@human", "g");
+    crate::attention::join(&mut control, &named("a"), "a", "g");
+    let posted = ask(
+        "Request",
+        "DaemonMessage",
+        json!({
+            "correlation": "new-post",
+            "msg": {"post": {"operation": "shipped-post", "group": "g", "to": ["a"], "body": "hello"}}
+        }),
+    );
+    assert_eq!(posted["answer"]["outcome"], "OUTCOME_DONE", "{posted}");
+    let posted = &posted["answer"]["posted"];
+    assert_eq!(posted["group"], "g");
+    assert!(posted.get("number").is_some());
+    if (major, minor) < (0, 7) {
+        assert!(posted.get("recipientOutcomes").is_none());
+    }
 
     let snapshot = ask(
         "Request",
@@ -97,7 +127,11 @@ fn a_client_of_the_shipped_api_can_make_a_terminal_and_subscribe() {
     assert_eq!(snapshot["answer"]["outcome"], "OUTCOME_DONE", "{snapshot}");
     let panes = snapshot["answer"]["snapshot"]["panes"].as_array().unwrap();
     assert_eq!(panes.len(), 2);
-    assert!(panes.iter().any(|pane| pane["pane"] == id));
+    let terminal = panes.iter().find(|pane| pane["pane"] == id).unwrap();
+    assert_eq!(terminal["session"], "s-shipped");
+    if (major, minor) < (0, 7) {
+        assert!(terminal.get("sessionTranscript").is_none());
+    }
     let canvas = panes.iter().find(|pane| pane["pane"] == "canvas").unwrap();
     if (major, minor) < (0, 6) {
         assert!(canvas.get("canvas").is_none());

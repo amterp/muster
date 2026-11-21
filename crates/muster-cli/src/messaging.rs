@@ -1849,6 +1849,7 @@ mod tests {
                 activity: msg_answer::Activity::Blocked.into(),
                 until: Until::Unblocked.into(),
                 held: None,
+                outcome_known: true,
             }],
             already: false,
         };
@@ -1876,6 +1877,7 @@ mod tests {
                 activity: msg_answer::Activity::Stuck.into(),
                 until: Until::Reading.into(),
                 held: None,
+                outcome_known: true,
             }],
             already: false,
         };
@@ -1904,6 +1906,7 @@ mod tests {
                 activity: msg_answer::Activity::Idle.into(),
                 until: Until::Prompt.into(),
                 held: Some(box_over.to_string()),
+                outcome_known: true,
             }],
             already: false,
         };

@@ -20,7 +20,7 @@ fn reported(daemon: &Daemon) -> Vec<String> {
         .collect()
 }
 
-fn until_reported(daemon: &Daemon, count: usize) -> Vec<String> {
+pub(crate) fn until_reported(daemon: &Daemon, count: usize) -> Vec<String> {
     until_some(&format!("{count} reports to have answered"), || {
         let said = reported(daemon);
         (said.len() >= count).then_some(said)

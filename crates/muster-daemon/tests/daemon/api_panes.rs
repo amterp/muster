@@ -3,6 +3,8 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::attribution::until_reported;
+use crate::persistence::until_saved;
 use crate::resume::{reported, restarted};
 use crate::support::*;
 use api::event::Event;
@@ -112,10 +114,137 @@ fn a_snapshot_carries_what_a_pane_says_and_who_made_it() {
     );
     assert_eq!(facts.waiting, "a build");
     assert_eq!(p1.session, "s-1");
+    assert!(p1.session_transcript.is_none());
     assert_eq!(p1.state(), api::PaneState::Waiting, "idle, having said what it waits on");
     assert_eq!(p1.adapter(), api::Adapter::Reporting);
     let p2 = in_snapshot(&snapshot, "p2");
     assert_eq!((p2.maker.as_str(), p2.hidden), ("p1", true), "{p2:?}");
+}
+
+pub(crate) fn transcript_arguments(session: &str, directory: &str, path: &str) -> String {
+    format!(
+        "--agent claude --session-id {session} --session-transcript {path} \
+         --session-directory {directory}"
+    )
+}
+
+pub(crate) fn current_pane(daemon: &Daemon, pane: &str) -> api::Pane {
+    in_snapshot(&subscribed(daemon).1, pane).clone()
+}
+
+#[test]
+fn a_session_transcript_requires_the_panes_hook_and_directory() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let (mut api, initial) = subscribed(&daemon);
+    let cwd = &in_snapshot(&initial, "p1").directory;
+    let path = "/transcripts/hook.jsonl";
+    let args = transcript_arguments("s-1", &format!("{cwd}/./"), path);
+
+    daemon.type_into("p1", &format!("hook {args}"));
+    assert_eq!(until_reported(&daemon, 1)[0], "hook 0");
+    let expected = api::SessionTranscript {
+        session_id: "s-1".into(),
+        path: path.into(),
+        directory: cwd.clone(),
+    };
+    let changed = api.event_matching("the session transcript", |event| {
+        carried(event).is_some_and(|p| p.session_transcript.is_some())
+    });
+    let changed = carried(&changed).unwrap();
+    assert_eq!(changed.session, "s-1");
+    assert_eq!(changed.session_transcript.as_ref(), Some(&expected));
+    assert_eq!(current_pane(&daemon, "p1").session_transcript, Some(expected.clone()));
+
+    daemon.type_into("p1", &format!("hook {args}"));
+    assert_eq!(until_reported(&daemon, 2)[1], "hook 0");
+    let barrier = api.ask(read_pane("p1", None));
+    assert!(barrier.events.iter().all(|event| carried(event).is_none()), "{:?}", barrier.events);
+
+    for (index, (source, directory, path, status)) in [
+        ("hook", "/wrong-cwd", "/transcripts/wrong.jsonl", "hook 0"),
+        ("hook", cwd.as_str(), "relative.jsonl", "hook 0"),
+        ("nested", cwd.as_str(), "/transcripts/nested.jsonl", "nested 1"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let args = transcript_arguments("s-1", directory, path);
+        daemon.type_into("p1", &format!("{source} {args}"));
+        assert_eq!(until_reported(&daemon, index + 3)[index + 2], status);
+        assert_eq!(current_pane(&daemon, "p1").session_transcript, Some(expected.clone()));
+    }
+
+    // A control client can report the session ID, as before.
+    let report = pane_request::Report {
+        pane: "p1".into(),
+        agent: "claude".into(),
+        session_id: Some("s-2".into()),
+        session_transcript: Some(proto::SessionTranscript {
+            session_id: "s-2".into(),
+            path: "/transcripts/unattributed.jsonl".into(),
+            directory: cwd.clone(),
+        }),
+        ..Default::default()
+    };
+    expect(&mut control, pane(pane_request::Request::Report(report)), proto::Outcome::Done);
+    let replaced = api.event_matching("the next session", |event| {
+        carried(event).is_some_and(|p| p.session == "s-2")
+    });
+    assert!(carried(&replaced).unwrap().session_transcript.is_none());
+
+    let args = transcript_arguments("s-3", cwd, path);
+    daemon.type_into("p1", &format!("hook {args}"));
+    assert_eq!(until_reported(&daemon, 6)[5], "hook 0");
+    assert!(current_pane(&daemon, "p1").session_transcript.is_some());
+    daemon.type_into("p1", "hook --agent claude --session-source clear");
+    assert_eq!(until_reported(&daemon, 7)[6], "hook 0");
+    assert!(current_pane(&daemon, "p1").session_transcript.is_none());
+}
+
+#[test]
+fn a_live_handoff_keeps_provenance_and_a_cold_restart_gets_a_new_report() {
+    let mut daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let cwd = current_pane(&daemon, "p1").directory;
+    let args = transcript_arguments("s-1", &cwd, "/transcripts/live.jsonl");
+    daemon.type_into("p1", &format!("hook {args}"));
+    assert_eq!(until_reported(&daemon, 1)[0], "hook 0");
+    let kept = current_pane(&daemon, "p1").session_transcript.expect("reported provenance");
+    until_saved(&daemon, "s-1");
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    assert_eq!(current_pane(&daemon, "p1").session_transcript, Some(kept.clone()));
+
+    let mut control = daemon.connect();
+    let _control = restarted(&mut daemon, &mut control);
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    let resumed = current_pane(&daemon, "p1");
+    assert_eq!(resumed.session, "s-1");
+    assert!(resumed.session_transcript.is_none());
+
+    daemon.type_into("p1", &format!("hook {args}"));
+    assert_eq!(until_reported(&daemon, 2)[1], "hook 0");
+    assert_eq!(current_pane(&daemon, "p1").session_transcript, Some(kept));
+    let next = daemon.root().join("project");
+    std::fs::create_dir(&next).unwrap();
+    let next = canonical(&next).display().to_string();
+    daemon.type_into("p1", &format!("cd {next}"));
+    until("the agent to change directory", || current_pane(&daemon, "p1").directory == next, ());
+    assert!(current_pane(&daemon, "p1").session_transcript.is_none());
+
+    let args = transcript_arguments("s-1", &next, "/transcripts/live.jsonl");
+    daemon.type_into("p1", &format!("hook {args}"));
+    assert_eq!(until_reported(&daemon, 3)[2], "hook 0");
+    assert!(current_pane(&daemon, "p1").session_transcript.is_some());
+    daemon.type_into("p1", "quit");
+    until("the agent to leave", || current_pane(&daemon, "p1").harness.is_empty(), ());
+    assert!(current_pane(&daemon, "p1").session_transcript.is_none());
 }
 
 /// A pane is made before it is placed, and a client hears of it once it is in its tab, so a helper

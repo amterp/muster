@@ -1529,6 +1529,10 @@ not. The daemon writes down what someone would ask for again - tabs, trees, name
 settings - and never an observation such as a title or an agent's state, then rebuilds from the file
 when it starts (MIP-3, section 2). A window reads the result like any other daemon state.
 
+Session transcript provenance is a live observation. A handoff can carry it with the session.
+A cold restart can resume the saved session, and its transcript provenance comes from a fresh
+harness report.
+
 The daemon keeps each pane's color with its name, including in the record used to reopen it. Each
 daemon holding part of a tab keeps its color and a generation independent of the name. Clearing a
 color advances that generation so a lagging part cannot restore an older color. When a part is added

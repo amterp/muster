@@ -74,6 +74,7 @@ pub(super) fn post(
                     Some(api::answer::Detail::Posted(api::Posted {
                         group: posted.group.clone(),
                         number: posted.seq,
+                        recipient_outcomes: posted.reached.iter().map(recipient_outcome).collect(),
                     })),
                 )),
                 _ => None,
@@ -91,6 +92,48 @@ pub(super) fn post(
         }
     };
     shared.api.answer(caller.connection, answer);
+}
+
+fn recipient_outcome(reached: &proto::msg_answer::Reached) -> api::RecipientOutcome {
+    use api::PostDisposition as Disposition;
+    use proto::msg_answer::{Reach, Until};
+
+    let disposition = if reached.outcome_known {
+        match reached.reach() {
+            Reach::Woken => Disposition::Woken,
+            Reach::AlreadyWoken => Disposition::AlreadyWoken,
+            Reach::Waiting => Disposition::Waiting,
+            Reach::Gone => Disposition::Gone,
+            Reach::Deferred => Disposition::Deferred,
+            Reach::NoAgent => Disposition::NoAgent,
+            Reach::NoDoorbell => Disposition::NoReadablePrompt,
+            Reach::Paused => Disposition::Paused,
+            Reach::Unreachable => Disposition::Unreachable,
+            Reach::Unspecified => Disposition::Unknown,
+        }
+    } else {
+        Disposition::Unknown
+    };
+    let reason = (disposition == Disposition::Deferred)
+        .then(|| {
+            reached.held.clone().or_else(|| {
+                let reason = match reached.until() {
+                    Until::Idle => "waiting for the agent to go idle",
+                    Until::Prompt => "waiting for an empty prompt",
+                    Until::Agent => "waiting for an agent to start",
+                    Until::Unblocked => "waiting for the dialog to close",
+                    Until::Reading => "waiting for the agent to read its input",
+                    Until::Unspecified => return None,
+                };
+                Some(reason.to_string())
+            })
+        })
+        .flatten();
+    api::RecipientOutcome {
+        recipient: reached.name.clone(),
+        disposition: disposition.into(),
+        reason,
+    }
 }
 
 /// The body and addressees of a post answering a question, as `muster msg post --answer` makes

@@ -800,12 +800,16 @@ fn unreachable(away: &Away) -> Settle {
 pub(crate) fn tell(shared: &Shared, tells: &[Tell]) -> Vec<msg_answer::Reached> {
     let mut reached = Vec::new();
     for tell in tells {
-        let unreached = || {
-            let names = tell.targets.iter().map(|name| (name.clone(), Reach::Unreachable));
-            wire::reached_to(&names.collect::<Vec<_>>())
+        let unreached = |outcome_known| {
+            tell.targets.iter().map(move |name| msg_answer::Reached {
+                name: name.clone(),
+                reach: msg_answer::Reach::Unreachable.into(),
+                outcome_known,
+                ..msg_answer::Reached::default()
+            })
         };
         let Some(link) = shared.peers.to(&tell.machine) else {
-            reached.extend(unreached());
+            reached.extend(unreached(true));
             continue;
         };
         let Ok(caught) = shared.messages().service.since(&tell.group, tell.after) else {
@@ -844,7 +848,7 @@ pub(crate) fn tell(shared: &Shared, tells: &[Tell]) -> Vec<msg_answer::Reached> 
                         "check" => "whether the link to that machine dropped",
                     },
                 );
-                reached.extend(unreached());
+                reached.extend(unreached(matches!(error, Failed::Unsent(_))));
             }
         }
     }

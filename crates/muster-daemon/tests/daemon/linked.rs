@@ -22,6 +22,49 @@ struct HoldCarriedReply {
     release: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
 }
 
+struct OldPostOutcomes;
+
+impl muster_harness::Pump for OldPostOutcomes {
+    fn carry(&self, mut client: std::os::unix::net::UnixStream, daemon: &std::path::Path) {
+        use std::net::Shutdown;
+
+        use proto::connection::{receive, send};
+        use proto::peer_reply::Reply;
+
+        let mut upstream = std::os::unix::net::UnixStream::connect(daemon).unwrap();
+        let mut reading = client.try_clone().unwrap();
+        let mut sending = upstream.try_clone().unwrap();
+        std::thread::spawn(move || {
+            let _ = std::io::copy(&mut reading, &mut sending);
+            let _ = sending.shutdown(Shutdown::Both);
+        });
+        let mut hello = receive::<proto::HelloAnswer>(&mut upstream).unwrap().unwrap();
+        let Some(proto::hello_answer::Answer::Welcome(welcome)) = hello.answer.as_mut() else {
+            panic!("the real daemon should accept the peer: {hello:?}");
+        };
+        welcome.protocol.as_mut().unwrap().minor = 18;
+        send(&mut client, &hello).unwrap();
+
+        while let Ok(Some(mut frame)) = receive::<proto::PeerFrame>(&mut upstream) {
+            if let Some(proto::peer_frame::Frame::Reply(reply)) = &mut frame.frame {
+                let reached = match &mut reply.reply {
+                    Some(Reply::Posted(posted)) => posted.reached.as_mut_slice(),
+                    Some(Reply::Applied(applied)) => applied.reached.as_mut_slice(),
+                    _ => &mut [],
+                };
+                for recipient in reached {
+                    recipient.outcome_known = false;
+                }
+            }
+            if send(&mut client, &frame).is_err() {
+                break;
+            }
+        }
+        let _ = client.shutdown(Shutdown::Both);
+        let _ = upstream.shutdown(Shutdown::Both);
+    }
+}
+
 impl muster_harness::Pump for HoldCarriedReply {
     fn carry(&self, client: std::os::unix::net::UnixStream, daemon: &std::path::Path) {
         use proto::peer_frame::Frame;
@@ -311,16 +354,71 @@ fn who(control: &mut Control, group: &str) -> Vec<(String, msg_answer::Liveness)
 /// Tells `near` that the machine it calls `far` has its daemon at `far`'s socket, and returns
 /// the connection holding that, once the link is up.
 fn link(near: &Daemon, far: &Daemon, logging: &mut Control, times: usize) -> Control {
+    link_at(near, far.socket_path(), logging, times)
+}
+
+fn link_at(
+    near: &Daemon,
+    socket: &std::path::Path,
+    logging: &mut Control,
+    times: usize,
+) -> Control {
     let mut holding = near.connect();
-    let peer = msg_request::Peer {
-        name: "far".to_string(),
-        socket: far.socket_path().display().to_string(),
-    };
+    let peer = msg_request::Peer { name: "far".to_string(), socket: socket.display().to_string() };
     holding.send(msg(&named("app"), Asked::Peer(peer)));
     let linked = logging.logged_times_until("msg.peer.linked", times, LINKING);
     let count = linked.iter().filter(|line| line.line.contains("msg.peer.linked")).count();
     assert_eq!(count, times, "the near daemon linked to the far one within {LINKING:?}");
     holding
+}
+
+#[test]
+fn post_outcomes_distinguish_a_new_peer_an_old_peer_and_a_cut_link() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+    join(&mut far_control, &named("critic"), "critic", "review");
+    join(&mut far_control, &named("critic"), "critic", "desk");
+    assert_eq!(join(&mut near_control, &named("builder"), "builder", "desk"), "desk@far");
+    let mut client = near.api();
+    let mut post_to_critic = |operation: &str, group: &str| {
+        let asked = client.ask(crate::support::post(api::NewPost {
+            operation: operation.into(),
+            group: group.into(),
+            to: vec!["critic@far".into()],
+            r#as: "builder".into(),
+            body: "review this".into(),
+            ..Default::default()
+        }));
+        assert_eq!(asked.outcome(), api::Outcome::Done, "{:?}", asked.answer);
+        let [recipient] = asked.posted().recipient_outcomes.as_slice() else {
+            panic!("expected one recipient: {:?}", asked.posted());
+        };
+        assert_eq!(recipient.recipient, "critic@far");
+        recipient.disposition()
+    };
+    assert_eq!(post_to_critic("current", "review"), api::PostDisposition::Waiting);
+
+    cut(holding, &mut near_log, &mut far_log, 1);
+    assert_eq!(post_to_critic("cut", "review"), api::PostDisposition::Unreachable);
+
+    let relay = muster_harness::Relay::start(
+        far.root(),
+        far.socket_path(),
+        std::sync::Arc::new(OldPostOutcomes),
+    );
+    let _holding = link_at(&near, relay.socket_path(), &mut near_log, 2);
+    assert_eq!(post_to_critic("old-replica", "review"), api::PostDisposition::Unknown);
+    assert_eq!(post_to_critic("old-home", "desk@far"), api::PostDisposition::Unknown);
+
+    let asked = expect(
+        &mut near_control,
+        post(&named("builder"), Some("review"), &["critic"], "same CLI reach"),
+        proto::Outcome::Done,
+    );
+    assert_eq!(reached(&asked), [("critic@far".to_string(), msg_answer::Reach::Waiting)]);
 }
 
 /// The callsign the daemon `control` is connected to drew for `pane`.

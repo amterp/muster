@@ -533,13 +533,21 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
 /// agent than the pane's own is refused before any of it is taken.
 pub(crate) fn handle(
     session: &mut Session,
-    service: Service,
+    mut service: Service,
     sender: Option<&attribution::Sender>,
     outbox: &Outbox,
     shared: &Shared,
 ) -> Handled {
     if let Some(refused) = sender.and_then(|sender| session.foreign_report(&service, sender)) {
         return Handled::Reply(refused);
+    }
+    if let Service::Pane(proto::PaneRequest {
+        request: Some(pane_request::Request::Report(report)),
+    }) = &mut service
+        && report.session_transcript.is_some()
+        && !session.can_report_transcript(report, sender)
+    {
+        report.session_transcript = None;
     }
     let wakes_doorbell = matches!(
         &service,

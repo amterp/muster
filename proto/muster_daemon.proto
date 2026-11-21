@@ -689,7 +689,15 @@ message PaneRequest {
     // Since 1.12. What the harness calls this change, when it names one: a second report naming
     // the change the pane last took changes nothing, as two hooks waiting on one transcript do.
     optional string context_change_id = 19;
+    // Since 1.19. A live transcript reported by the pane's foreground harness for session_id.
+    SessionTranscript session_transcript = 20;
   }
+}
+
+message SessionTranscript {
+  string session_id = 1;
+  string path = 2;
+  string directory = 3;
 }
 
 // What happened to a pane's agent's context.
@@ -1362,6 +1370,9 @@ message MsgAnswer {
     // agent's prompt showed, in words: "its prompt holds something typed and not sent". Absent
     // for a wake not looked at yet, such as one waiting for its agent to be idle.
     optional string held = 5;
+    // Since 1.19. The daemon that observed this route can report its outcome. A peer's
+    // older reply or a lost reply leaves this false, even when reach has a CLI fallback.
+    bool outcome_known = 6;
   }
 
   // What a deferred wake waits for before its pane is rung.
@@ -2067,6 +2078,8 @@ message Pane {
   Canvas canvas = 33;
   // Since 1.18. The palette hue or RGB value somebody gave this pane.
   optional string color = 34;
+  // Since 1.19. A live observation kept through handoff.
+  SessionTranscript session_transcript = 35;
 }
 
 // What a pane's record says of the document it holds. Since 1.17.

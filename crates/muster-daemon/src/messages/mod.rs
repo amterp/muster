@@ -1899,6 +1899,7 @@ fn reached_as_told(
                         deferral.held.clone()
                     }
                 }),
+                outcome_known: true,
             }
         })
         .collect()

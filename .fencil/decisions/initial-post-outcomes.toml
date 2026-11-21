@@ -1,0 +1,23 @@
+id = "initial-post-outcomes"
+question = "What does a post answer tell a client about each recipient?"
+tags = ["api", "messaging"]
+paths = ["proto/muster_api.proto", "proto/muster_daemon.proto", "crates/muster-daemon/src/api/posting.rs"]
+
+[[revisions]]
+id = "njbf1rk6"
+date = 2026-11-21
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+The public API publishes the initial routing outcome for each resolved recipient, using the
+daemon's existing post decision. Unknown evidence from an older peer or a lost reply stays
+distinct from a known unavailable route. A repeated operation can return just the original
+group and number. Use a recipient's durable place with continuing membership, or an explicit
+reply, for delivery evidence.'''
+why = '''
+A sender can report an unavailable prompt or a deferred wake immediately. The daemon can queue
+or initiate a wake before a recipient reads the post. Durable places already record the read
+and retain it across a daemon restart, so persisting an initial routing answer would duplicate
+weaker evidence.'''

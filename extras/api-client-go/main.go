@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 )
 
 // The version of the schema this client was generated from, which the daemon judges it by.
-var speaks = &api.Version{Major: 0, Minor: 2}
+var speaks = &api.Version{Major: 0, Minor: 7}
 
 func main() {
 	socket := os.Getenv("MUSTER_DAEMON_SOCKET")
@@ -52,17 +53,31 @@ func main() {
 	fmt.Printf("welcomed by a daemon speaking API %d.%d\n", welcome.GetApi().GetMajor(), welcome.GetApi().GetMinor())
 	fmt.Printf("  it serves %s\n", strings.Join(features.GetRequests(), ", "))
 	fmt.Printf("  and the topics %v\n", features.GetTopics())
+	if len(features.GetFields()) != 0 {
+		fmt.Printf("  and the optional response fields %s\n", strings.Join(features.GetFields(), ", "))
+	}
 
+	topics := []api.Topic{
+		api.Topic_TOPIC_PANES, api.Topic_TOPIC_MACHINES, api.Topic_TOPIC_MESSAGES, api.Topic_TOPIC_ATTENTION,
+	}
+	if slices.Contains(features.GetTopics(), api.Topic_TOPIC_PLACES) {
+		topics = append(topics, api.Topic_TOPIC_PLACES)
+	}
 	subscribed := client.ask(&api.Request{Request: &api.Request_Api{Api: &api.ApiRequest{
-		Request: &api.ApiRequest_Subscribe{Subscribe: &api.Subscribe{Topics: []api.Topic{
-			api.Topic_TOPIC_PANES, api.Topic_TOPIC_MACHINES, api.Topic_TOPIC_MESSAGES, api.Topic_TOPIC_ATTENTION,
-		}}},
+		Request: &api.ApiRequest_Subscribe{Subscribe: &api.Subscribe{Topics: topics}},
 	}}})
 	snapshot := subscribed.GetSnapshot()
 	fmt.Printf("subscribed: %v, epoch %d, current to %d\n", subscribed.GetOutcome(), snapshot.GetEpoch(), snapshot.GetThrough())
 	fmt.Printf("  %d pane(s), %d machine(s), %d group(s), %d pane(s) asking for the human\n",
 		len(snapshot.GetPanes()), len(snapshot.GetMachines()), len(snapshot.GetGroups()),
 		len(snapshot.GetAttention().GetAsking()))
+	for _, pane := range snapshot.GetPanes() {
+		if transcript := pane.GetSessionTranscript(); transcript != nil {
+			fmt.Printf("  pane %s on daemon %s reports session %s at %q from %q\n",
+				pane.GetPane(), pane.GetSource().GetDaemon(), transcript.GetSessionId(),
+				transcript.GetPath(), transcript.GetDirectory())
+		}
+	}
 
 	directory, err := os.Getwd()
 	if err != nil {
@@ -89,9 +104,27 @@ func main() {
 		if strings.Contains(text, "hello") || attempt == 50 {
 			fmt.Printf("api.read_pane: %v, rows %d from row %d:\n", read.GetOutcome(), read.GetPaneText().GetRows(), read.GetPaneText().GetFirstRow())
 			fmt.Printf("  %q\n", text)
-			return
+			break
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if slices.Contains(features.GetFields(), "msg.post.recipient_outcomes") {
+		posted := client.ask(&api.Request{Request: &api.Request_Msg{Msg: &api.MsgRequest{
+			Request: &api.MsgRequest_Post{Post: &api.NewPost{
+				Operation: fmt.Sprintf("api-client-go-post-%d", time.Now().UnixNano()),
+				To:        []string{pane},
+				Body:      "Hello from the example Go client",
+			}},
+		}}})
+		fmt.Printf("msg.post: %v, #%d in %s\n", posted.GetOutcome(),
+			posted.GetPosted().GetNumber(), posted.GetPosted().GetGroup())
+		for _, outcome := range posted.GetPosted().GetRecipientOutcomes() {
+			fmt.Printf("  %s: %s", outcome.GetRecipient(), outcome.GetDisposition())
+			if reason := outcome.GetReason(); reason != "" {
+				fmt.Printf(" (%s)", reason)
+			}
+			fmt.Println()
+		}
 	}
 }
 

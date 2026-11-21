@@ -24,7 +24,7 @@ use crate::session::HANDING_OVER;
 const STDIN_BYTES: u64 = 1 << 20;
 
 /// The flags `--from` may fill: each one that takes one value.
-const FROM_FLAGS: [&str; 12] = [
+const FROM_FLAGS: [&str; 14] = [
     "context-used",
     "context-session",
     "model",
@@ -33,6 +33,8 @@ const FROM_FLAGS: [&str; 12] = [
     "waiting",
     "session-name",
     "session-id",
+    "session-transcript",
+    "session-directory",
     "session-source",
     "compacted-in",
     "agent",
@@ -61,7 +63,8 @@ const USAGE: &str = "usage: muster-daemon report [--pane PANE] [--context-used P
     [--context-session ID] [--model NAME] [--effort LEVEL] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID | --until-message-from PANE]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
-    [--session-id ID] [--session-source SOURCE] [--compacting] \
+    [--session-id ID [--session-transcript PATH --session-directory DIRECTORY]] \
+    [--session-source SOURCE] [--compacting] \
     [--context-compacted | --compacted-in TRANSCRIPT]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, by its id, callsign or name, and the daemon is the one at \
@@ -87,6 +90,8 @@ const USAGE: &str = "usage: muster-daemon report [--pane PANE] [--context-used P
     session the pane's own name otherwise. It needs --agent, as --state does. --session-id is \
     the harness's id for its session, which the daemon names it by to reach it through the \
     harness's own command, where its manifest says how; empty forgets it. It needs --agent too. \
+    --session-transcript and --session-directory attach absolute paths from the same hook as \
+    a nonempty --session-id. A daemon before protocol 1.19 receives the session id alone. \
     --compacting says the agent's harness began compacting its context by itself, so the turn it \
     shows as is not the agent going to work; it needs --agent too. --session-source is what \
     started the session, in the words of a hook's `source`: clear says the agent's context was \
@@ -266,6 +271,8 @@ fn parse(
     let mut pane = None;
     let mut facts = HashMap::new();
     let mut compaction_in = None;
+    let mut transcript_path = None;
+    let mut session_directory = None;
     while let Some(argument) = arguments.next() {
         let mut value = |flag: &str| arguments.next().ok_or(format!("{flag} needs a value"));
         match argument.as_str() {
@@ -334,6 +341,8 @@ fn parse(
             "--compacting" => report.compacting = true,
             "--session-name" => report.session_name = Some(value("--session-name")?),
             "--session-id" => report.session_id = Some(value("--session-id")?),
+            "--session-transcript" => transcript_path = Some(value("--session-transcript")?),
+            "--session-directory" => session_directory = Some(value("--session-directory")?),
             "--session-source" => {
                 report.set_context_change(from_source(&value("--session-source")?));
             }
@@ -357,6 +366,12 @@ fn parse(
         }
     }
     validate(&report)?;
+    if let (Some(session_id), Some(path), Some(directory)) =
+        (report.session_id.as_ref().filter(|id| !id.is_empty()), transcript_path, session_directory)
+    {
+        report.session_transcript =
+            Some(proto::SessionTranscript { session_id: session_id.clone(), path, directory });
+    }
     report.facts = facts;
     report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(
         "MUSTER_PANE is not set, so this is not running in a Muster pane; name one with --pane",
@@ -490,7 +505,7 @@ impl Race {
 /// Sends the report and reads its answer, writing it only if `race` lets it.
 fn send(
     socket: &std::path::Path,
-    report: pane_request::Report,
+    mut report: pane_request::Report,
     race: &Race,
 ) -> Result<(), Unreported> {
     let unsent = Unreported::NotReported;
@@ -499,6 +514,9 @@ fn send(
     })?;
     let welcome = connection::open(&mut stream, ConnectionKind::Control, "muster-daemon report")
         .map_err(|error| unsent(error.to_string()))?;
+    if welcome.protocol.unwrap_or_default().minor < proto::version::SESSION_TRANSCRIPTS {
+        report.session_transcript = None;
+    }
     if report.waiting_until_message_from.is_some()
         && let Some(why) = proto::version::too_old(
             "the daemon",
@@ -576,6 +594,41 @@ mod tests {
     fn filled(arguments: &[&str], stdin: &str) -> Result<Vec<String>, String> {
         let arguments = arguments.iter().map(|argument| (*argument).to_string()).collect();
         filled_from(arguments, || Ok(stdin.to_string())).map(|filled| filled.arguments)
+    }
+
+    #[test]
+    fn a_hook_projects_transcript_provenance_only_when_all_three_fields_are_present() {
+        let arguments = [
+            "--agent",
+            "fake",
+            "--from",
+            "session-id=/session",
+            "--from",
+            "session-directory=/cwd",
+            "--from",
+            "session-transcript=/transcript",
+        ];
+        let report = |input| {
+            let flags = filled(&arguments, input).unwrap();
+            let Parsed::Report(report, _) =
+                parse(flags.into_iter(), |_| Some("p1".into())).unwrap()
+            else {
+                panic!("expected a report");
+            };
+            report
+        };
+        let complete = report(r#"{"session":"s1","cwd":"/work","transcript":"/session.jsonl"}"#);
+        assert_eq!(
+            complete.session_transcript,
+            Some(proto::SessionTranscript {
+                session_id: "s1".into(),
+                path: "/session.jsonl".into(),
+                directory: "/work".into(),
+            })
+        );
+        let partial = report(r#"{"session":"s1","cwd":"/work"}"#);
+        assert_eq!(partial.session_id.as_deref(), Some("s1"));
+        assert!(partial.session_transcript.is_none());
     }
 
     /// Claude Code's statusline JSON, cut down to what its statusline reports.

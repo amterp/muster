@@ -1,10 +1,21 @@
-$ ./try    # go1.26.1, libprotoc 36.0, protoc-gen-go v1.36.11, on macOS 26.4.1, at 72207648
-welcomed by a daemon speaking API 0.2
-  it serves api.read_pane, api.subscribe, msg.history, pane.new
-  and the topics [TOPIC_PANES TOPIC_MACHINES TOPIC_MESSAGES TOPIC_ATTENTION]
-subscribed: OUTCOME_DONE, epoch 10669997910991735077, current to 0
+Scratch daemon, API 0.7. Go 1.26.1 darwin/arm64, libprotoc 36.0, protoc-gen-go v1.36.11.
+
+welcomed by a daemon speaking API 0.7
+  it serves api.read_pane, api.subscribe, msg.ack, msg.history, msg.post, pane.clear, pane.close, pane.compact, pane.new, pane.new_canvas, pane.read_canvas, pane.reopen, pane.restart, pane.send, pane.write_canvas
+  and the topics [TOPIC_PANES TOPIC_MACHINES TOPIC_MESSAGES TOPIC_ATTENTION TOPIC_PLACES]
+  and the optional response fields pane.session_transcript, msg.post.recipient_outcomes
+subscribed: OUTCOME_DONE, epoch 15575682792659553786, current to 0
   0 pane(s), 1 machine(s), 0 group(s), 0 pane(s) asking for the human
-  event 1: pane p2fdp1a7j6 appeared, caused by request 2
-pane.new: OUTCOME_DONE, pane p2fdp1a7j6 (oyster), through 1
+  event 1: pane p2nmyce3dw appeared, caused by request 2
+pane.new: OUTCOME_DONE, pane p2nmyce3dw (engine), through 1
 api.read_pane: OUTCOME_DONE, rows 1 from row 0:
   "hello from a pane made in Go"
+  event 2: *musterapi.Event_GroupMade, caused by request 5
+  event 3: *musterapi.Event_Logged, caused by request 5
+  event 4: *musterapi.Event_Logged, caused by request 5
+  event 5: *musterapi.Event_Logged, caused by request 5
+  event 6: *musterapi.Event_Logged, caused by request 5
+  event 7: *musterapi.Event_Unread, caused by request 5
+  event 8: *musterapi.Event_Places, caused by request 5
+msg.post: OUTCOME_DONE, #4 in @human+engine
+  p2nmyce3dw: POST_DISPOSITION_DEFERRED (waiting for an agent to start)

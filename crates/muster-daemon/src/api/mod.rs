@@ -96,6 +96,7 @@ pub(crate) fn features() -> api::Features {
         requests: REQUESTS.iter().map(ToString::to_string).collect(),
         topics: TOPICS.iter().map(|topic| (*topic).into()).collect(),
         options: OPTIONS.iter().map(ToString::to_string).collect(),
+        fields: vec!["pane.session_transcript".into(), "msg.post.recipient_outcomes".into()],
     }
 }
 

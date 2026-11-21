@@ -9,6 +9,73 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use super::claude_code::Scratch;
+use crate::support::{daemon, proto, until_some};
+
+#[test]
+fn a_hook_sends_its_session_id_without_provenance_to_an_older_daemon() {
+    use std::os::unix::net::UnixListener;
+
+    use proto::connection::{receive, send};
+
+    let scratch = daemon();
+    let socket = scratch.root().join("report.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let old = std::thread::spawn(move || {
+        let mut stream =
+            until_some("the hook to connect", || listener.accept().ok().map(|(stream, _)| stream));
+        stream.set_nonblocking(false).unwrap();
+        receive::<proto::Hello>(&mut stream).unwrap().unwrap();
+        send(
+            &mut stream,
+            &proto::HelloAnswer {
+                answer: Some(proto::hello_answer::Answer::Welcome(proto::Welcome {
+                    protocol: Some(proto::Version { major: 1, minor: 18 }),
+                    ..Default::default()
+                })),
+            },
+        )
+        .unwrap();
+        let request = receive::<proto::Request>(&mut stream).unwrap().unwrap();
+        let Some(proto::request::Service::Pane(proto::PaneRequest {
+            request: Some(proto::pane_request::Request::Report(report)),
+        })) = request.service
+        else {
+            panic!("expected a report, got {request:?}");
+        };
+        let mut answer = proto::Answer { id: request.id, ..Default::default() };
+        answer.set_outcome(proto::Outcome::Done);
+        send(
+            &mut stream,
+            &proto::ControlMessage {
+                message: Some(proto::control_message::Message::Answer(answer)),
+            },
+        )
+        .unwrap();
+        report
+    });
+    let status = Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
+        .env_clear()
+        .env("MUSTER_PANE", "p1")
+        .env("MUSTER_DAEMON_SOCKET", socket)
+        .args([
+            "report",
+            "--agent",
+            "fake",
+            "--session-id",
+            "s1",
+            "--session-transcript",
+            "/transcripts/session.jsonl",
+            "--session-directory",
+            "/work",
+        ])
+        .status()
+        .unwrap();
+    assert!(status.success(), "{status}");
+    let report = old.join().unwrap();
+    assert_eq!(report.session_id.as_deref(), Some("s1"));
+    assert!(report.session_transcript.is_none());
+}
 
 struct Harness {
     /// Its directory under `extras/`.

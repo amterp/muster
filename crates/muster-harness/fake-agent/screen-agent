@@ -16,6 +16,7 @@
 # (OSC 777), or say <text>, which prints the text above its prompt without repainting, as an
 # inline agent prints its output: over the line its echo left, with the prompt drawn again below.
 # `title <text>` sets the terminal's title to the text, as a harness publishes what it is doing.
+# `cd <directory>` changes the agent's working directory.
 # `rest` goes idle, and `/rename <name>` of a name with `work` in it, or `/compact` with `work` in
 # its focus, goes to work, each without repainting, as an agent ends a turn and as a slash command
 # such as `/compact` starts one. `menu` paints a menu opened from the prompt, which leaves the state as it was, and
@@ -237,6 +238,7 @@ while :; do
             wait $!
             set +m ;;
         notify\ *) printf '\033]777;notify;Claude Code;%s\a' "${line#notify }" ;;
+        cd\ *) cd "${line#cd }" || exit 1 ;;
         deaf\ *)
             paint
             modes=$(stty -g)

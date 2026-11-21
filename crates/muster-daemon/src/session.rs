@@ -3030,6 +3030,23 @@ impl Session {
         (pane.body.terminal()?.io.agent_group()? != sender.group).then_some(own)
     }
 
+    pub(crate) fn can_report_transcript(
+        &self,
+        report: &pane_request::Report,
+        sender: Option<&crate::attribution::Sender>,
+    ) -> bool {
+        let Some(crate::attribution::Sender::Agent(sender)) = sender else { return false };
+        let Some(index) = self.pane_index(&report.pane) else { return false };
+        let pane = &self.panes[index];
+        sender.agent == report.agent
+            && pane.record.agent.as_deref() == Some(report.agent.as_str())
+            && pane.body.terminal().is_some_and(|terminal| {
+                terminal.io.agent_group() == Some(sender.group)
+                    && terminal.io.foreground_group().and_then(|group| u32::try_from(group).ok())
+                        == Some(sender.group)
+            })
+    }
+
     /// Facts the agent in a pane states about itself.
     fn report(&mut self, mut report: pane_request::Report) -> Reply {
         let index = match self.terminal_index(&report.pane) {
@@ -3059,6 +3076,7 @@ impl Session {
             session_name = None;
         }
         let session_id = report.session_id.take();
+        let transcript = report.session_transcript.take();
         if session_id.is_some() && agent.is_empty() {
             return Reply::refused("a session's id needs the name of the agent reporting it");
         }
@@ -3112,7 +3130,7 @@ impl Session {
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
         let renamed = self.session_named(index, cleared, &agent, session_name.as_deref());
-        let identified = self.session_and_context(index, &agent, session_id, change);
+        let identified = self.session_and_context(index, &agent, session_id, transcript, change);
         self.refresh_compaction(index);
         let compacting = self.past_compact_at(index, cleared, context_used);
         self.past_nudge_at(index, context_used);
@@ -3178,12 +3196,36 @@ impl Session {
         index: usize,
         agent: &str,
         session_id: Option<String>,
+        transcript: Option<proto::SessionTranscript>,
         change: ContextReport,
     ) -> bool {
         let before =
             self.panes[index].body.terminal().and_then(|terminal| terminal.session_id.clone());
+        let pane = &self.panes[index].record;
+        let current_agent = pane.agent.as_deref() == Some(agent);
+        let cleared = current_agent
+            && change.kind == proto::ContextChangeKind::Cleared
+            && (change.id.is_none()
+                || change.id.as_ref()
+                    != pane.context_change.as_ref().and_then(|held| held.id.as_ref()));
+        let transcript = transcript
+            .filter(|_| current_agent)
+            .and_then(|said| facts::session_transcript(said, session_id.as_deref(), &pane.cwd));
         let identified = self.session_identified(index, agent, session_id);
-        self.context_changed(index, agent, change, before.as_deref()) || identified
+        let held = &mut self.panes[index].record.session_transcript;
+        let transcript_changed = if let Some(transcript) = transcript {
+            replaced(held, Some(transcript))
+        } else if identified == Some(true) || cleared {
+            held.take().is_some()
+        } else {
+            false
+        };
+        if identified.is_some() || transcript_changed {
+            self.session_described(index, transcript_changed);
+        }
+        self.context_changed(index, agent, change, before.as_deref())
+            || identified == Some(true)
+            || transcript_changed
     }
 
     /// Dates the change a report says its agent's context went through and publishes it, when
@@ -3481,14 +3523,16 @@ impl Session {
             && terminal.session_id.as_deref() == Some(id)
         {
             terminal.session_id = None;
-            self.session_described(index);
+            let transcript_changed = self.panes[index].record.session_transcript.take().is_some();
+            self.session_described(index, transcript_changed);
         }
     }
 
     /// Publishes the pane's record when its session or how it resumes has moved on it.
-    fn session_described(&mut self, index: usize) {
+    fn session_described(&mut self, index: usize, transcript_changed: bool) {
         let pane = &mut self.panes[index];
         if pane.body.terminal().is_some_and(|terminal| terminal.describe_session(&mut pane.record))
+            || transcript_changed
         {
             let record = self.panes[index].record.clone();
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
@@ -3498,19 +3542,24 @@ impl Session {
     /// Keeps the session id a report says, while its agent is the pane's or before detection has
     /// found one, as a session's name counts; true when it changed. Not forgotten by `--clear`,
     /// which a harness sends as a session starts, perhaps after the new session's id.
-    fn session_identified(&mut self, index: usize, agent: &str, said: Option<String>) -> bool {
+    fn session_identified(
+        &mut self,
+        index: usize,
+        agent: &str,
+        said: Option<String>,
+    ) -> Option<bool> {
         let pane = &mut self.panes[index];
-        let Some(terminal) = pane.body.terminal_mut() else { return false };
-        let Some(said) = said else { return false };
+        let terminal = pane.body.terminal_mut()?;
+        let said = said?;
         if pane.record.agent.as_deref().is_some_and(|found| found != agent) {
-            return false;
+            return None;
         }
         let id = Some(said).filter(|id| !id.is_empty());
         let changed = terminal.session_id != id;
         // The same session again is worth another try at its resume when the last one could not
         // be built: the job was between processes, or its arguments would not read.
         if !changed && (id.is_none() || terminal.resume.is_some()) {
-            return false;
+            return None;
         }
         if changed {
             log::debug(
@@ -3526,8 +3575,7 @@ impl Session {
         if resume.is_some() || changed {
             self.resume_changed(index, resume);
         }
-        self.session_described(index);
-        changed
+        Some(changed)
     }
 
     /// Says once per session that its resume could not be built, which otherwise leaves a pane
@@ -5641,6 +5689,11 @@ impl Session {
         drop(screen.output(replay));
         screen.replayed_from(resuming.oldest_row);
         record.prompt_covered_by = None;
+        record.session_transcript = record
+            .session_transcript
+            .take()
+            .filter(|_| record.agent.is_some())
+            .and_then(|said| facts::session_transcript(said, resuming.session_id, &record.cwd));
         // A daemon from before words hands its panes over with none.
         if record.callsign.is_none() {
             let besides = given_name(record.label.as_deref());
@@ -6285,7 +6338,14 @@ fn turn_ended(pane: &str, agent: Option<&str>, waiting: bool) {
 fn set_reported_field(record: &mut proto::Pane, what: Reported) -> Result<bool, Reported> {
     match what {
         Reported::Title(title) => Ok(replaced(&mut record.title, title)),
-        Reported::Cwd(directory) => Ok(replaced(&mut record.cwd, directory.display().to_string())),
+        Reported::Cwd(directory) => {
+            let directory = directory.display().to_string();
+            let transcript_cleared = record
+                .session_transcript
+                .take_if(|said| !facts::transcript_directory_matches(&said.directory, &directory))
+                .is_some();
+            Ok(replaced(&mut record.cwd, directory) || transcript_cleared)
+        }
         Reported::ShiftCapture(capture) => Ok(replaced(&mut record.shift_capture, capture)),
         Reported::UnreadInput(unread) => Ok(replaced(&mut record.unread_input, unread)),
         Reported::ImagePaste(ready) => Ok(replaced(&mut record.image_paste, ready)),
@@ -6504,6 +6564,7 @@ fn forget_compaction(compaction: &mut Compaction, pane: &str, agent: &str, resta
 /// resume the pane's restart would have run.
 fn agent_left(record: &mut proto::Pane, terminal: &mut TerminalPane, name: &str) -> bool {
     record.facts = None;
+    record.session_transcript = None;
     record.set_adapter(proto::Adapter::Unsaid);
     terminal.turns.reports_turns = false;
     terminal.session_id = None;

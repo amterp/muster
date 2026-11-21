@@ -14,13 +14,11 @@ starts a muster-daemon on a socket of its own with a scratch home, runs the clie
 daemon. It needs Go, `protoc` and `protoc-gen-go`, and the network once, for Go to fetch
 `google.golang.org/protobuf`. `MUSTER_BINARY` and `MUSTER_DAEMON_BINARY` name other builds.
 
-The client connects, says hello as API 0.2, subscribes to every topic, makes a pane with
-`pane.new` that prints a line, and reads that line back with `api.read_pane`, printing what the
-daemon said at each step. Run on its own, `./api-client-go [socket]` talks to any daemon,
-`$MUSTER_DAEMON_SOCKET`'s by default, and leaves the pane it made running there.
+The client says hello as API 0.7, subscribes to the available topics, and prints any session
+transcript provenance in the snapshot. It makes a pane with `pane.new` and reads the pane's
+text with `api.read_pane`. When the daemon advertises recipient outcomes, the client posts a
+message to the pane it made and prints the initial routing result.
 
-`transcript.txt` is a run, with the versions it ran on. What it showed: the Welcome listed the
-requests and topics the daemon serves; the pane's appearing reached the client as event 1,
-carrying the correlation id of the request that made it, before that request's answer, whose
-`through` was 1; and the pane's text came back as the command printed it. The daemon's ids,
-callsigns and epochs differ in every run.
+Run on its own, `./api-client-go [socket]` uses `$MUSTER_DAEMON_SOCKET` by default. It leaves its
+pane and, on API 0.7, its message on that daemon. The recorded run in `transcript.txt` used a
+scratch daemon. The IDs, callsigns, and epochs differ in every run.

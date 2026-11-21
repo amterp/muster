@@ -44,7 +44,7 @@
                   "outcome": "OUTCOME_DONE",
                   "epoch": "$epoch",
                   "through": "1",
-                  "posted": {"group": "g", "number": "4"}
+                  "posted": {"group": "g", "number": "4", "recipientOutcomes": [{"recipient": "a", "disposition": "POST_DISPOSITION_WAITING"}]}
                 }
               }
             ]
@@ -169,7 +169,7 @@
           {
             "as": "foreman",
             "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
-            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4"}}}]
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4", "recipientOutcomes": [{"recipient": "a", "disposition": "POST_DISPOSITION_WAITING"}]}}}]
           },
           {
             "as": "foreman",
@@ -189,7 +189,7 @@
           {
             "as": "other",
             "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
-            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5"}}}]
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5", "recipientOutcomes": [{"recipient": "a", "disposition": "POST_DISPOSITION_WAITING"}]}}}]
           },
           {
             "as": "nameless",
@@ -239,7 +239,7 @@
           {
             "as": "foreman",
             "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
-            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4"}}}]
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4", "recipientOutcomes": [{"recipient": "a", "disposition": "POST_DISPOSITION_WAITING"}]}}}]
           },
           {"agent": "a", "deletes": "g"},
           {
@@ -283,7 +283,7 @@
               "correlation": "1",
               "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "Ship?", "answers": ["Yes", "No"], "recommended": "No"}}
             },
-            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4"}}}]
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4", "recipientOutcomes": [{"recipient": "a", "disposition": "POST_DISPOSITION_WAITING"}]}}}]
           },
           {
             "as": "foreman",
@@ -391,7 +391,7 @@
               "correlation": "1",
               "msg": {"post": {"operation": "op-1", "group": "g", "body": "ship it today", "answering": {"question": "4", "answer": "Yes"}}}
             },
-            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5"}}}]
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5", "recipientOutcomes": [{"recipient": "a", "disposition": "POST_DISPOSITION_WAITING"}]}}}]
           },
           {
             "as": "foreman",
@@ -454,7 +454,7 @@
               "correlation": "2",
               "msg": {"post": {"operation": "op-2", "group": "g", "body": "not until the tests pass", "answering": {"question": "4"}}}
             },
-            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5"}}}]
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5", "recipientOutcomes": [{"recipient": "a", "disposition": "POST_DISPOSITION_WAITING"}]}}}]
           },
           {
             "as": "foreman",
@@ -518,7 +518,7 @@
           {
             "as": "foreman",
             "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["@human"], "body": "done", "as": "a"}}},
-            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4"}}}]
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4", "recipientOutcomes": [{"recipient": "@human", "disposition": "POST_DISPOSITION_WAITING"}]}}}]
           },
           {
             "as": "foreman",
