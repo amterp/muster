@@ -295,23 +295,7 @@ fn parse(
                     Some(given.parse().map_err(|_| format!("--cost-usd {given} is not a number"))?);
             }
             "--subagent-started" | "--subagent-stopped" => {
-                let started = report.subagent() == proto::SubagentChange::Started;
-                match report.subagent() {
-                    proto::SubagentChange::None => {}
-                    _ if started == (argument == "--subagent-started") => {
-                        return Err(format!("{argument} is given twice"));
-                    }
-                    _ => {
-                        return Err(
-                            "--subagent-started or --subagent-stopped, not both".to_string()
-                        );
-                    }
-                }
-                report.set_subagent(if argument == "--subagent-started" {
-                    proto::SubagentChange::Started
-                } else {
-                    proto::SubagentChange::Stopped
-                });
+                set_subagent_change(&mut report, &argument)?;
             }
             "--fact" => {
                 let given = value("--fact")?;
@@ -377,6 +361,22 @@ fn parse(
         "MUSTER_PANE is not set, so this is not running in a Muster pane; name one with --pane",
     )?;
     Ok(Parsed::Report(Box::new(report), compaction_in))
+}
+
+fn set_subagent_change(report: &mut pane_request::Report, flag: &str) -> Result<(), String> {
+    let change = if flag == "--subagent-started" {
+        proto::SubagentChange::Started
+    } else {
+        proto::SubagentChange::Stopped
+    };
+    match report.subagent() {
+        proto::SubagentChange::None => {
+            report.set_subagent(change);
+            Ok(())
+        }
+        previous if previous == change => Err(format!("{flag} is given twice")),
+        _ => Err("--subagent-started or --subagent-stopped, not both".to_string()),
+    }
 }
 
 fn from_source(source: &str) -> proto::ContextChangeKind {
