@@ -43,8 +43,8 @@ impl Drop for Overrides {
 #[test]
 fn all_built_in_manifests_parse_and_validate() {
     let manifests = Manifests::built_in();
-    assert_eq!(manifests.agents().count(), BUILT_IN.len());
-    for (file, text) in BUILT_IN {
+    assert_eq!(manifests.agents().count(), BUNDLED.len());
+    for (file, text) in Manifests::built_in_sources() {
         let manifest = Manifest::parse(text).unwrap_or_else(|error| panic!("{file}: {error}"));
         assert!(
             Manifest::required_engine(text).is_some_and(|engine| engine <= ENGINE_VERSION),
@@ -226,7 +226,7 @@ fn a_missing_override_directory_is_no_overrides() {
     let (manifests, warnings) =
         Manifests::load(&[], Some(Path::new("/nonexistent/muster-detect/agent-detection")));
     assert_eq!(warnings, []);
-    assert_eq!(manifests.agents().count(), BUILT_IN.len());
+    assert_eq!(manifests.agents().count(), BUNDLED.len());
 }
 
 #[test]

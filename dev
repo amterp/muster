@@ -951,13 +951,15 @@ fn check_bundle_is_whole(contents):
         // no `muster msg` to message anyone with.
         "{contents}/Resources/daemons/linux-x86_64/muster",
         "{contents}/Resources/daemons/linux-aarch64/muster",
-        // The adapters `muster harness install` installs, here and on every SSH machine.
-        "{contents}/Resources/extras/.claude-plugin/marketplace.json",
-        "{contents}/Resources/extras/.agents/plugins/marketplace.json",
         "{contents}/Frameworks/libmuster.dylib",
         "{contents}/Info.plist",
         "{contents}/Library/{DAEMON_BUNDLE}/Contents/Info.plist",
     ]
+    cli = "{contents}/MacOS/muster-cli"
+    if get_path(cli).exists:
+        assets = quiet $`{cli} harness bundled-assets`.stdout.trim().split("\n")
+        for asset in assets:
+            required += ["{contents}/Resources/extras/{asset}"]
     missing = required.filter(fn(path) not get_path(path).exists)
     if len(missing) > 0:
         print_err(red("The assembled bundle is missing {len(missing)} file(s) it needs to run."))

@@ -4,19 +4,26 @@ use std::thread::{self, JoinHandle};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
+use muster_core::harnesses::catalog::{self, AutomaticRefresh};
 
 pub(crate) fn start(commands: &str) {
     let cli = (!commands.is_empty()).then(|| Path::new(commands).join("muster"));
-    let _ = start_with(cli, |cli| {
-        Command::new(cli)
-            .args(["harness", "refresh", "codex", "--login"])
-            .stdin(Stdio::null())
-            .output()
-    });
+    for (_, adapter) in catalog::adapters() {
+        let Some(policy) = adapter.refresh.as_ref().and_then(|refresh| refresh.at_startup) else {
+            continue;
+        };
+        let _ = start_with(cli.clone(), policy, move |cli| {
+            Command::new(cli)
+                .args(["harness", "refresh", adapter.dir, "--login"])
+                .stdin(Stdio::null())
+                .output()
+        });
+    }
 }
 
 fn start_with(
     cli: Option<PathBuf>,
+    policy: AutomaticRefresh,
     run: impl FnOnce(PathBuf) -> std::io::Result<Output> + Send + 'static,
 ) -> std::io::Result<JoinHandle<()>> {
     let started = thread::Builder::new().name("adapter-refresh".to_string()).spawn(move || {
@@ -24,7 +31,7 @@ fn start_with(
             log::info(
                 "adapter.refresh.skipped",
                 fields! {
-                    "reason" => "this build staged no CLI; no Codex refresh was attempted",
+                    "reason" => policy.skipped,
                 },
             );
             return;
@@ -38,27 +45,26 @@ fn start_with(
                     },
                 );
             }
-            Ok(output) => failed(&format!(
-                "{}: {}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            )),
-            Err(error) => failed(&error.to_string()),
+            Ok(output) => failed(
+                policy,
+                &format!("{}: {}", output.status, String::from_utf8_lossy(&output.stderr).trim()),
+            ),
+            Err(error) => failed(policy, &error.to_string()),
         }
     });
     if let Err(error) = &started {
-        failed(&format!("could not start the refresh worker: {error}"));
+        failed(policy, &format!("could not start the refresh worker: {error}"));
     }
     started
 }
 
-fn failed(reason: &str) {
+fn failed(policy: AutomaticRefresh, reason: &str) {
     log::warn(
         "adapter.refresh.failed",
         fields! {
             "reason" => reason,
-            "impact" => "Codex's copy of the adapter may still be old; muster window says when it differs",
-            "fix" => "run muster harness install codex, restart Codex and review changed hooks in /hooks",
+            "impact" => policy.impact,
+            "fix" => policy.repair,
         },
     );
 }
@@ -74,7 +80,8 @@ mod tests {
     fn starting_does_not_wait_for_the_refresh_process() {
         let (began, running) = mpsc::channel();
         let (release, proceed) = mpsc::channel();
-        let worker = start_with(Some(PathBuf::from("/fake/muster")), move |cli| {
+        let policy = catalog::named("codex").unwrap().refresh.as_ref().unwrap().at_startup.unwrap();
+        let worker = start_with(Some(PathBuf::from("/fake/muster")), policy, move |cli| {
             began.send(cli).unwrap();
             proceed.recv().unwrap();
             Ok(Output {

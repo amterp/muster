@@ -13,6 +13,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use anstyle::{AnsiColor, Style};
+use muster_adapters::install::shell_word;
 use muster_core::AgentState;
 use muster_proto::{Response, Window, response};
 use serde_json::{Value, json};
@@ -184,14 +185,16 @@ pub struct Local {
     /// The socket of the daemon this CLI is on, which names the one machine in a window's answer
     /// the rest of this describes.
     pub daemon_socket: Option<String>,
-    /// Whether Codex's copy of Muster's adapter differs from this Muster's
-    /// ([`crate::harness::codex_copy_differs`]).
-    pub codex_adapter_differs: bool,
+    pub stale_adapter_copies: Vec<(&'static str, &'static str)>,
 }
 
 impl Local {
-    fn codex_adapter_differs_on(&self, machine: &muster_proto::Machine) -> bool {
-        self.codex_adapter_differs && self.daemon_socket.as_deref() == Some(machine.socket.as_str())
+    fn stale_copies_on(&self, machine: &muster_proto::Machine) -> &[(&'static str, &'static str)] {
+        if self.daemon_socket.as_deref() == Some(machine.socket.as_str()) {
+            &self.stale_adapter_copies
+        } else {
+            &[]
+        }
     }
 }
 
@@ -1252,16 +1255,11 @@ fn daemon_lines(machine: &muster_proto::Machine, local: &Local) -> Vec<String> {
         if machine.color.is_empty() { String::new() } else { format!(" · {}", machine.color) };
     lines.push(styled(&format!("  {where_it_runs} · {whose} · {holding}{color}"), QUIET));
     lines.push(styled(&format!("  {}", machine.socket), QUIET));
-    if local.codex_adapter_differs_on(machine) {
-        lines.push(styled(&format!("  {CODEX_COPY_DIFFERS}"), QUIET));
+    for (_, warning) in local.stale_copies_on(machine) {
+        lines.push(styled(&format!("  {warning}"), QUIET));
     }
     lines
 }
-
-/// What a machine's block says when Codex runs an older adapter than the Muster there carries,
-/// which only `muster harness install codex` puts right: Codex copies the plugin once.
-const CODEX_COPY_DIFFERS: &str =
-    "Codex's copy of Muster's adapter differs from this Muster's: muster harness install codex";
 
 fn daemon_line(daemon: &str, state: &str, detail: &str) -> String {
     let mut line = format!("{}  {}", styled(daemon, NAME), styled(state, health_style(state)));
@@ -1669,6 +1667,9 @@ fn machines_json(window: &Window, local: &Local) -> Vec<Value> {
         .daemons
         .iter()
         .map(|daemon| {
+            let stale = local.stale_copies_on(daemon);
+            let copies = (!stale.is_empty())
+                .then(|| stale.iter().map(|(id, _)| (*id, "differs")).collect::<BTreeMap<_, _>>());
             json!({
                 "daemon": daemon.daemon_id,
                 "state": daemon.state,
@@ -1679,9 +1680,7 @@ fn machines_json(window: &Window, local: &Local) -> Vec<Value> {
                 "panes": daemon.panes,
                 "directories": daemon.directories,
                 "color": (!daemon.color.is_empty()).then_some(&daemon.color),
-                "adapter_copies": local
-                    .codex_adapter_differs_on(daemon)
-                    .then(|| json!({ "codex": "differs" })),
+                "adapter_copies": copies,
             })
         })
         .collect()
@@ -2072,15 +2071,6 @@ fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
     })
 }
 
-/// `text` as one word a POSIX shell reads back unchanged, for a command printed to be pasted:
-/// as it is when it needs no quoting, which is every path Muster makes, and single-quoted
-/// otherwise.
-pub(crate) fn shell_word(text: &str) -> String {
-    let plain = !text.is_empty()
-        && text.chars().all(|c| c.is_ascii_alphanumeric() || "/._-+:@%,=".contains(c));
-    if plain { text.to_string() } else { format!("'{}'", text.replace('\'', "'\\''")) }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -2424,7 +2414,10 @@ mod tests {
         };
         let stale = Local {
             daemon_socket: Some("/home/me/.muster/daemon/release.sock".to_string()),
-            codex_adapter_differs: true,
+            stale_adapter_copies: vec![(
+                "codex",
+                "Codex's copy of Muster's adapter differs from this Muster's: muster harness install codex",
+            )],
         };
         let blocks = |local: &Local| -> Vec<String> {
             let text = window_text(&window, 0, Others::All, false, local);
@@ -2437,7 +2430,7 @@ mod tests {
         assert!(!stale_blocks[1].contains("Codex"), "{stale_blocks:?}");
         for quiet in [
             Local::default(),
-            Local { codex_adapter_differs: false, ..stale.clone() },
+            Local { stale_adapter_copies: Vec::new(), ..stale.clone() },
             Local { daemon_socket: None, ..stale.clone() },
         ] {
             assert!(!window_text(&window, 0, Others::All, false, &quiet).contains("Codex"));
@@ -2473,7 +2466,10 @@ mod tests {
             [("/a.sock".to_string(), app("window-1")), ("/b.sock".to_string(), app("window-1"))];
         let stale = Local {
             daemon_socket: Some("/home/me/.muster/daemon/release.sock".to_string()),
-            codex_adapter_differs: true,
+            stale_adapter_copies: vec![(
+                "codex",
+                "Codex's copy of Muster's adapter differs from this Muster's: muster harness install codex",
+            )],
         };
         let text = super::answers(&answered, false, &stale);
         assert_eq!(text.matches("Codex's copy of Muster's adapter differs").count(), 2, "{text}");

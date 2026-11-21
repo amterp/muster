@@ -675,6 +675,7 @@ dependencies = [
  "conformance",
  "flexid",
  "libc",
+ "muster-adapters",
  "pulldown-cmark",
  "serde_json",
  "toml",
@@ -752,6 +753,7 @@ version = "0.29.0"
 dependencies = [
  "conformance",
  "libc",
+ "muster-adapters",
  "muster-vt",
  "regex",
  "serde",

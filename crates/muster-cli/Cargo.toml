@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 anstream = "0.6"
 anstyle = "1"
-clap = { version = "4", features = ["derive", "wrap_help", "unicode"] }
+clap = { version = "4", features = ["derive", "wrap_help", "unicode", "string"] }
 clap_complete = "4"
 libc.workspace = true
 muster-adapters.workspace = true

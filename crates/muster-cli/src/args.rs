@@ -100,10 +100,12 @@ pub enum Asking {
     Message(Box<crate::messaging::Messaging>),
     /// A harness's adapter, installed on this machine through the harness's own command.
     Install {
-        harness: muster_core::harnesses::Harness,
+        adapter: &'static muster_adapters::catalog::Adapter,
         dry_run: bool,
     },
-    RefreshCodex {
+    RefreshAdapter {
+        adapter: &'static muster_adapters::catalog::Adapter,
+        refresh: &'static muster_adapters::catalog::Refresh,
         login: bool,
     },
 }
@@ -409,18 +411,42 @@ enum What {
 fn installing(verb: &HarnessVerb) -> Result<Asking, Failure> {
     match verb {
         HarnessVerb::Install { harness, dry_run } => {
-            let harness = crate::harness::harness(harness).map_err(Failure::Refused)?;
-            Ok(Asking::Install { harness, dry_run: *dry_run })
+            let adapter = crate::harness::adapter(harness).map_err(Failure::Refused)?;
+            Ok(Asking::Install { adapter, dry_run: *dry_run })
         }
-        HarnessVerb::Refresh { login, .. } => Ok(Asking::RefreshCodex { login: *login }),
+        HarnessVerb::Refresh { harness, login } => {
+            let adapter = crate::harness::adapter(harness).map_err(Failure::Refused)?;
+            let refresh = adapter.refresh.as_ref().ok_or_else(|| {
+                Failure::Refused(format!("Muster cannot refresh the {} adapter.", adapter.name))
+            })?;
+            Ok(Asking::RefreshAdapter { adapter, refresh, login: *login })
+        }
+        HarnessVerb::BundledAssets => Ok(Asking::Print(
+            muster_adapters::catalog::adapters()
+                .flat_map(|(_, adapter)| adapter.assets.iter().copied())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )),
+        HarnessVerb::CopyReminders => Ok(Asking::Print(
+            muster_adapters::catalog::adapters()
+                .filter_map(|(_, adapter)| Some(adapter.copy?.install_reminder))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )),
     }
+}
+
+fn refreshable_adapters() -> clap::builder::PossibleValuesParser {
+    let names = muster_adapters::catalog::adapters()
+        .filter_map(|(_, adapter)| adapter.refresh.as_ref().map(|_| adapter.dir));
+    clap::builder::PossibleValuesParser::new(names)
 }
 
 #[derive(Debug, Subcommand)]
 pub enum HarnessVerb {
     /// Refresh an installed Codex adapter when its content differs from this Muster
     Refresh {
-        #[arg(value_name = "HARNESS", value_parser = ["codex"])]
+        #[arg(value_name = "HARNESS", value_parser = refreshable_adapters())]
         harness: String,
         /// Read the login-shell environment first, as an app launched from the Dock needs
         #[arg(long)]
@@ -431,13 +457,16 @@ pub enum HarnessVerb {
     /// Runs the harness's own plugin commands against the adapters this Muster carries, and
     /// prints what no command of the harness's can do. Never edits a harness's config files.
     Install {
-        /// claude-code, codex or opencode
-        #[arg(value_name = "HARNESS")]
+        #[arg(value_name = "HARNESS", help = muster_adapters::catalog::install_names())]
         harness: String,
         /// Print the commands instead of running them
         #[arg(long)]
         dry_run: bool,
     },
+    #[command(hide = true)]
+    BundledAssets,
+    #[command(hide = true)]
+    CopyReminders,
 }
 
 /// What `muster window` can do besides describe the one window this is about.
@@ -1659,7 +1688,7 @@ fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
         Asking::Print(_)
         | Asking::CloseWindow(_)
         | Asking::Install { .. }
-        | Asking::RefreshCodex { .. } => "this command is not about a window".to_string(),
+        | Asking::RefreshAdapter { .. } => "this command is not about a window".to_string(),
     };
     Err(Failure::Refused(format!(
         "--window {window} names the window a command is about, so nothing was done: {instead}."

@@ -261,12 +261,11 @@ fn a_codex_json_dry_run_never_queries_the_harness() {
     assert_eq!(answer["commands"][1], "codex plugin add muster-codex@muster");
 }
 
-/// The help names every harness there is an adapter for, though clap's text is written by hand.
 #[test]
 fn the_help_names_every_harness_with_an_adapter() {
     let home = Home::new("help");
     let help = text(&home.muster(&["harness", "install", "--help"]).stdout);
-    for harness in muster_core::harnesses::WITH_ADAPTERS {
+    for (_, harness) in muster_adapters::catalog::adapters() {
         assert!(help.contains(harness.dir), "the help leaves out {}: {help}", harness.dir);
     }
 }

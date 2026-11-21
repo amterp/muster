@@ -165,20 +165,15 @@ fn run_command<W: Write>(
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
-        args::Asking::Install { harness, dry_run } => {
-            return match harness::install(harness, dry_run, json, environment, out, errors) {
+        args::Asking::Install { adapter, dry_run } => {
+            return match harness::install(adapter, dry_run, json, environment, out, errors) {
                 Ok(()) => 0,
                 Err(trouble) => report(&trouble, json, errors),
             };
         }
-        args::Asking::RefreshCodex { login } => {
+        args::Asking::RefreshAdapter { adapter, refresh, login } => {
             let mut said = Vec::new();
-            let refreshed = if login {
-                harness::login_environment(environment)
-                    .and_then(|environment| harness::refresh(&environment, &mut said))
-            } else {
-                harness::refresh(environment, &mut said)
-            };
+            let refreshed = harness::refresh(adapter, refresh, login, environment, &mut said);
             return match refreshed {
                 Ok(()) => {
                     let outcome = String::from_utf8_lossy(&said);
@@ -187,7 +182,7 @@ fn run_command<W: Write>(
                             out,
                             "{}",
                             serde_json::json!({
-                                "harness": "codex", "outcome": outcome.trim(),
+                                "harness": adapter.dir, "outcome": outcome.trim(),
                             })
                         )
                     } else {
@@ -395,7 +390,7 @@ fn held_by_one(
 pub(crate) fn here(environment: &BTreeMap<String, String>) -> render::Local {
     render::Local {
         daemon_socket: daemon::socket(environment).map(|socket| socket.display().to_string()),
-        codex_adapter_differs: harness::codex_adapter_copy_differs(environment),
+        stale_adapter_copies: harness::stale_copies(environment),
     }
 }
 
@@ -684,7 +679,7 @@ fn context_unsaid(
                     "{pane_id} has not said how full its context is. {} say it once \
                      Muster's adapter is installed (`muster docs harnesses`); until {pane_id} \
                      does, --context cannot end this wait.",
-                    muster_core::harnesses::names()
+                    muster_adapters::catalog::display_names()
                 )
             }
         })

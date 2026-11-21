@@ -1,0 +1,25 @@
+id = "harness-catalog"
+question = "Where does Muster register bundled harnesses and their installable adapters?"
+tags = ["harnesses", "detection", "adapters"]
+paths = ["crates/muster-adapters/src/catalog.rs", "crates/muster-detect/src/manifests.rs", "crates/muster-cli/src/harness.rs"]
+
+[[revisions]]
+id = "lrkmihrq"
+date = 2026-11-21
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+The muster-adapters catalog binds each bundled harness ID to its detection manifest
+and optional adapter. The adapter supplies its assets and installer and can opt into
+copy inspection and refresh. Detection compiles the manifest and applies its existing
+override order. Callers own subprocesses, state and transport.
+'''
+why = '''
+A manifest answers runtime questions, including when an override changes the answer.
+The catalog answers what ships and how to install it. Sharing that registration lets
+the CLI, app, daemon and package checks find the same adapter without duplicating
+vendor policy or requiring every harness to implement a common trait.
+'''
+review = "Please confirm that this boundary and preservation of existing harness behavior match your direction for the refactor."

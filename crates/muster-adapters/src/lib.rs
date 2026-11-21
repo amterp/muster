@@ -1,9 +1,12 @@
-//! The harness formats used by Muster's inbox and hook commands.
+//! Muster's bundled harness catalog, installation plans and hook formats.
 
 mod claude_code;
 mod codex;
+mod opencode;
 
+pub mod catalog;
 pub mod hooks;
+pub mod install;
 
 /// The inbox transport for the untyped path and inode that Muster already keeps.
 pub mod inbox {

@@ -1,55 +1,9 @@
-//! The harnesses Muster ships an adapter for, and where those adapters are on this machine
-//! (MIP-5). An adapter is the hooks or plugin in `extras/<dir>/` that has a harness report
-//! itself to the daemon; the daemon only says whether a pane's agent reports, and this is what
-//! knows whether there is anything to install when it does not.
-
-use std::path::{Path, PathBuf};
+//! How to interpret the daemon's adapter report for a pane.
 
 use crate::mirror::backend::Adapter;
 
-/// A harness with an adapter in `extras/`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Harness {
-    /// Which one, for code that does something different for each: matched without a wildcard,
-    /// a harness added here does not compile until each of those says what it does for it.
-    pub kind: Kind,
-    /// Its detection manifest's id, as `muster window` and `report --agent` name it.
-    pub id: &'static str,
-    /// Its adapter's directory under `extras/`, which is also what a person types for it.
-    pub dir: &'static str,
-    /// What a person calls it.
-    pub name: &'static str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
-    ClaudeCode,
-    Codex,
-    OpenCode,
-}
-
-/// Every harness Muster ships an adapter for. A test holds this to `extras/`.
-pub const WITH_ADAPTERS: [Harness; 3] = [
-    Harness { kind: Kind::ClaudeCode, id: "claude", dir: "claude-code", name: "Claude Code" },
-    Harness { kind: Kind::Codex, id: "codex", dir: "codex", name: "Codex" },
-    Harness { kind: Kind::OpenCode, id: "opencode", dir: "opencode", name: "OpenCode" },
-];
-
-/// What a person calls every harness with an adapter, as a sentence lists them: "Claude Code,
-/// Codex and OpenCode".
-pub fn names() -> String {
-    let names: Vec<&str> = WITH_ADAPTERS.iter().map(|harness| harness.name).collect();
-    match names.split_last() {
-        Some((last, [])) => (*last).to_string(),
-        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
-        None => String::new(),
-    }
-}
-
-/// The harness a person or a manifest named, by its adapter's directory or its manifest id.
-pub fn named(name: &str) -> Option<Harness> {
-    WITH_ADAPTERS.into_iter().find(|harness| harness.dir == name || harness.id == name)
-}
+pub use muster_adapters::catalog;
+pub use muster_adapters::install::extras_beside;
 
 /// Whether a pane's agent reports through an adapter, with what Muster can do about it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +12,7 @@ pub enum Standing {
     Unsaid,
     Reporting,
     /// It ended a turn without reporting, and Muster ships an adapter for its harness.
-    Silent(Harness),
+    Silent(&'static str),
     /// It ended a turn without reporting, and Muster ships no adapter for its harness.
     None,
 }
@@ -80,32 +34,17 @@ pub fn standing(agent: Option<&str>, adapter: Adapter) -> Standing {
     match adapter {
         Adapter::Unsaid => Standing::Unsaid,
         Adapter::Reporting => Standing::Reporting,
-        Adapter::Silent => match agent.and_then(named) {
-            Some(harness) => Standing::Silent(harness),
+        Adapter::Silent => match agent.and_then(catalog::named) {
+            Some(harness) => Standing::Silent(harness.dir),
             None => Standing::None,
         },
-    }
-}
-
-/// Where the adapters ship beside an executable of Muster's: a bundle keeps them in its
-/// `Resources`, and every other layout - `./dev`'s staging, an install on an SSH machine - beside
-/// the executable itself.
-pub fn extras_beside(executable: &Path) -> PathBuf {
-    let directory = executable.parent().unwrap_or(Path::new("/"));
-    match directory.parent() {
-        Some(contents)
-            if directory.file_name().is_some_and(|name| name == "MacOS")
-                && contents.file_name().is_some_and(|name| name == "Contents") =>
-        {
-            contents.join("Resources").join("extras")
-        }
-        _ => directory.join("extras"),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn a_bundle_keeps_its_adapters_in_its_resources() {
@@ -120,37 +59,9 @@ mod tests {
     }
 
     #[test]
-    fn a_harness_is_named_by_its_directory_or_its_manifest() {
-        assert_eq!(named("claude-code"), named("claude"));
-        assert_eq!(named("claude").map(|harness| harness.dir), Some("claude-code"));
-        assert_eq!(named("gemini"), None);
-        assert_eq!(names(), "Claude Code, Codex and OpenCode");
-    }
-
-    #[test]
     fn silence_from_a_harness_without_an_adapter_is_nothing_to_install() {
         assert_eq!(standing(Some("gemini"), Adapter::Silent), Standing::None);
-        assert_eq!(standing(Some("codex"), Adapter::Silent), Standing::Silent(WITH_ADAPTERS[1]));
+        assert_eq!(standing(Some("codex"), Adapter::Silent), Standing::Silent("codex"));
         assert_eq!(standing(Some("codex"), Adapter::Unsaid).as_str(), "");
-    }
-
-    #[test]
-    fn adapter_directories_match_the_registry_and_staged_assets() {
-        let extras = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../extras");
-        let mut shipped: Vec<String> = std::fs::read_dir(&extras)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            // The skill is for any harness and the API's client for none.
-            .filter(|name| {
-                !name.starts_with('.') && !["skill", "api-client-go"].contains(&name.as_str())
-            })
-            .collect();
-        shipped.sort();
-        let mut listed: Vec<String> =
-            WITH_ADAPTERS.iter().map(|harness| harness.dir.to_string()).collect();
-        // Antigravity's plugin ships before the install catalog can register it.
-        listed.push("agy".to_string());
-        listed.sort();
-        assert_eq!(shipped, listed, "extras/ and harnesses::WITH_ADAPTERS disagree");
     }
 }

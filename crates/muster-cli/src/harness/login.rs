@@ -3,16 +3,14 @@
 use std::collections::BTreeMap;
 use std::process::Command;
 
-use crate::Trouble;
-
 use super::{REFRESH_PATIENCE, run_within};
 
 const MARKER: &[u8] = b"\0MUSTER_REFRESH_ENV\0";
 
 /// Reads the user's login environment without allowing a stalled profile to hold a refresh open.
-pub fn environment(
+pub(super) fn environment(
     inherited: &BTreeMap<String, String>,
-) -> Result<BTreeMap<String, String>, Trouble> {
+) -> Result<BTreeMap<String, String>, String> {
     let shell = inherited
         .get("SHELL")
         .filter(|shell| !shell.is_empty())
@@ -52,12 +50,8 @@ pub fn environment(
     Ok(environment)
 }
 
-fn failed(shell: &str, reason: &str) -> Trouble {
-    Trouble::Refused(format!(
-        "could not read the login environment from {shell} ({reason}), so Codex's adapter was \
-         not refreshed. Run `muster harness install codex` from a terminal and review changed \
-         hooks in `/hooks`."
-    ))
+fn failed(shell: &str, reason: &str) -> String {
+    format!("could not read the login environment from {shell} ({reason})")
 }
 
 fn account_shell() -> Option<String> {

@@ -806,10 +806,9 @@ fn taken(sent: &Pending) -> bool {
 /// The detection manifests this app was built with, each under its file's name.
 fn app_manifests() -> Vec<proto::Manifest> {
     muster_detect::Manifests::built_in_sources()
-        .iter()
         .map(|(file, text)| proto::Manifest {
             agent: file.trim_end_matches(".toml").to_string(),
-            toml: (*text).to_string(),
+            toml: text.to_string(),
         })
         .collect()
 }

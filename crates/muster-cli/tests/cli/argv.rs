@@ -553,13 +553,15 @@ fn answers_here(asking: &Asking) -> Option<Value> {
             Some(json!(format!("asking the running app to close {name}")))
         }
         Asking::Message(_) => Some(json!("asking this machine's daemon")),
-        Asking::Install { harness, dry_run: false } => {
-            Some(json!(format!("installing {}'s adapter with its own commands", harness.name)))
+        Asking::Install { adapter, dry_run: false } => {
+            Some(json!(format!("installing {}'s adapter with its own commands", adapter.name)))
         }
-        Asking::Install { harness, dry_run: true } => {
-            Some(json!(format!("printing how to install {}'s adapter", harness.name)))
+        Asking::Install { adapter, dry_run: true } => {
+            Some(json!(format!("printing how to install {}'s adapter", adapter.name)))
         }
-        Asking::RefreshCodex { .. } => Some(json!("refreshing Codex's installed adapter")),
+        Asking::RefreshAdapter { adapter, .. } => {
+            Some(json!(format!("refreshing {}'s installed adapter", adapter.name)))
+        }
     }
 }
 

@@ -17,30 +17,10 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use muster_adapters::catalog::BUNDLED;
+
 use crate::manifest::{ENGINE_VERSION, Manifest, Server};
 use crate::{Agent, Detection, Input, Prompt, State};
-
-const BUILT_IN: &[(&str, &str)] = &[
-    ("amp.toml", include_str!("../manifests/amp.toml")),
-    ("antigravity.toml", include_str!("../manifests/antigravity.toml")),
-    ("claude.toml", include_str!("../manifests/claude.toml")),
-    ("cline.toml", include_str!("../manifests/cline.toml")),
-    ("codex.toml", include_str!("../manifests/codex.toml")),
-    ("cursor.toml", include_str!("../manifests/cursor.toml")),
-    ("devin.toml", include_str!("../manifests/devin.toml")),
-    ("droid.toml", include_str!("../manifests/droid.toml")),
-    ("gemini.toml", include_str!("../manifests/gemini.toml")),
-    ("github-copilot.toml", include_str!("../manifests/github-copilot.toml")),
-    ("grok.toml", include_str!("../manifests/grok.toml")),
-    ("hermes.toml", include_str!("../manifests/hermes.toml")),
-    ("kilo.toml", include_str!("../manifests/kilo.toml")),
-    ("kimi.toml", include_str!("../manifests/kimi.toml")),
-    ("kiro.toml", include_str!("../manifests/kiro.toml")),
-    ("maki.toml", include_str!("../manifests/maki.toml")),
-    ("opencode.toml", include_str!("../manifests/opencode.toml")),
-    ("pi.toml", include_str!("../manifests/pi.toml")),
-    ("qodercli.toml", include_str!("../manifests/qodercli.toml")),
-];
 
 /// Where a manifest in use came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,18 +97,20 @@ pub struct Manifests {
 impl Manifests {
     /// The manifests compiled into this crate.
     pub fn built_in() -> Manifests {
-        let entries = BUILT_IN
+        let entries = BUNDLED
             .iter()
-            .map(|(file, text)| {
+            .map(|harness| {
+                let (file, text) = (harness.manifest_file, harness.manifest);
                 // The manifests are fixed at build time and a test parses every one, so a
                 // failure here is this crate's own bug, not an input to handle.
                 let manifest = Manifest::parse(text)
                     .unwrap_or_else(|error| panic!("built-in manifest {file} is invalid: {error}"));
+                assert_eq!(manifest.id(), harness.id, "catalog ID for {file}");
                 Entry {
-                    agent: Agent::new(manifest.id()),
+                    agent: Agent::new(harness.id),
                     manifest,
                     source: Source::BuiltIn,
-                    text: Arc::from(*text),
+                    text: Arc::from(text),
                 }
             })
             .collect();
@@ -137,8 +119,8 @@ impl Manifests {
 
     /// The manifests compiled into this crate as written, by file name: what an app built
     /// against it sends a daemon, which may be older than the app.
-    pub fn built_in_sources() -> &'static [(&'static str, &'static str)] {
-        BUILT_IN
+    pub fn built_in_sources() -> impl Iterator<Item = (&'static str, &'static str)> {
+        BUNDLED.iter().map(|harness| (harness.manifest_file, harness.manifest))
     }
 
     /// The built-in manifests, then those the app sent, then the overrides in a directory

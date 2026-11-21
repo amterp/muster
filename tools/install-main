@@ -395,6 +395,9 @@ if installed:
     print("The previous app is {aside}; to go back, quit Muster and move it back.")
 if quit:
     print("The daemon stays {target} until it restarts, which ends its agents, so going back keeps it.")
-    print("Codex keeps its own copy of Muster's adapter: muster harness install codex.")
+    reminders = quiet $`{new_cli} harness copy-reminders`.stdout.trim() catch:
+        "See muster docs harnesses for adapter setup."
+    if reminders != "":
+        print(reminders)
     print("Homebrew still records the version it installed, so brew upgrade replaces this with the")
     print("next release, which takes the panes over if it is a minor release or later.")
