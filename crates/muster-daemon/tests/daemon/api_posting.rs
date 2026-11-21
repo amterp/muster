@@ -214,7 +214,7 @@ fn a_repeat_is_answered_after_its_group_is_deleted_and_during_and_after_a_handof
     assert_same_post_without_outcomes(&first, &after);
 }
 
-fn assert_same_post_without_outcomes(first: &ApiAsked, repeat: &ApiAsked) {
+pub(crate) fn assert_same_post_without_outcomes(first: &ApiAsked, repeat: &ApiAsked) {
     assert_eq!(repeat.posted().group, first.posted().group);
     assert_eq!(repeat.posted().number, first.posted().number);
     assert!(repeat.posted().recipient_outcomes.is_empty());

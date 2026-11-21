@@ -1622,7 +1622,7 @@ fn a_programs_post_to_a_group_kept_on_the_far_daemon_is_kept_there_once() {
     assert_eq!(kept_there(&mut far_control), ["foreman"]);
     let again = program.ask(asked("op-1"));
     assert_eq!(again.outcome(), api::Outcome::AlreadySo, "{:?}", again.answer);
-    assert_eq!(again.posted(), first.posted());
+    crate::api_posting::assert_same_post_without_outcomes(&first, &again);
     assert_eq!(kept_there(&mut far_control), ["foreman"]);
 
     cut(holding, &mut near_log, &mut far_log, 1);
