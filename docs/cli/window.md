@@ -194,8 +194,8 @@ One entry per pane every followed daemon holds, on screen or not.
   machines each have one. Null only on a daemon older than callsigns.
 - `name` - what it is called, which `--pane` and `msg post --to` take too: the name somebody gave
   it, or else its callsign. Null only for a pane nobody named, on a daemon older than callsigns.
-- `place` - where it sits in the window's whole pane order, counting from one across every
-  daemon and every tab. What `muster focus --place` takes; ⌘1 to ⌘9 name tabs first instead.
+- `place` - its number among the window's top-level pane rows. `muster focus --place` takes
+  this number. A helper listed under its maker has place 0, even when its pane is on screen.
 - `daemon` - which machine holds it.
 - `tab` - the name of the tab it is in, and what to pass to `muster tab`. A name rather than a
   place, so that one read is enough to act on: this is how a pane finds its own tab, since
