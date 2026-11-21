@@ -550,7 +550,7 @@ impl Roster {
     pub fn of<'a>(
         composition: &Composition,
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
-        showing: &std::collections::BTreeSet<PaneKey>,
+        showing: &BTreeSet<PaneKey>,
     ) -> Roster {
         let on_screen = composition.showing().cloned();
 
