@@ -135,7 +135,11 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     }
     if let Some(transcript) = compaction_in {
         let started = crate::state_since::now_ms();
-        let Some(boundary) = crate::transcript::recorded_compaction(&transcript, started) else {
+        let Some(boundary) = muster_adapters::hooks::recorded_compaction(
+            &transcript,
+            started,
+            muster_core::diagnostics::clock::format_iso8601,
+        ) else {
             return ExitCode::SUCCESS;
         };
         report.context_change_id = Some(boundary);
@@ -360,12 +364,13 @@ fn parse(
     Ok(Parsed::Report(Box::new(report), compaction_in))
 }
 
-/// What a session starting from `source`, a hook's word for it, did to the agent's context.
 fn from_source(source: &str) -> proto::ContextChangeKind {
-    match source {
-        "clear" => proto::ContextChangeKind::Cleared,
-        "startup" => proto::ContextChangeKind::SessionStarted,
-        _ => proto::ContextChangeKind::None,
+    use muster_adapters::hooks::{SessionSource, session_source};
+
+    match session_source(source) {
+        SessionSource::Cleared => proto::ContextChangeKind::Cleared,
+        SessionSource::Started => proto::ContextChangeKind::SessionStarted,
+        SessionSource::Other => proto::ContextChangeKind::None,
     }
 }
 

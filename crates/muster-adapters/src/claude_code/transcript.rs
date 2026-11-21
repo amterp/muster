@@ -13,8 +13,6 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use muster_core::diagnostics::clock::format_iso8601;
-
 /// How long a report waits for the record. Measured in tens of milliseconds, on a harness that
 /// may have a large transcript to write.
 const PATIENCE: Duration = Duration::from_secs(5);
@@ -30,16 +28,19 @@ const TAIL_BYTES: u64 = 1 << 20;
 
 /// The id of the compaction the Claude Code transcript at `path` records from around
 /// `started_ms`, waiting for it.
-pub(crate) fn recorded_compaction(path: &Path, started_ms: u64) -> Option<String> {
-    recorded_within(path, started_ms, PATIENCE)
+pub fn recorded_compaction(
+    path: &Path,
+    started_ms: u64,
+    format_iso8601: impl FnOnce(i64) -> String,
+) -> Option<String> {
+    let millis = i64::try_from(started_ms.saturating_sub(SLACK_MS)).unwrap_or(i64::MAX);
+    recorded_within(path, &format_iso8601(millis), PATIENCE)
 }
 
-fn recorded_within(path: &Path, started_ms: u64, patience: Duration) -> Option<String> {
-    let millis = i64::try_from(started_ms.saturating_sub(SLACK_MS)).unwrap_or(i64::MAX);
-    let since = format_iso8601(millis);
+fn recorded_within(path: &Path, since: &str, patience: Duration) -> Option<String> {
     let deadline = Instant::now() + patience;
     loop {
-        if let Some(boundary) = tail(path).and_then(|text| boundary_since(&text, &since)) {
+        if let Some(boundary) = tail(path).and_then(|text| boundary_since(&text, since)) {
             return Some(boundary);
         }
         if Instant::now() >= deadline {
@@ -80,13 +81,10 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../corpus/claude-code-2.1.319/compact-boundary.jsonl"
     ));
-    /// `RECORDED`'s boundary, in milliseconds.
-    const BOUNDARY_MS: u64 = 1_794_016_448_338;
+    const BEFORE_BOUNDARY: &str = "2026-11-07T01:54:08.313Z";
+    const AFTER_BOUNDARY: &str = "2026-11-07T01:54:08.339Z";
+    const HOOK_CUTOFF: &str = "2026-11-07T01:54:07.338Z";
     const BOUNDARY_ID: &str = "dff6728a-c3c5-4cdf-a242-3375f27125c5";
-
-    fn from_boundary(offset_ms: i64) -> String {
-        format_iso8601(i64::try_from(BOUNDARY_MS).unwrap() + offset_ms)
-    }
 
     fn scratch(name: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir()
@@ -97,13 +95,13 @@ mod tests {
 
     #[test]
     fn a_recorded_boundary_counts_from_around_the_hooks_start() {
-        let found = boundary_since(RECORDED, &from_boundary(-25));
+        let found = boundary_since(RECORDED, BEFORE_BOUNDARY);
         assert_eq!(found.as_deref(), Some(BOUNDARY_ID));
     }
 
     #[test]
     fn a_boundary_from_before_the_hook_is_another_compaction() {
-        assert_eq!(boundary_since(RECORDED, &from_boundary(1)), None);
+        assert_eq!(boundary_since(RECORDED, AFTER_BOUNDARY), None);
     }
 
     #[test]
@@ -126,7 +124,7 @@ mod tests {
                 file.write_all(RECORDED.as_bytes()).unwrap();
             })
         };
-        let found = recorded_within(&path, BOUNDARY_MS, Duration::from_secs(10));
+        let found = recorded_within(&path, HOOK_CUTOFF, Duration::from_secs(10));
         assert_eq!(found.as_deref(), Some(BOUNDARY_ID));
         writer.join().unwrap();
         std::fs::remove_file(&path).unwrap();
@@ -136,12 +134,12 @@ mod tests {
     fn a_transcript_that_stays_silent_is_a_sub_agents_compaction() {
         let path = scratch("silent");
         std::fs::write(&path, "{\"type\":\"user\"}\n").unwrap();
-        assert_eq!(recorded_within(&path, BOUNDARY_MS, Duration::from_millis(150)), None);
+        assert_eq!(recorded_within(&path, HOOK_CUTOFF, Duration::from_millis(150)), None);
         std::fs::remove_file(&path).unwrap();
     }
 
     #[test]
     fn no_transcript_is_no_record() {
-        assert_eq!(recorded_within(&scratch("missing"), BOUNDARY_MS, Duration::ZERO), None);
+        assert_eq!(recorded_within(&scratch("missing"), HOOK_CUTOFF, Duration::ZERO), None);
     }
 }

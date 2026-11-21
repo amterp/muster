@@ -8,11 +8,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use muster_adapters::inbox;
 use muster_daemon_proto as proto;
 use muster_detect::Agent;
 use muster_msg::{Activity, Participant, Presence, Ringable};
 
-use super::inbox;
 use crate::compaction::Step;
 use crate::pane::PaneIo;
 use crate::session::{Session, Shared};
@@ -324,7 +324,10 @@ impl Presence for Panes {
     fn alive(&self, participant: &Participant) -> bool {
         match &participant.pane {
             Some(pane) => self.agents.contains_key(pane),
-            None => inbox::Sockets.alive(participant),
+            None => participant
+                .inbox
+                .as_ref()
+                .is_some_and(|inbox| inbox::alive(&inbox.socket, inbox.inode)),
         }
     }
 
@@ -395,5 +398,28 @@ impl Presence for Panes {
             (None, None) if self.restoring => Ringable::AgentToCome,
             (None, _) => Ringable::NoAgent,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_participant_nothing_can_reach_is_not_alive() {
+        let participant = Participant {
+            name: "critic".to_string(),
+            inbox: None,
+            pane: None,
+            called: None,
+            gone: false,
+            cursors: std::collections::BTreeMap::default(),
+            woken: std::collections::BTreeSet::default(),
+            rewoken: std::collections::BTreeSet::default(),
+            pull: false,
+            removed: std::collections::BTreeMap::default(),
+            folds_owed: std::collections::BTreeMap::default(),
+        };
+        assert!(!Panes::default().alive(&participant));
     }
 }

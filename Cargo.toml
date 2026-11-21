@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/conformance",
+    "crates/muster-adapters",
     "crates/muster-bridge",
     "crates/muster-cli",
     "crates/muster-api",
@@ -32,6 +33,7 @@ publish = false
 
 [workspace.dependencies]
 conformance = { path = "crates/conformance" }
+muster-adapters = { path = "crates/muster-adapters" }
 muster-api = { path = "crates/muster-api" }
 muster-baseline = { path = "crates/muster-baseline" }
 flexid = "0.1"

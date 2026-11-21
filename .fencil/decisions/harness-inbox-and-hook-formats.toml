@@ -1,0 +1,26 @@
+id = "harness-inbox-and-hook-formats"
+question = "Where does Muster translate the formats a harness uses for its inbox and hooks?"
+tags = ["harnesses", "messaging", "hooks"]
+paths = ["crates/muster-adapters/src/**", "crates/muster-cli/src/messaging.rs", "crates/muster-daemon/src/report.rs", "crates/muster-daemon/src/messages/mod.rs", "crates/muster-daemon/src/messages/presence.rs"]
+
+[[revisions]]
+id = "nyp9kczn"
+date = 2026-11-21
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+The muster-adapters crate owns inbox discovery, probing and delivery, along with the hook
+formats used by the existing messaging and report commands. It reads the legacy inbox as a
+Claude Code endpoint. The CLI and daemon pass the same stored path and inode. The adapter
+decodes the existing hook inputs and returns values that the daemon can apply under its
+normal attribution, messaging and context rules.
+'''
+why = '''
+A future harness should supply its own formats without teaching the CLI, the daemon or
+message storage about them. The old inbox endpoint remains meaningful to versions that
+already store it, and old plugin commands apply the same decoding regardless of how they
+were invoked. The adapter crate stays independent of the wire schema and message service
+so the catalog can use it without a dependency cycle.
+'''

@@ -8,12 +8,12 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand};
+use muster_adapters::{hooks, inbox};
 use muster_daemon_proto::connection;
 use muster_daemon_proto::messaging::{
     self as spelling, ACK, CLOSE, GROUP, GROUPS, JOIN, LEAVE, LOG, OPEN, PAUSE, POST, READ, RESUME,
@@ -30,11 +30,7 @@ use crate::daemon::MayStart;
 use crate::environment;
 use crate::{Trouble, daemon};
 
-/// Claude Code's inbox socket, which it exports to every command a session runs.
-pub const CLAUDE_INBOX: &str = "CLAUDE_CODE_MESSAGING_SOCKET";
 pub use crate::daemon::SOCKET as DAEMON_SOCKET;
-
-const HOOK_INPUT_BYTES: usize = 1 << 20;
 
 /// What `muster msg --help` says before the verbs: the protocol an agent follows.
 pub const PROTOCOL: &str = "\
@@ -363,10 +359,8 @@ pub fn parse(
 ) -> Result<Messaging, Failure> {
     let caller = msg_request::Caller {
         as_name: identity.as_name.clone(),
-        inbox: environment
-            .get(CLAUDE_INBOX)
-            .filter(|socket| !socket.is_empty())
-            .map(|socket| msg_request::Inbox { socket: socket.clone(), inode: 0 }),
+        inbox: inbox::discover(environment)
+            .map(|socket| msg_request::Inbox { socket: socket.to_owned(), inode: 0 }),
         pane: environment.get(environment::PANE_NAME).filter(|pane| !pane.is_empty()).cloned(),
         directory: here.map(|here| here.display().to_string()),
     };
@@ -473,7 +467,7 @@ pub fn run(
     input: &mut impl Read,
     json: bool,
 ) -> Result<String, Trouble> {
-    if messaging.from_hook && !is_main_agent_hook(input)? {
+    if messaging.from_hook && !hooks::is_main_agent(input).map_err(Trouble::Refused)? {
         return Ok(String::new());
     }
     if let Some(from) = &messaging.body_from {
@@ -507,8 +501,8 @@ pub fn run(
     {
         // The inode tells this session's socket from a later one bound to the same path. A
         // socket that cannot be looked at is no inbox anyone can wake.
-        match std::fs::metadata(&inbox.socket) {
-            Ok(metadata) => inbox.inode = metadata.ino(),
+        match inbox::inode(&inbox.socket) {
+            Ok(inode) => inbox.inode = inode,
             Err(_) => {
                 if let Some(caller) = messaging.request.caller.as_mut() {
                     caller.inbox = None;
@@ -667,32 +661,6 @@ fn render_entries(answer: &proto::Answer) -> Result<Option<(msg_answer::Entries,
         Some(Answer::Entries(entries)) => Some((entries.clone(), Shown::of(msg))),
         _ => None,
     })
-}
-
-fn is_main_agent_hook(input: &mut impl Read) -> Result<bool, Trouble> {
-    let mut bytes = Vec::new();
-    input.take(HOOK_INPUT_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|error| {
-        Trouble::Refused(format!(
-            "could not read hook input ({error}), so messages were left unread."
-        ))
-    })?;
-    if bytes.len() > HOOK_INPUT_BYTES {
-        return Err(Trouble::Refused(format!(
-            "hook input exceeds {HOOK_INPUT_BYTES} bytes, so messages were left unread."
-        )));
-    }
-    if bytes.iter().all(u8::is_ascii_whitespace) {
-        return Ok(true);
-    }
-    let event: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
-        Trouble::Refused(format!(
-            "hook input is not valid JSON ({error}), so messages were left unread."
-        ))
-    })?;
-    let event = event.as_object().ok_or_else(|| {
-        Trouble::Refused("hook input must be a JSON object, so messages were left unread.".into())
-    })?;
-    Ok(event.get("agent_id").is_none_or(|id| id.is_null() || id.as_str() == Some("")))
 }
 
 fn read_body(from: &TextSource, input: &mut impl Read) -> Result<String, Trouble> {

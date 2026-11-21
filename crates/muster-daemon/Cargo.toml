@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 flexid.workspace = true
 libc.workspace = true
+muster-adapters.workspace = true
 muster-api.workspace = true
 muster-core.workspace = true
 muster-daemon-proto = { workspace = true, features = ["serde"] }

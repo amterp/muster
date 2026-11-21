@@ -11,7 +11,6 @@ mod command;
 mod compact_nudges;
 mod compacts;
 mod doorbell;
-mod inbox;
 mod long_blocks;
 mod makers;
 mod notices;
@@ -60,6 +59,7 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use muster_adapters::inbox;
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
@@ -1980,7 +1980,7 @@ fn wake<'a>(shared: &Shared, wakes: &'a [Wake]) -> Vec<&'a Wake> {
             wake.notice.first,
             wake.notice.last,
         );
-        match inbox::deliver(inbox, &messaging::wake_text(&notice)) {
+        match inbox::deliver(&inbox.socket, inbox.inode, &messaging::wake_text(&notice)) {
             Ok(()) => {
                 wait.finish(shared);
                 log::info(
@@ -2002,8 +2002,7 @@ fn wake<'a>(shared: &Shared, wakes: &'a [Wake]) -> Vec<&'a Wake> {
                         "error" => error,
                         "impact" => "the participant is marked gone and is not woken again \
                                      until it joins or runs a msg command from a live session",
-                        "check" => "whether its Claude Code session has exited; a session \
-                                    that is still running and refuses its inbox is a bug",
+                        "check" => inbox::WAKE_FAILURE_CHECK,
                     },
                 );
                 failed.push(wake);

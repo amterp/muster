@@ -4,6 +4,7 @@
 //! the token changes nothing (`docs/observations/claude-code-2.1.283.md`), so the daemon never
 //! holds it.
 
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
@@ -12,25 +13,35 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
-use muster_msg::{Inbox, Participant, Presence};
+const SOCKET: &str = "CLAUDE_CODE_MESSAGING_SOCKET";
+
+pub const WAKE_FAILURE_CHECK: &str = "whether its Claude Code session has exited; a session \
+                                    that is still running and refuses its inbox is a bug";
 
 /// How long a write to an inbox may take. A session's inbox is served by its own event loop on
 /// this machine, so a line that takes longer is one that is not being read.
 const PATIENCE: Duration = Duration::from_secs(1);
 
-/// Whether the socket at the inbox's path is the one the participant joined with: a session
-/// that has gone leaves its path to be reused by the next process with its id.
-fn is_same_socket(inbox: &Inbox) -> bool {
-    std::fs::metadata(Path::new(&inbox.socket)).is_ok_and(|metadata| metadata.ino() == inbox.inode)
+pub fn discover(environment: &BTreeMap<String, String>) -> Option<&str> {
+    environment.get(SOCKET).filter(|socket| !socket.is_empty()).map(String::as_str)
+}
+
+pub fn inode(socket: &str) -> std::io::Result<u64> {
+    std::fs::metadata(socket).map(|metadata| metadata.ino())
+}
+
+/// A new session can bind an old session's path after the system reuses its process id.
+fn is_same_socket(socket: &str, expected_inode: u64) -> bool {
+    inode(socket).is_ok_and(|inode| inode == expected_inode)
 }
 
 /// Hands the session one message, returning why it could not.
-pub(crate) fn deliver(inbox: &Inbox, text: &str) -> Result<(), String> {
-    if !is_same_socket(inbox) {
-        return Err(format!("{} is gone, or belongs to another session now", inbox.socket));
+pub fn deliver(socket: &str, expected_inode: u64, text: &str) -> Result<(), String> {
+    if !is_same_socket(socket, expected_inode) {
+        return Err(format!("{socket} is gone, or belongs to another session now"));
     }
-    let mut connection = connect_within(Path::new(&inbox.socket), PATIENCE)
-        .map_err(|error| format!("{}: {error}", inbox.socket))?;
+    let mut connection = connect_within(Path::new(socket), PATIENCE)
+        .map_err(|error| format!("{socket}: {error}"))?;
     connection.set_write_timeout(Some(PATIENCE)).map_err(|error| error.to_string())?;
     let message = serde_json::json!({
         "type": "user",
@@ -38,22 +49,12 @@ pub(crate) fn deliver(inbox: &Inbox, text: &str) -> Result<(), String> {
     });
     let mut line = message.to_string();
     line.push('\n');
-    connection.write_all(line.as_bytes()).map_err(|error| format!("{}: {error}", inbox.socket))
+    connection.write_all(line.as_bytes()).map_err(|error| format!("{socket}: {error}"))
 }
 
-/// Whether a participant is still there: a session's inbox still accepts a connection. A
-/// connection that sends nothing shows nothing in the session (the observation above, section
-/// 3). A participant with no inbox can never be woken, so it is not there: it keeps its groups
-/// and its place in them, and its name is free to be taken over.
-#[derive(Debug)]
-pub(crate) struct Sockets;
-
-impl Presence for Sockets {
-    fn alive(&self, participant: &Participant) -> bool {
-        participant.inbox.as_ref().is_some_and(|inbox| {
-            is_same_socket(inbox) && connect_within(Path::new(&inbox.socket), PATIENCE).is_ok()
-        })
-    }
+/// Connecting without sending a line leaves nothing in the session's conversation.
+pub fn alive(socket: &str, expected_inode: u64) -> bool {
+    is_same_socket(socket, expected_inode) && connect_within(Path::new(socket), PATIENCE).is_ok()
 }
 
 /// Connects to a session's inbox, giving up after `patience` rather than waiting on it.
@@ -167,6 +168,7 @@ fn set_flag(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
 
     fn socket_path(name: &str) -> std::path::PathBuf {
         let path =
@@ -183,6 +185,33 @@ mod tests {
         drop(listener);
         let _ = std::fs::remove_file(&path);
         assert!(connect_within(&path, PATIENCE).is_err());
+    }
+
+    #[test]
+    fn a_wake_writes_one_line_to_the_socket_it_was_addressed_to() {
+        let path = socket_path("wake");
+        let listener = std::os::unix::net::UnixListener::bind(&path).expect("binds");
+        listener.set_nonblocking(true).unwrap();
+        let socket = path.to_str().unwrap();
+        let socket_inode = inode(socket).unwrap();
+        let stale_inode = socket_inode.wrapping_add(1);
+        assert!(!alive(socket, stale_inode));
+        assert_eq!(
+            deliver(socket, stale_inode, "stale").unwrap_err(),
+            format!("{socket} is gone, or belongs to another session now")
+        );
+
+        deliver(socket, socket_inode, "first\nsecond").unwrap();
+        let (mut arrived, _) = listener.accept().unwrap();
+        arrived.set_nonblocking(true).unwrap();
+        let mut line = String::new();
+        arrived.read_to_string(&mut line).unwrap();
+        assert_eq!(
+            line,
+            concat!(r#"{"message":{"content":"first\nsecond","role":"user"},"type":"user"}"#, "\n")
+        );
+        drop(listener);
+        std::fs::remove_file(&path).unwrap();
     }
 
     /// A session that stops accepting, with its queue full, is not there - and asking says so
@@ -214,26 +243,5 @@ mod tests {
         assert!(refused, "sixteen connections queued on a queue of one and none was refused");
         drop(listener);
         let _ = std::fs::remove_file(&path);
-    }
-
-    /// A participant made by `join --name` from a plain shell, or left behind when a session
-    /// joined under another name, can never be woken; counting it alive kept its name from
-    /// every later session.
-    #[test]
-    fn a_participant_nothing_can_reach_is_not_alive() {
-        let participant = Participant {
-            name: "critic".to_string(),
-            inbox: None,
-            pane: None,
-            called: None,
-            gone: false,
-            cursors: std::collections::BTreeMap::default(),
-            woken: std::collections::BTreeSet::default(),
-            rewoken: std::collections::BTreeSet::default(),
-            pull: false,
-            removed: std::collections::BTreeMap::default(),
-            folds_owed: std::collections::BTreeMap::default(),
-        };
-        assert!(!Sockets.alive(&participant));
     }
 }

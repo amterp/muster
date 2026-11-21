@@ -17,6 +17,7 @@ anstyle = "1"
 clap = { version = "4", features = ["derive", "wrap_help", "unicode"] }
 clap_complete = "4"
 libc.workspace = true
+muster-adapters.workspace = true
 # The core's pure rules for reading a pane and confirming a send, which the CLI applies itself
 # when it asks a daemon with no window answering. The core links no libghostty - that is
 # muster-vt, and the seam - so this keeps the promise below.
