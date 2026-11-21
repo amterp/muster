@@ -838,6 +838,9 @@ its caption and colors the outline. An uncolored tab has a plain caption and a n
 A pane's own color appears as a small chip behind its callsign in the list and in its pane header.
 The pane's tint and edge still show its state. Named colors follow the terminal's palette.
 
+Right-click a tab caption or an agent row and open **Color**. Pick a named hue, choose **None** to
+clear the color, or pick **Custom Color…** and click **Apply** to save a specific color.
+
 **Fold any tab in the agent list with the chevron on its caption.** A folded tab keeps its caption
 and draws its agents' state icons at the caption's end, in the order the tab lists them. If they
 do not all fit, the most urgent keep their icons and a count says how many more there are.

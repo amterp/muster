@@ -1069,6 +1069,7 @@ extension MusterWindow: NSWindowDelegate {
   /// Lets go of every pane's surface, which ends its bridge: the panes stay in their tabs, and
   /// the window that shows those tabs next starts bridges of its own.
   public func windowWillClose(_ notification: Notification) {
+    CustomColorPanel.shared.sourceClosed(window)
     minute.stop()
     surfaces.releaseAll()
     onClosed?(self)
@@ -1476,32 +1477,44 @@ extension MusterWindow {
       guard let pane = row.pane else { return nil }
       let menu = ContextMenus.hiddenRow(
         pane, quiet: row.quiet, helpers: roster.helpers(of: pane), window: name,
+        color: colorMenu(namedPane(pane)?.color ?? "", title: "Pane Color: \(row.label)"),
         rename: { [weak self] in self?.rename(pane: $0) },
         close: { [weak self] in self?.close(pane: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
       return addingConversations(with: pane, to: menu)
     case .pane:
       guard let pane = row.pane else { return nil }
+      let entry = namedPane(pane)
       let menu = ContextMenus.agentRow(
-        pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
-        canClear: namedPane(pane)?.clearable ?? false,
-        canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true),
+        pane, onScreen: row.onScreen, canCompact: entry?.compactable ?? false,
+        canClear: entry?.clearable ?? false, canRestart: !(entry?.resumesAs.isEmpty ?? true),
         canMarkUnread: row.agent?.markableUnread ?? false, quiet: row.quiet,
-        helpers: roster.helpers(of: pane),
-        window: name, rename: { [weak self] in self?.rename(pane: $0) },
+        helpers: roster.helpers(of: pane), window: name,
+        color: colorMenu(entry?.color ?? "", title: "Pane Color: \(row.label)"),
+        rename: { [weak self] in self?.rename(pane: $0) },
         restart: { [weak self] in self?.confirmRestart($0) },
         close: { [weak self] in self?.close(pane: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
       return addingConversations(with: pane, to: menu)
     case .tab:
-      let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
+      let tab = roster.tabs.first { $0.id == row.tab }
       return ContextMenus.tab(
-        row.tab, firstPane: first, machines: speaking { Core.machines() }.map(\.daemon),
-        window: name, rename: { [weak self] in self?.rename(tab: $0) },
+        row.tab, firstPane: tab?.panes.first?.key,
+        machines: speaking { Core.machines() }.map(\.daemon),
+        window: name, color: colorMenu(tab?.color ?? "", title: "Tab Color: \(row.label)"),
+        rename: { [weak self] in self?.rename(tab: $0) },
         close: { [weak self] in self?.close(tab: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
     case .machine, .hidden:
       return nil
+    }
+  }
+
+  private func colorMenu(_ current: String, title: String) -> ContextMenus.ColorMenu {
+    let palette = ChromePalette.current(for: sidebar.effectiveAppearance)
+    return ContextMenus.ColorMenu(current: current, palette: palette) { [weak self] initial, save in
+      guard let self else { return }
+      CustomColorPanel.shared.open(for: window, title: title, color: initial, save: save)
     }
   }
 

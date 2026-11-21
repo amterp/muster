@@ -622,6 +622,17 @@ public enum Core {
     return refusal(send(request))
   }
 
+  static func setPaneColor(_ color: String, pane: PaneKey, window: String) -> String? {
+    var set = Muster_SetPaneColor()
+    set.daemonID = pane.daemon
+    set.paneID = pane.pane
+    set.color = color
+    var request = Muster_Request()
+    request.setPaneColor = set
+    request.window = window
+    return refusal(send(request))
+  }
+
   /// Compacts the context of the agent in a pane, at its next idle, empty prompt. No focus: the
   /// CLI's `pane compact` is where one is given.
   @discardableResult
@@ -816,6 +827,16 @@ public enum Core {
     rename.name = name
     var request = Muster_Request()
     request.renameTab = rename
+    return refusal(send(request))
+  }
+
+  static func setTabColor(_ color: String, tabID: String, window: String) -> String? {
+    var set = Muster_SetTabColor()
+    set.tabID = tabID
+    set.color = color
+    var request = Muster_Request()
+    request.setTabColor = set
+    request.window = window
     return refusal(send(request))
   }
 

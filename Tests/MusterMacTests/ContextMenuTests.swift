@@ -610,6 +610,169 @@ struct ContextMenuTests {
     )
   }
 
+  @Test("tab, pane and hidden pane menus show the current color beside Rename")
+  func colorSubmenus() throws {
+    _ = recorder()
+    let palette = colorPalette()
+    let red = try #require(palette.personalHue("red"))
+    let tab = ContextMenus.tab(
+      "t1", firstPane: nil, machines: [], color: colorMenu("", palette: palette), rename: { _ in })
+    let row = ContextMenus.agentRow(
+      laptopPane, onScreen: true, color: colorMenu("red", palette: palette), rename: { _ in })
+    let hidden = ContextMenus.hiddenRow(
+      laptopPane, quiet: false, color: colorMenu(red.hex, palette: palette), rename: { _ in })
+
+    for (menu, rename, checked) in [
+      (tab, "Rename Tab…", "None"), (row, "Rename Pane…", "Red"),
+      (hidden, "Rename Pane…", "Custom Color…"),
+    ] {
+      let index = try #require(titles(menu).firstIndex(of: rename))
+      #expect(menu.items.dropFirst(index + 1).first?.title == "Color")
+      let colors = try #require(item("Color", in: menu)?.submenu)
+      #expect(
+        titles(colors) == [
+          "None", "-", "Red", "Green", "Yellow", "Blue", "Magenta", "Cyan", "-", "Custom Color…",
+        ])
+      #expect(colors.items.filter { $0.state == .on }.map(\.title) == [checked])
+      #expect(
+        colors.items.filter { $0.image != nil }.map(\.title)
+          == ["Red", "Green", "Yellow", "Blue", "Magenta", "Cyan"]
+          + (checked == "Custom Color…" ? [checked] : []))
+    }
+
+    guard case .submenu(_, let entries) = ContextMenuModel.color(red.hex, palette: palette) else {
+      Issue.record("expected a Color submenu")
+      return
+    }
+    #expect(entries.contains(.toggle(.setColor("red"), on: false, swatch: red)))
+    #expect(entries.contains(.toggle(.pickCustomColor, on: true, swatch: red)))
+  }
+
+  @Test("color picks name their tab or pane and report a refusal to the source window")
+  func colorRequests() {
+    let recorder = seam(
+      RecordingDispatcher { request in
+        guard case .setPaneColor = request.payload else { return nil }
+        var failure = Muster_Failure()
+        failure.reason = "that pane closed"
+        return .failure(failure)
+      })
+    var refusals: [[String]] = []
+    let colors = colorMenu("blue", palette: colorPalette())
+    let tab = ContextMenus.tab(
+      "t1", firstPane: laptopPane, machines: [], window: "window-2", color: colors,
+      rename: { _ in })
+    let hidden = ContextMenus.hiddenRow(
+      laptopPane, quiet: false, window: "window-3", color: colors, rename: { _ in },
+      refused: { refusals.append([$0, $1]) })
+
+    Core.speaking(for: "window-1") {
+      choose("Cyan", in: item("Color", in: tab)?.submenu)
+      choose("None", in: item("Color", in: hidden)?.submenu)
+    }
+
+    let sent = colorRequests(from: recorder)
+    #expect(sent.map(\.window) == ["window-2", "window-3"])
+    #expect(sent.first?.setTabColor.tabID == "t1")
+    #expect(sent.first?.setTabColor.daemonID == "")
+    #expect(sent.first?.setTabColor.color == "cyan")
+    #expect(sent.last?.setPaneColor.paneID == laptopPane.pane)
+    #expect(sent.last?.setPaneColor.daemonID == laptopPane.daemon)
+    #expect(sent.last?.setPaneColor.color == "")
+    #expect(refusals == [[PaneRefusal.color, "that pane closed"]])
+  }
+
+  @Test("the custom picker sends exactly once on Apply and keeps the menu's subject")
+  func customColorDraft() throws {
+    let recorder = recorder()
+    _ = NSApplication.shared
+    let tabHost = NSWindow(
+      contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: true)
+    let paneHost = NSWindow(
+      contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: true)
+    let picker = CustomColorPanel(present: { _ in })
+    let palette = colorPalette()
+    let tab = ContextMenus.tab(
+      "t1", firstPane: nil, machines: [], window: "window-2",
+      color: ContextMenus.ColorMenu(current: "red", palette: palette) { initial, save in
+        picker.open(for: tabHost, title: "Tab Color", color: initial, save: save)
+      }, rename: { _ in })
+    let row = ContextMenus.agentRow(
+      laptopPane, onScreen: true, window: "window-3",
+      color: ContextMenus.ColorMenu(current: "", palette: palette) { initial, save in
+        picker.open(for: paneHost, title: "Pane Color", color: initial, save: save)
+      }, rename: { _ in })
+    let tabColors = item("Color", in: tab)?.submenu
+    let paneColors = item("Color", in: row)?.submenu
+    let panel = NSColorPanel.shared
+    defer {
+      picker.sourceClosed(tabHost)
+      picker.sourceClosed(paneHost)
+    }
+
+    choose("Custom Color…", in: tabColors)
+    #expect(CustomColorPanel.hex(panel.color) == palette.personalHue("red")?.hex)
+    let buttons = try #require((panel.accessoryView as? NSStackView)?.arrangedSubviews)
+      .compactMap { $0 as? NSButton }
+    let apply = try #require(buttons.first { $0.title == "Apply" })
+    let cancel = try #require(buttons.first { $0.title == "Cancel" })
+    let custom = NSColor(srgbRed: 0.5, green: 1, blue: 0, alpha: 1)
+    panel.color = custom
+    #expect(colorRequests(from: recorder).isEmpty)
+    cancel.performClick(nil)
+    apply.performClick(nil)
+
+    choose("Custom Color…", in: tabColors)
+    panel.close()
+    apply.performClick(nil)
+
+    choose("Custom Color…", in: tabColors)
+    picker.sourceClosed(tabHost)
+    apply.performClick(nil)
+    #expect(colorRequests(from: recorder).isEmpty)
+
+    choose("Custom Color…", in: tabColors)
+    choose("Custom Color…", in: paneColors)
+    #expect(CustomColorPanel.hex(panel.color) == palette.accent.hex)
+    picker.sourceClosed(tabHost)
+    panel.color = custom
+    Core.speaking(for: "window-1") { apply.performClick(nil) }
+    apply.performClick(nil)
+    let sent = colorRequests(from: recorder)
+    #expect(sent.count == 1)
+    #expect(sent.first?.window == "window-3")
+    #expect(sent.first?.setPaneColor.daemonID == laptopPane.daemon)
+    #expect(sent.first?.setPaneColor.paneID == laptopPane.pane)
+    #expect(sent.first?.setPaneColor.color == "#80ff00")
+  }
+
+  @Test("custom colors round sRGB channels to bytes")
+  func customColorHex() {
+    let color = NSColor(srgbRed: 0.499 / 255, green: 0.501 / 255, blue: 254.501 / 255, alpha: 1)
+    #expect(CustomColorPanel.hex(color) == "#0001ff")
+    let pattern = NSColor(patternImage: NSImage(size: NSSize(width: 1, height: 1)))
+    #expect(CustomColorPanel.hex(pattern) == nil)
+  }
+
+  private func colorPalette() -> ChromePalette {
+    ChromePalette.make(
+      terminal: PaneAppearance.defaultTerminal, agents: [:],
+      appearance: .init(background: .white, foreground: .black))
+  }
+
+  private func colorMenu(_ current: String, palette: ChromePalette) -> ContextMenus.ColorMenu {
+    ContextMenus.ColorMenu(current: current, palette: palette) { _, _ in }
+  }
+
+  private func colorRequests(from recorder: RecordingDispatcher) -> [Muster_Request] {
+    recorder.requests.filter {
+      switch $0.payload {
+      case .setTabColor, .setPaneColor: true
+      default: false
+      }
+    }
+  }
+
   /// Leaving is what takes a group off the list for the human; deleting it ends it for everyone,
   /// so the menu hands that to the window to ask first rather than sending it.
   @Test("a group row leaves the group it names, and asks before deleting it")

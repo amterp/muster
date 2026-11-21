@@ -29,13 +29,15 @@ public enum ContextChoice: Equatable, Sendable {
   /// `muster pane unread`, for an agent's row. Not one of the core's actions: nothing a chord
   /// is pressed on would be worth marking, since the keyboard is on what somebody is looking at.
   case markUnread
+  case setColor(String)
+  case pickCustomColor
 }
 
 /// One line of a right-click menu.
 public enum ContextEntry: Equatable, Sendable {
   case item(ContextChoice, enabled: Bool)
   /// An item that is on or off, drawn with a checkmark when on.
-  case toggle(ContextChoice, on: Bool)
+  case toggle(ContextChoice, on: Bool, swatch: RGB? = nil)
   case submenu(title: String, [ContextEntry])
   /// Move Tab to Window, which asks the core for the other windows when it opens.
   case moveTabToWindow
@@ -115,22 +117,24 @@ public enum ContextMenuModel {
     ("Split Up on", "up"),
   ]
 
-  public static func tab(machines: [String]) -> [ContextEntry] {
+  public static func tab(machines: [String], color: ContextEntry? = nil) -> [ContextEntry] {
     var entries: [ContextEntry] = [.item(.action("new_tab"))]
     if machines.count > 1 {
       entries.append(
         .submenu(title: "New Tab on Machine", machines.map { .item(.newTabOn(machine: $0)) }))
     }
-    entries += [
-      .separator,
-      .item(.action("rename_tab")),
-      .moveTabToWindow,
-      .item(.action("hide_tab")),
-      .separator,
-      .item(.copyTabID),
-      .separator,
-      .item(.action("close_tab")),
-    ]
+    entries +=
+      [
+        .separator,
+        .item(.action("rename_tab")),
+      ] + [color].compactMap { $0 } + [
+        .moveTabToWindow,
+        .item(.action("hide_tab")),
+        .separator,
+        .item(.copyTabID),
+        .separator,
+        .item(.action("close_tab")),
+      ]
     return entries
   }
 
@@ -153,12 +157,14 @@ public enum ContextMenuModel {
   /// neither, which is most panes.
   public static func agentRow(
     onScreen: Bool, canCompact: Bool = false, canClear: Bool = false, canRestart: Bool = false,
-    canMarkUnread: Bool = false, quiet: Bool = false, helpers: Helpers? = nil
+    canMarkUnread: Bool = false, quiet: Bool = false, helpers: Helpers? = nil,
+    color: ContextEntry? = nil
   ) -> [ContextEntry] {
     [
       .item(.markUnread, enabled: canMarkUnread),
       .separator,
       .item(.action("rename_pane")),
+    ] + [color].compactMap { $0 } + [
       .item(.action("compact_pane"), enabled: canCompact),
       .item(.action("clear_pane"), enabled: canClear),
       .item(.action("restart_agent"), enabled: canRestart),
@@ -176,15 +182,30 @@ public enum ContextMenuModel {
   /// A hidden pane's row. Close is offered although nothing shows the pane: the rule that greys
   /// it out on an agent row keeps a destructive verb to panes somebody can see, and a hidden pane
   /// is one somebody put away on purpose and is looking at in this list.
-  public static func hiddenRow(quiet: Bool, helpers: Helpers? = nil) -> [ContextEntry] {
+  public static func hiddenRow(
+    quiet: Bool, helpers: Helpers? = nil, color: ContextEntry? = nil
+  ) -> [ContextEntry] {
     [.item(.showPane)] + (helpers?.entries ?? []) + [
       .toggle(.action("quiet_pane"), on: quiet),
       .item(.action("rename_pane")),
+    ] + [color].compactMap { $0 } + [
       .separator,
       .item(.copyPaneID),
       .separator,
       .item(.action("close_pane")),
     ]
+  }
+
+  static func color(_ current: String, palette: ChromePalette) -> ContextEntry {
+    let hues = ChromePalette.personalHueNames.map { name in
+      ContextEntry.toggle(.setColor(name), on: current == name, swatch: palette.personalHue(name))
+    }
+    let custom = current.hasPrefix("#") ? palette.personalHue(current) : nil
+    return .submenu(
+      title: "Color",
+      [.toggle(.setColor(""), on: current.isEmpty), .separator] + hues + [
+        .separator, .toggle(.pickCustomColor, on: custom != nil, swatch: custom),
+      ])
   }
 
   /// A maker's helpers line: the two things to do with all of them at once.
@@ -235,9 +256,10 @@ final class ContextMenu: NSMenu {
         guard let item = menu.item(for: choice, perform: perform) else { continue }
         item.isEnabled = enabled
         menu.addItem(item)
-      case .toggle(let choice, let on):
+      case .toggle(let choice, let on, let swatch):
         guard let item = menu.item(for: choice, perform: perform) else { continue }
         item.state = on ? .on : .off
+        item.image = swatch.map(swatchImage)
         menu.addItem(item)
       case .submenu(let title, let inner):
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
@@ -250,6 +272,17 @@ final class ContextMenu: NSMenu {
       }
     }
     return menu
+  }
+
+  private static func swatchImage(_ rgb: RGB) -> NSImage {
+    NSImage(size: NSSize(width: 13, height: 13), flipped: false) { rect in
+      let swatch = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3)
+      rgb.color.setFill()
+      swatch.fill()
+      NSColor.labelColor.withAlphaComponent(0.25).setStroke()
+      swatch.stroke()
+      return true
+    }
   }
 
   /// Written before the dispatch, as `LoggedMenu` writes a menu bar pick, and told apart from
@@ -272,9 +305,12 @@ final class ContextMenu: NSMenu {
     let item = NSMenuItem(
       title: title, action: #selector(ContextMenuTarget.fire(_:)), keyEquivalent: "")
     item.target = target
-    if case .action(let name) = choice {
-      // What tells the run log this is one of the core's actions, and which.
-      item.representedObject = name
+    switch choice {
+    case .action(let name): item.representedObject = name
+    case .setColor:
+      item.representedObject = subject["tab"] == nil ? "set_pane_color" : "set_tab_color"
+    case .pickCustomColor: item.representedObject = "pick_custom_color"
+    default: break
     }
     return item
   }
@@ -294,6 +330,8 @@ final class ContextMenu: NSMenu {
     case .hideHelpers: "Hide Helpers"
     case .removeFromTab: "Remove from Tab"
     case .markUnread: "Mark as Unread"
+    case .setColor(let name): name.isEmpty ? "None" : name.capitalized
+    case .pickCustomColor: "Custom Color…"
     }
   }
 }
@@ -317,6 +355,7 @@ final class ContextMenuTarget: NSObject {
 /// What a refused pane request did not do, as the heading over the core's reason.
 public enum PaneRefusal {
   public static let rename = "The pane was not renamed"
+  public static let color = "Couldn’t change the pane color"
   public static let hide = "The pane was not hidden"
   public static let show = "The pane was not shown"
   public static let quiet = "The pane’s notifications did not change"
@@ -337,6 +376,7 @@ public enum PaneRefusal {
 /// What a refused tab request did not do, as the heading over the core's reason.
 public enum TabRefusal {
   public static let rename = "The tab was not renamed"
+  public static let color = "Couldn’t change the tab color"
   public static let create = "No tab was made"
   public static let close = "The tab was not closed"
   public static let move = "The tab was not moved"
@@ -348,6 +388,23 @@ public enum ContextMenus {
   /// Shows the person a request the core refused, with a heading saying what did not happen.
   /// A menu item that silently changed nothing would leave its reason only on stderr.
   public typealias Refused = @MainActor (_ heading: String, _ reason: String) -> Void
+
+  public struct ColorMenu {
+    let current: String
+    let palette: ChromePalette
+    let pickCustom: @MainActor (RGB, @escaping @MainActor (String) -> Void) -> Void
+
+    var entry: ContextEntry { ContextMenuModel.color(current, palette: palette) }
+
+    @MainActor
+    func perform(_ choice: ContextChoice, set: @escaping @MainActor (String) -> Void) {
+      switch choice {
+      case .setColor(let color): set(color)
+      case .pickCustomColor: pickCustom(palette.personalHue(current) ?? palette.accent, set)
+      default: break
+      }
+    }
+  }
 
   /// A pane's menu. Its terminal surface, when present, provides Copy and Paste.
   public static func pane(
@@ -404,7 +461,7 @@ public enum ContextMenus {
     _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, canClear: Bool = false,
     canRestart: Bool = false, canMarkUnread: Bool = false, quiet: Bool = false,
     helpers: ContextMenuModel.Helpers? = nil, pasteboard: NSPasteboard = .general,
-    window: String = "",
+    window: String = "", color: ColorMenu? = nil,
     rename: @escaping @MainActor (PaneKey) -> Void,
     restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
     close: (@MainActor (PaneKey) -> Void)? = nil,
@@ -413,7 +470,7 @@ public enum ContextMenus {
     ContextMenu.build(
       ContextMenuModel.agentRow(
         onScreen: onScreen, canCompact: canCompact, canClear: canClear, canRestart: canRestart,
-        canMarkUnread: canMarkUnread, quiet: quiet, helpers: helpers),
+        canMarkUnread: canMarkUnread, quiet: quiet, helpers: helpers, color: color?.entry),
       subject: subject(pane), window: window
     ) { choice in
       if case .action("restart_agent") = choice {
@@ -421,7 +478,7 @@ public enum ContextMenus {
       } else {
         perform(
           choice, on: pane, pasteboard: pasteboard, rename: rename, close: close,
-          refused: refused)
+          refused: refused, color: color, window: window)
       }
     }
   }
@@ -429,16 +486,18 @@ public enum ContextMenus {
   /// A hidden pane's row.
   public static func hiddenRow(
     _ pane: PaneKey, quiet: Bool, helpers: ContextMenuModel.Helpers? = nil,
-    pasteboard: NSPasteboard = .general, window: String = "",
+    pasteboard: NSPasteboard = .general, window: String = "", color: ColorMenu? = nil,
     rename: @escaping @MainActor (PaneKey) -> Void,
     close: (@MainActor (PaneKey) -> Void)? = nil, refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
-      ContextMenuModel.hiddenRow(quiet: quiet, helpers: helpers), subject: subject(pane),
+      ContextMenuModel.hiddenRow(quiet: quiet, helpers: helpers, color: color?.entry),
+      subject: subject(pane),
       window: window
     ) {
       perform(
-        $0, on: pane, pasteboard: pasteboard, rename: rename, close: close, refused: refused)
+        $0, on: pane, pasteboard: pasteboard, rename: rename, close: close, refused: refused,
+        color: color, window: window)
     }
   }
 
@@ -459,11 +518,13 @@ public enum ContextMenus {
   /// directory, as cmd+T from inside the tab would use.
   public static func tab(
     _ tab: String, firstPane: PaneKey?, machines: [String], pasteboard: NSPasteboard = .general,
-    window: String = "", rename: @escaping @MainActor (String) -> Void,
+    window: String = "", color: ColorMenu? = nil, rename: @escaping @MainActor (String) -> Void,
     close: (@MainActor (String) -> Void)? = nil, refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
-      ContextMenuModel.tab(machines: machines), subject: ["tab": tab], tab: tab, window: window
+      ContextMenuModel.tab(machines: machines, color: color?.entry), subject: ["tab": tab],
+      tab: tab,
+      window: window
     ) {
       choice in
       switch choice {
@@ -474,6 +535,12 @@ public enum ContextMenus {
           if let why { refused(TabRefusal.create, why) }
         }
       case .action("rename_tab"): rename(tab)
+      case .setColor, .pickCustomColor:
+        color?.perform(choice) { value in
+          if let why = Core.setTabColor(value, tabID: tab, window: window) {
+            refused(TabRefusal.color, why)
+          }
+        }
       case .action("close_tab"):
         if let close {
           close(tab)
@@ -519,7 +586,7 @@ public enum ContextMenus {
   private static func perform(
     _ choice: ContextChoice, on pane: PaneKey, pasteboard: NSPasteboard,
     rename: @MainActor (PaneKey) -> Void, close: (@MainActor (PaneKey) -> Void)?,
-    refused: @escaping Refused
+    refused: @escaping Refused, color: ColorMenu? = nil, window: String = ""
   ) {
     switch choice {
     case .action(let name) where name.hasPrefix("split_"):
@@ -534,6 +601,12 @@ public enum ContextMenus {
     case .action("move_pane_to_new_tab"):
       if let why = Core.movePaneToNewTab(pane) { refused(PaneRefusal.moveToNewTab, why) }
     case .action("rename_pane"): rename(pane)
+    case .setColor, .pickCustomColor:
+      color?.perform(choice) { value in
+        if let why = Core.setPaneColor(value, pane: pane, window: window) {
+          refused(PaneRefusal.color, why)
+        }
+      }
     case .action("compact_pane"):
       if let why = Core.compactPane(daemonID: pane.daemon, paneID: pane.pane) {
         refused(PaneRefusal.compact, why)

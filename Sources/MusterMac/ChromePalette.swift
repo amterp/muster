@@ -166,7 +166,9 @@ public struct ChromePalette: Equatable, Sendable {
   /// The pane area: what the group conversation and the message banner are drawn on.
   public var pane: Surface
   private var hues: [RGB]
-  private var accent: RGB
+  private(set) var accent: RGB
+
+  static let personalHueNames = ["red", "green", "yellow", "blue", "magenta", "cyan"]
 
   struct PersonalFill: Equatable {
     let background: RGB
@@ -174,7 +176,7 @@ public struct ChromePalette: Equatable, Sendable {
   }
 
   func personalHue(_ color: String) -> RGB? {
-    if let index = ["red", "green", "yellow", "blue", "magenta", "cyan"].firstIndex(of: color) {
+    if let index = Self.personalHueNames.firstIndex(of: color) {
       return hues[index]
     }
     guard color.utf8.count == 7, color.hasPrefix("#"),
