@@ -1411,21 +1411,25 @@
     },
     {
       "name": "tab color takes the tab id before the color",
+      "why": "The command names its tab outright so an agent can color a tab even while the keyboard is in another.",
       "given": {"argv": ["tab", "color", "t29vgmaqym", "magenta"]},
       "expect": {"request": {"set_tab_color": {"tab_id": "t29vgmaqym", "color": "magenta"}}}
     },
     {
       "name": "pane color normalizes hex and takes the pane by callsign",
+      "why": "A callsign reaches its pane through a rename. Hex travels in one spelling so equivalent values compare equal on both daemons.",
       "given": {"argv": ["pane", "color", "--pane", "otter", "#A12B3C"]},
       "expect": {"request": {"set_pane_color": {"pane_id": "otter", "color": "#a12b3c"}}}
     },
     {
       "name": "none clears the pane color",
+      "why": "The CLI asks for a clear in words and carries it as the empty string the window uses for an unset color.",
       "given": {"argv": ["pane", "color", "none"]},
       "expect": {"request": {"set_pane_color": {"color": ""}}}
     },
     {
       "name": "a color needs six hex digits or a palette hue",
+      "why": "A partial RGB value has no stored form. Reject it before contacting a window or daemon.",
       "given": {"argv": ["pane", "color", "#123"]},
       "expect": {"usage": "ValueValidation"}
     },
