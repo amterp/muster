@@ -4920,13 +4920,13 @@ fn nothing_numbered(roster: &Roster, numbering: &Numbering, place: usize) -> Str
         Numbering::Panes => format!(
             "this window holds {} panes, so there is no pane {place} to go to and the keyboard \
              stayed where it was.",
-            roster.panes().count()
+            roster.panes().filter(|pane| pane.place != 0).count()
         ),
         Numbering::Tabs => format!(
             "this window holds {} tabs, so there is no tab {place} to go to and the keyboard \
              stayed where it was. ⌘1 to ⌘9 name tabs, and the press after one names a pane \
              inside it.",
-            roster.tabs().count()
+            roster.numbered_tabs().count()
         ),
         Numbering::PanesIn(key) => {
             let held = roster.tabs().find(|tab| &tab.id == key).map_or(0, |tab| tab.panes.len());

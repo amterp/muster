@@ -3505,10 +3505,9 @@ message RosterTab {
   // no bridge streams one.
   string tab_id = 2;
 
-  // Where this tab sits in the window's whole tab order, counting from one. The order
-  // next_tab walks, counted across every daemon rather than within one. It is what a tab
-  // nobody named is called. Which press reaches it, if any does, is `tab_press` below rather
-  // than this.
+  // Where this tab's caption sits in the agent list, counting from one. Zero for a hidden tab
+  // or one whose panes are listed under their maker. Which press reaches it, if any does, is
+  // `tab_press` below.
   uint32 place = 3;
 
   // Was `number`: which chord reached this tab *right now*, which went to 0 while a press was
@@ -3592,9 +3591,8 @@ message RosterPane {
   // from what it is already called rather than from a label nobody typed.
   string given_name = 6;
 
-  // Where this pane sits in the window's whole pane order, counting from one. The handle ⌘1
-  // to ⌘9 name, counted across every daemon and every tab - the sidebar is one list, and a
-  // person reading it counts down the whole thing.
+  // Where this pane sits among the window's top-level pane rows, counting from one. Zero for
+  // a hidden pane or one listed under its maker.
   //
   // Numbered past nine even though no chord goes that far: the number is what the pane's
   // position is, and how far to draw them is the sidebar's decision.
@@ -3664,9 +3662,8 @@ message RosterPane {
   string maker = 17;
 
   // The id of the row this pane is listed beneath rather than where its tab puts it, or empty
-  // for a pane listed in its tab. Set for a hidden helper whose maker has a row in this window's
-  // list: a pane in one of its tabs, or a hidden pane (MIP-7, section 3). A helper in a tab
-  // somebody can see keeps its place and its number there.
+  // for a pane listed in its tab. Set for a hidden helper or one in a tab shared only by its
+  // maker's helpers, when that maker has a row in this window's list (MIP-7, section 3).
   string under = 18;
 
   // The directory this pane is in, as its daemon reports it: the whole path, on every pane,

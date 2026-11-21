@@ -129,13 +129,12 @@ pub struct RosterTab {
     /// pane row, and this is how anything that needs the set gets it without walking the panes.
     pub daemons: Vec<DaemonId>,
 
-    /// Where this tab sits in the window's whole tab order, counting from one.
+    /// Where this tab's caption sits in the agent list, counting from one.
     ///
-    /// The order `next_tab` walks, what a tab nobody has named is called, and the press ⌘1 to ⌘9
+    /// What a tab nobody has named is called, and the press ⌘1 to ⌘9
     /// name it by once the window holds more than one tab. Whether a chord names it at this
     /// moment is [`Numbering::on_tab`], not this. Counted
-    /// across every daemon rather than within one, because a window showing a laptop beside a
-    /// devenv is one list.
+    /// across every daemon rather than within one. Zero when hidden or listed under a maker.
     pub place: usize,
 
     /// What to call this tab to somebody who did not open it.
@@ -181,7 +180,7 @@ pub struct RosterPane {
     pub key: PaneKey,
     pub canvas: Option<crate::canvas::CanvasInfo>,
 
-    /// Where this pane sits in the window's whole pane order, counting from one.
+    /// Where this pane sits among the window's top-level pane rows, counting from one.
     ///
     /// What `muster window` prints beside the pane and `muster focus --place` takes back, and
     /// what ⌘1 to ⌘9 name in a window of one tab. Counted across every daemon and every tab rather than
@@ -194,7 +193,7 @@ pub struct RosterPane {
     /// you dragged its row somewhere else would be fighting you.
     ///
     /// Numbered past nine even though no chord goes that far, because the number is what the
-    /// pane's position *is*; what to draw is the sidebar's decision and it stops at nine.
+    /// pane's position *is*. Zero when hidden or listed under its maker.
     pub place: usize,
 
     /// Where this pane sits among its own tab's panes, counting from one.
@@ -264,8 +263,7 @@ pub struct RosterPane {
     pub quiet: bool,
     /// The pane that made it as its helper, as its daemon says (MIP-7).
     pub maker: Option<PaneId>,
-    /// The row it is listed beneath rather than where its tab puts it: its maker's, for a hidden
-    /// helper whose maker has a row of its own ([`crate::helpers::nest`]).
+    /// The maker's row this helper is listed beneath ([`crate::helpers::nest`]).
     pub under: Option<PaneId>,
 }
 
@@ -324,11 +322,13 @@ impl Numbering {
     /// happens - and this function is handed the roster and knows nothing about the keyboard,
     /// which is the shape the other reading would have to break.
     pub fn of(named: Option<&TabId>, roster: &Roster) -> Numbering {
-        if roster.tabs().count() == 1 {
+        if roster.numbered_tabs().count() == 1 {
             return Numbering::Panes;
         }
         match named {
-            Some(key) if roster.tabs().any(|tab| &tab.id == key) => Numbering::PanesIn(key.clone()),
+            Some(key) if roster.numbered_tabs().any(|tab| &tab.id == key) => {
+                Numbering::PanesIn(key.clone())
+            }
             _ => Numbering::Tabs,
         }
     }
@@ -336,8 +336,8 @@ impl Numbering {
     /// Which ⌘N reaches this tab right now, if any does.
     pub fn on_tab(&self, tab: &RosterTab) -> Option<usize> {
         match self {
-            Numbering::Tabs => Some(tab.place),
-            Numbering::Panes | Numbering::PanesIn(_) => None,
+            Numbering::Tabs => (tab.place != 0).then_some(tab.place),
+            _ => None,
         }
     }
 
@@ -347,9 +347,11 @@ impl Numbering {
     /// than the pane, and a pane does not carry its own tab.
     pub fn on_pane(&self, tab: &RosterTab, pane: &RosterPane) -> Option<usize> {
         match self {
-            Numbering::Panes => Some(pane.place),
+            Numbering::Panes => (pane.place != 0).then_some(pane.place),
             Numbering::Tabs => None,
-            Numbering::PanesIn(key) => (&tab.id == key).then_some(pane.place_in_tab),
+            Numbering::PanesIn(key) => {
+                (&tab.id == key && pane.place != 0).then_some(pane.place_in_tab)
+            }
         }
     }
 
@@ -551,24 +553,18 @@ impl Roster {
     ) -> Roster {
         let on_screen = composition.showing().cloned();
 
-        // Two counters, both running across every tab: panes are what the chords name, and
-        // tabs are numbered only so that one nobody has named still has something to be called.
-        let mut tab_place = 0;
-        let mut pane_place = 0;
-        let tabs: Vec<RosterTab> = composition
+        let mut tabs: Vec<RosterTab> = composition
             .tabs()
             .map(|tab| {
-                tab_place += 1;
                 let panes: Vec<RosterPane> = tab_panes(tab, &mirror)
                     .into_iter()
                     .enumerate()
                     .map(|(at, (daemon, pane))| {
                         let key = PaneKey::new(&daemon, &pane.id);
                         let label = pane_label(pane);
-                        pane_place += 1;
                         RosterPane {
                             canvas: pane.canvas.as_ref().map(|canvas| canvas.info.clone()),
-                            place: pane_place,
+                            place: 0,
                             place_in_tab: at + 1,
                             subtitle: pane_subtitle(pane, &label),
                             label,
@@ -600,8 +596,8 @@ impl Roster {
                     id: tab.id.clone(),
                     folded: false,
                     daemons: tab.daemons().cloned().collect(),
-                    place: tab_place,
-                    label: name.map_or_else(|| format!("Tab {tab_place}"), str::to_string),
+                    place: 0,
+                    label: name.unwrap_or_default().to_string(),
                     on_screen: on_screen.as_ref() == Some(&tab.id),
                     given_name: name.map(str::to_string),
                     color: tab_color(parts()),
@@ -627,17 +623,39 @@ impl Roster {
             .collect();
 
         let mut hidden = hidden_tabs(composition, &mirror);
-        nest_helpers(&tabs, &mut hidden);
+        nest_helpers(&mut tabs, &mut hidden, &mirror);
+
+        let mut tab_place = 0;
+        let mut pane_place = 0;
+        for tab in &mut tabs {
+            if !tab.panes.is_empty() && tab.panes.iter().all(|pane| pane.under.is_some()) {
+                continue;
+            }
+            tab_place += 1;
+            tab.place = tab_place;
+            if tab.label.is_empty() {
+                tab.label = format!("Tab {tab_place}");
+            }
+            for pane in tab.panes.iter_mut().filter(|pane| pane.under.is_none()) {
+                pane_place += 1;
+                pane.place = pane_place;
+            }
+        }
 
         Roster { tabs, machines, hidden }
     }
 
-    /// Every tab in the window, in the order they are numbered.
+    /// Every tab in the window, in the order the window steps through them.
     pub fn tabs(&self) -> impl Iterator<Item = &RosterTab> {
         self.tabs.iter()
     }
 
-    /// Every pane in the window, in the order they are listed.
+    /// The tabs with captions and places in the agent list.
+    pub fn numbered_tabs(&self) -> impl Iterator<Item = &RosterTab> {
+        self.tabs().filter(|tab| tab.place != 0)
+    }
+
+    /// Every pane held by the window, in the order of its tabs and their splits.
     pub fn panes(&self) -> impl Iterator<Item = &RosterPane> {
         self.tabs().flat_map(|tab| tab.panes.iter())
     }
@@ -647,7 +665,7 @@ impl Roster {
     /// What `muster focus --place` goes to. `None` for a place past the end: landing on the last
     /// pane instead would send a stale place somewhere different every time a pane opened.
     pub fn at(&self, place: usize) -> Option<&RosterPane> {
-        self.panes().find(|pane| pane.place == place)
+        self.panes().find(|pane| pane.place != 0 && pane.place == place)
     }
 
     /// Where the numbered chord for `place` lands, under the numbering in force.
@@ -664,7 +682,7 @@ impl Roster {
     /// something different every time a pane opened. An armed tab that has since closed lands
     /// here too, which is what un-arms it.
     pub fn numbered(&self, numbering: &Numbering, place: usize) -> Option<Landing<'_>> {
-        for tab in self.tabs() {
+        for tab in self.numbered_tabs() {
             if numbering.on_tab(tab) == Some(place) {
                 // A tab with no panes has nothing for the keyboard to land on, so the chord
                 // does nothing rather than arming a tab you cannot then get into.
@@ -776,20 +794,23 @@ fn tab_color<'a>(parts: impl Iterator<Item = &'a crate::mirror::backend::Tab>) -
     parts.max_by(|a, b| a.color.cmp(&b.color)).and_then(|part| part.color.value.clone())
 }
 
-/// Says which hidden helpers the list shows under their maker, on each helper's `under`.
-///
-/// Only hidden ones: a helper in one of the window's tabs keeps its place there, and the number a
-/// chord reaches it by, which a row moved under its maker would put out of order.
-fn nest_helpers(tabs: &[RosterTab], hidden: &mut [RosterTab]) {
-    let under: Vec<(PaneId, PaneId)> = {
+/// A separate tab holding only one pane's helpers stays under their maker when shown.
+fn nest_helpers<'a>(
+    tabs: &mut [RosterTab],
+    hidden: &mut [RosterTab],
+    mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
+) {
+    let under: BTreeMap<PaneId, PaneId> = {
         let listed: Vec<&str> = tabs
             .iter()
             .chain(hidden.iter())
             .flat_map(|tab| tab.panes.iter())
             .map(|pane| pane.key.pane.as_str())
             .collect();
-        let makers: Vec<(&str, Option<&str>)> = hidden
+        let makers: Vec<(&str, Option<&str>)> = tabs
             .iter()
+            .filter(|tab| is_helpers_tab(tab, mirror))
+            .chain(hidden.iter())
             .flat_map(|tab| tab.panes.iter())
             .map(|pane| (pane.key.pane.as_str(), pane.maker.as_ref().map(PaneId::as_str)))
             .collect();
@@ -798,10 +819,28 @@ fn nest_helpers(tabs: &[RosterTab], hidden: &mut [RosterTab]) {
             .map(|nested| (PaneId::from(nested.helper), PaneId::from(nested.under)))
             .collect()
     };
-    for pane in hidden.iter_mut().flat_map(|tab| tab.panes.iter_mut()) {
-        pane.under =
-            under.iter().find(|(helper, _)| *helper == pane.key.pane).map(|(_, m)| m.clone());
+    for pane in tabs.iter_mut().chain(hidden.iter_mut()).flat_map(|tab| tab.panes.iter_mut()) {
+        pane.under = under.get(&pane.key.pane).cloned();
     }
+}
+
+fn is_helpers_tab<'a>(tab: &RosterTab, mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>) -> bool {
+    let Some(maker) = tab.panes.first().and_then(|pane| pane.maker.as_ref()) else {
+        return false;
+    };
+    tab.panes.iter().all(|pane| pane.maker.as_ref() == Some(maker) && &pane.key.pane != maker)
+        && tab.daemons.iter().all(|daemon| {
+            mirror(daemon)
+                .filter(|held| held.health() == Health::Connected)
+                .and_then(|held| held.tab(&tab.id))
+                .is_some_and(|part| {
+                    part.root.panes().iter().all(|id| {
+                        tab.panes
+                            .iter()
+                            .any(|pane| &pane.key.daemon == daemon && &pane.key.pane == *id)
+                    })
+                })
+        })
 }
 
 /// What somebody named a tab, trimmed, and nothing for a tab nobody named.

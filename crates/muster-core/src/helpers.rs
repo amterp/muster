@@ -32,20 +32,15 @@ pub struct Nested<'a> {
     pub depth: usize,
 }
 
-/// Which of `hidden`'s helpers go under their maker, given every pane in `listed` that has a row.
+/// Which eligible helpers go under their maker, given the panes this list includes.
 ///
-/// `listed` is each pane a list shows, hidden ones among them, in the order it shows them;
-/// `hidden` is each hidden pane with the pane that made it, if one did. A hidden helper goes
-/// under its maker when the maker has a row: a pane in a listed tab, or a hidden pane, a helper
-/// among them. A helper in a tab somebody can see keeps its place there, and one whose maker is
-/// not listed - closed, or on a machine or in a window the list leaves out - has nowhere else to
-/// go.
+/// A candidate is a pane and its maker, if it has one. Only move it if its maker is listed.
 ///
 /// Walked down from every pane that keeps a row of its own, so each helper is listed once and
 /// none is lost to a loop of makers, which no daemon writes and nothing here relies on. Helpers
-/// come out in the order the walk meets them, each maker's in the order `hidden` gives them.
-pub fn nest<'a>(listed: &[&'a str], hidden: &[(&'a str, Option<&'a str>)]) -> Vec<Nested<'a>> {
-    let children: Vec<(&str, &str)> = hidden
+/// come out in the order the walk meets them, each maker's in the order `candidates` gives them.
+pub fn nest<'a>(listed: &[&'a str], candidates: &[(&'a str, Option<&'a str>)]) -> Vec<Nested<'a>> {
+    let children: Vec<(&str, &str)> = candidates
         .iter()
         .filter_map(|(helper, maker)| Some((*helper, (*maker)?)))
         .filter(|(_, maker)| listed.contains(maker))

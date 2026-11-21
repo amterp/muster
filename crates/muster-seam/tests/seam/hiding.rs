@@ -9,8 +9,8 @@ use std::sync::Mutex;
 
 use muster::proto::{
     AttentionChanged, ClosePane, Event, FocusHistory, FocusPane, HideHelpers, HidePane, HideTab,
-    OpenWindow, QuietPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged,
-    ShowHelpers, ShowPane, SplitPane, Startup, event, request, response,
+    OpenWindow, PressNumberedChord, QuietPane, ReadWindow, RenamePane, RenameTab, Request,
+    Response, RosterChanged, ShowHelpers, ShowPane, SplitPane, Startup, event, request, response,
 };
 use muster_daemon_proto::{Side, input_event};
 use muster_harness::requests::{beside, create, in_new_tab, make, snapshot, until_text};
@@ -400,6 +400,7 @@ fn a_makers_helpers_come_forward_together_and_go_back() {
         }))
     };
     let last_tab = || roster().tabs.last().cloned().unwrap_or_default();
+    let counting = roster().counting;
 
     assert_ok(&show());
     until(
@@ -413,6 +414,13 @@ fn a_makers_helpers_come_forward_together_and_go_back() {
         || format!("tabs: {:?}, hidden: {:?}", roster().tabs, hidden()),
     );
     assert_eq!(rows()[..2], ["p1".to_string(), "p2".to_string()], "the window's own tab first");
+    assert_eq!(roster().counting, counting, "showing helpers changed how shortcuts are counted");
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
+    until(
+        "one press to reach the ordinary tab's second pane",
+        || keyboard().as_deref() == Some("p2"),
+        || format!("keyboard: {:?}", keyboard()),
+    );
 
     assert_ok(&hide());
     until(
@@ -446,6 +454,10 @@ fn a_makers_helpers_come_forward_together_and_go_back() {
     );
     assert_ok(&hide());
     assert_eq!(tabs(), 2, "a tab holding a pane that is not a helper was hidden");
+    assert!(
+        last_tab().panes.iter().all(|pane| pane.under.is_empty()),
+        "a tab with an ordinary pane should keep all its own rows"
+    );
 
     let refused = answer(request::Payload::ShowHelpers(ShowHelpers {
         pane_id: "p2".to_string(),

@@ -3527,6 +3527,43 @@
       }
     },
     {
+      "name": "showing a remote helper keeps it under its maker without taking a numbered place",
+      "why": "Focusing a helper can bring its tab into the window. The pane and tab remain available by id and tab stepping, while the maker keeps the same sidebar rows and direct pane shortcuts.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [{ "id": "w1:t1", "root": "w1:p1" }],
+            "panes": [{ "id": "w1:p1", "cwd": "/src/alpha" }]
+          },
+          "dev": {
+            "tabs": [{ "id": "w1:t2", "label": "alpha's helpers", "root": "w1:p2" }],
+            "panes": [{ "id": "w1:p2", "cwd": "/src/beta", "maker": "w1:p1" }]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }, { "id": "devenv", "world": "dev" }],
+        "showingTab": "w1:t2",
+        "showing": ["devenv/w1:p2"],
+        "numbered": { "press": [1, 2] },
+        "at": 2,
+        "step": { "from": "w1:t1", "direction": "next" }
+      },
+      "expect": {
+        "machines": ["local connected 1 panes", "devenv connected 1 panes"],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" off-screen",
+          "devenv/w1:p2 place=0 tab=w1:t2 label=\"beta\" on-screen maker=w1:p1 under=w1:p1"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"Tab 1\" off-screen",
+          "w1:t2 on=devenv place=0 label=\"alpha's helpers\" given-name=\"alpha's helpers\" on-screen"
+        ],
+        "pressed": ["⌘1 of panes → pane local/w1:p1", "⌘2 of panes → nothing"],
+        "chords": ["w1:t1 nothing", "  local/w1:p1 ⌘1", "w1:t2 nothing", "  devenv/w1:p2 nothing"],
+        "stepped": "w1:t2",
+        "at": null
+      }
+    },
+    {
       "name": "a pane can be restarted when its daemon knows how its agent resumes",
       "why": "The agent row's menu offers Restart Agent and greys it out where there is nothing to resume: a pane running no agent, or an agent that reported no session its harness resumes. The daemon builds the resume from what the agent reported and the manifests it holds, so the row carries the daemon's word, and the command it would run is what the window says before it ends anything.",
       "given": {
