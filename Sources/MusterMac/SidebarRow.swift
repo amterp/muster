@@ -222,6 +222,7 @@ final class SidebarRowView: NSView {
     panelLayer.cornerRadius = Self.blockRadius
     outlineLayer.fillColor = nil
     outlineLayer.lineWidth = 1
+    outlineLayer.masksToBounds = true
     tintLayer.cornerRadius = 8
     highlight.cornerRadius = 8
     highlight.borderWidth = 1.5
@@ -735,6 +736,7 @@ final class SidebarRowView: NSView {
   }
 
   private func layoutTabBlock(_ place: SidebarModel.TabBlock.Place) {
+    outlineLayer.frame = bounds
     let top = place == .top || place == .only
     let bottom = place == .bottom || place == .only
     let minX = bounds.minX + Self.blockInset
@@ -747,29 +749,13 @@ final class SidebarRowView: NSView {
       return
     }
     panelLayer.frame = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-    let radius = min(Self.blockRadius, (maxX - minX) / 2, (maxY - minY) / 2)
-    let path = CGMutablePath()
-    path.move(to: CGPoint(x: minX, y: minY + (bottom ? radius : 0)))
-    path.addLine(to: CGPoint(x: minX, y: maxY - (top ? radius : 0)))
-    if top {
-      path.addQuadCurve(
-        to: CGPoint(x: minX + radius, y: maxY), control: CGPoint(x: minX, y: maxY))
-      path.addLine(to: CGPoint(x: maxX - radius, y: maxY))
-      path.addQuadCurve(
-        to: CGPoint(x: maxX, y: maxY - radius), control: CGPoint(x: maxX, y: maxY))
-    } else {
-      path.move(to: CGPoint(x: maxX, y: maxY))
-    }
-    path.addLine(to: CGPoint(x: maxX, y: minY + (bottom ? radius : 0)))
-    if bottom {
-      path.addQuadCurve(
-        to: CGPoint(x: maxX - radius, y: minY), control: CGPoint(x: maxX, y: minY))
-      path.addLine(to: CGPoint(x: minX + radius, y: minY))
-      path.addQuadCurve(
-        to: CGPoint(x: minX, y: minY + radius), control: CGPoint(x: minX, y: minY))
-    }
-    if place == .only { path.closeSubpath() }
-    outlineLayer.path = path
+    // Where the outline joins another row, put its rounded end past this layer's clip.
+    let strokeMinY = minY - (bottom ? 0 : Self.blockRadius)
+    let strokeMaxY = maxY + (top ? 0 : Self.blockRadius)
+    let stroke = CGRect(x: minX, y: strokeMinY, width: maxX - minX, height: strokeMaxY - strokeMinY)
+    outlineLayer.path = CGPath(
+      roundedRect: stroke, cornerWidth: Self.blockRadius, cornerHeight: Self.blockRadius,
+      transform: nil)
   }
 
   /// Where a key column starts, advancing `left` past each column the row reserves.
@@ -787,7 +773,7 @@ final class SidebarRowView: NSView {
   }
 
   private func layoutPaneRow() {
-    let side: CGFloat = panelLayer.superlayer == nil ? 4 : 10
+    let side: CGFloat = shown?.tabBlock == nil ? 4 : 10
     let marked = bounds.insetBy(dx: side, dy: 1)
     tintLayer.frame = marked
     highlight.frame = marked

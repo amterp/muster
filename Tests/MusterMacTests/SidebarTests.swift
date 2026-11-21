@@ -258,16 +258,33 @@ struct SidebarTests {
   }
 
   @Test("a lone tab keeps its caption and its panes still have direct chords")
-  func oneTabHasAnUnnumberedCaption() {
-    let one = tab("local", onScreen: true, panes: [pane("local", "w1:p1")])
+  @MainActor func oneTabHasAnUnnumberedCaption() throws {
+    let one = tab("local", onScreen: true, color: "red", panes: [pane("local", "w1:p1")])
     let rows = SidebarModel.rows(roster: roster([one]), agents: [:])
+    let numbered = tab(
+      "local", press: 1, onScreen: true, color: "red",
+      panes: [pane("local", "w1:p1", tabPress: 1, press: 0)])
     let two = SidebarModel.rows(
-      roster: roster([one, tab("local", "w1:t2", panes: [])], numbering: .tabs),
+      roster: roster(
+        [numbered, tab("local", "w1:t2", place: 2, press: 2, panes: [])],
+        numbering: .tabs),
       agents: [:])
 
     #expect(rows.map(\.kind) == [.tab(press: 0), .pane(tabPress: 0, press: 1)])
-    #expect(rows.first?.reservedPresses == 1)
-    #expect(rows.first == two.first, "adding a tab leaves the first caption in place")
+    let row = try #require(rows.first)
+    let after = try #require(two.first)
+    let view = SidebarRowView()
+    view.frame = CGRect(x: 0, y: 0, width: 200, height: SidebarModel.height(of: row))
+    view.show(row)
+    view.layoutSubtreeIfNeeded()
+    let frame = view.firstLineFrame
+    let band = view.shownBand
+    #expect(view.shownKeys.isEmpty)
+    view.show(after)
+    view.layoutSubtreeIfNeeded()
+    #expect(view.shownKeys == [1])
+    #expect(view.firstLineFrame == frame)
+    #expect(view.shownBand == band)
   }
 
   @Test("a band colors the caption and outline while state colors stay on the pane")
@@ -1133,7 +1150,7 @@ struct SidebarTests {
   }
 
   @Test("an entry's height is its lines, never how long they are, and a caption is one line")
-  func entriesAreAsTallAsTheirLines() {
+  func entriesAreAsTallAsTheirLines() throws {
     // The reason this is asserted rather than left to look right: a list of fifteen agents is
     // read by scanning it, and a height that varied with what an agent happened to be writing
     // would move every row below it whenever one of them wrote a longer sentence. What an entry's
@@ -1156,11 +1173,11 @@ struct SidebarTests {
     let key = { PaneKey(daemon: "local", pane: $0) }
     let helped = rosterWithHelpers().roster
     let folded = SidebarModel.rows(roster: helped, agents: [:])
-    #expect(folded.map(SidebarModel.height(of:)) == [57, 42], "pills are a line of their own")
+    #expect(folded.map(SidebarModel.height(of:)) == [20, 57, 42], "pills are a line of their own")
     let open = SidebarModel.rows(roster: helped, agents: [:], helpersOpen: [key("w1:p1")])
-    #expect(open.map(SidebarModel.height(of:)) == [57, 22, 22, 22, 42])
+    #expect(open.map(SidebarModel.height(of:)) == [20, 57, 22, 22, 22, 42])
 
-    var titled = folded[0]
+    var titled = try #require(folded.first(where: \.isPane))
     titled.title = "integrate the round"
     #expect(SidebarModel.height(of: titled) == 73)
   }
@@ -1200,14 +1217,15 @@ struct SidebarTests {
   }
 
   @Test("a mark arriving on an entry with no task line does not make it taller")
-  func aMarkDoesNotMoveARow() {
+  func aMarkDoesNotMoveARow() throws {
     let shell = pane("local", "w1:p1", callsign: "linen")
     var rang = agent("idle")
     rang.rang = true
     rang.subagents = 2
     let before = SidebarModel.rows(roster: roster([shell]), agents: [shell.key: agent("idle")])
     let after = SidebarModel.rows(roster: roster([shell]), agents: [shell.key: rang])
-    #expect(SidebarModel.accessories(of: after[0]).count == 2)
+    let updated = try #require(after.first { $0.pane == shell.key })
+    #expect(SidebarModel.accessories(of: updated).count == 2)
     #expect(SidebarModel.changes(from: before, to: after)?.remeasure.isEmpty == true)
   }
 
