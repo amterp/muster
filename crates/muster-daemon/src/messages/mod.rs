@@ -1870,10 +1870,14 @@ fn reached_as_told(
     rang: &Rang,
     activities: &HashMap<String, Activity>,
 ) -> Vec<msg_answer::Reached> {
-    reached
+    // Catch-up can report both cached and fresh results for the same member, in that order.
+    let mut seen = HashSet::with_capacity(reached.len());
+    let mut outcomes: Vec<_> = reached
         .iter()
+        .rev()
+        .filter(|(name, _)| seen.insert(name.as_str()))
         .map(|(name, reach)| {
-            if let Some(answered) = rang.elsewhere.iter().find(|answered| answered.name == *name) {
+            if let Some(answered) = rang.elsewhere.iter().rfind(|answered| answered.name == *name) {
                 return answered.clone();
             }
             let deferral = rang.deferred.iter().find(|deferral| deferral.name == *name);
@@ -1902,7 +1906,9 @@ fn reached_as_told(
                 outcome_known: true,
             }
         })
-        .collect()
+        .collect();
+    outcomes.reverse();
+    outcomes
 }
 
 /// What a post or a resume did, as its answer and the daemon's log say it. `bytes` is a post's
