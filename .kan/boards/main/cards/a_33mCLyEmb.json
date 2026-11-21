@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "a-reboot-drops-most",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1795267747450,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-21 on 0.27.0. Six Claude Code agents were running in tabs 1-5, all with the adapter, all started through `ct`. The owner quit Muster with Cmd-Q and restarted the Mac. When Muster reopened, the new daemon resumed one agent, bell (`daemon.state.resumed` for pane `p2n9rfjhk7`). The other five came back as plain shells, and the owner had to relaunch each one by hand with `ct -r`. `daemon.state.restored` reported 6 of 6 saved panes, so the panes themselves survived. Only their resume commands were missing.\n\nThe resumes had been built. Each of those panes logged `session.id.reported` between 01:22 and 01:57 in `~/.muster/daemon/release.log.1`, and neither log holds a `session.resume.unbuilt` warning. So the old daemon dropped five resumes it had held.\n\nInferred cause, not confirmed: `agent_left` (`crates/muster-daemon/src/session.rs:6432`) is the only code that drops a pane's saved resume. It runs when detection sees a pane's agent change or go away, and the state is then saved. During a reboot macOS ends every process, and the `claude` processes exited while the daemon was still alive. Detection read each pane as having no agent, and `agent_left` dropped that pane's resume. The daemon was killed moments later. Bell's resume survived because its agent's exit was presumably never noticed in that window. A Muster-initiated restart is already exempt through `discards().is_restarting()`, but an agent killed by the OS looks the same as a `/exit`.\n\nCost: the guarantee in `docs/configuration.md` (`resume_agents`: \"a reboot\" brings an agent back in its session) fails exactly when it matters most. The panes come back looking correct, so nothing says that the agents are gone.\n\nPossible fix: when an agent leaves, keep the saved resume for a grace period (15-30 s) before saving its removal, or until something else starts in the pane. A shutdown kills the daemon inside that window. A real `/exit` still clears the resume, a little later. Another option is to judge by how the agent exited: an exit by signal (SIGTERM, SIGHUP, SIGKILL) keeps the resume, and a clean exit drops it. That needs the exit status of the agent process, which the daemon may not see when the shell is the pane's child.\n\nTest: a daemon integration test that reports a session, kills the agent process with SIGTERM, kills the daemon within a second, starts a new daemon on the same state, and expects `daemon.state.resumed` for the pane.",
+  "id": "a_33mCLyEmb",
+  "position": "b1z",
+  "provenance": "approved",
+  "related": [
+    "a_33mCMNOnE"
+  ],
+  "title": "A reboot drops most agents' saved resumes, so they come back as shells",
+  "type": "bug",
+  "updated_at_millis": 1795267751069,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795267747450}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "the-daemon-logs",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1795267747703,
+  "creator": "Alexander Terp",
+  "description": "The daemon logged nothing that could confirm or rule out the cause of the reboot bug filed beside this card. Two events were missing:\n\n1. **Dropping a pane's saved resume.** `agent_left` (`crates/muster-daemon/src/session.rs:6432`) takes `terminal.resume` and has the state saved, without a log line. The agent change that leads to it is not logged either. After the 2026-11-21 reboot, the only way to work out which panes lost their resume was to compare what the new daemon resumed with what the old one had been told. Add an info event, such as `session.resume.dropped`, with the pane, the agent, the session and the reason (agent left, replaced by another agent, session changed). Also log the agent detected in a pane changing, from what to what.\n\n2. **The daemon ending.** The old daemon's last line was `daemon.api.closed` at 13:11:45Z. It never logged `daemon.signal.stopping`, so the log cannot say whether it got a SIGTERM and stopped, or was SIGKILLed. Either the signal never came or the line was lost unflushed. Find out which. If the log is buffered, flush it on the stop path. If the daemon was SIGKILLed, the run log should record that the last run ended uncleanly: the next daemon can see that the previous one wrote no `daemon.stopped` line (or an equivalent marker) and log `daemon.previous.unclean` at start.\n\nWith both of these, the reboot bug would have been confirmed from the log instead of inferred from the code.",
+  "id": "a_33mCMNOnE",
+  "position": "b20",
+  "provenance": "approved",
+  "title": "The daemon logs neither a dropped resume nor how it ended",
+  "type": "enhancement",
+  "updated_at_millis": 1795267747703,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795267747703}
+  ]
+}
