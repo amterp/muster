@@ -1568,7 +1568,7 @@ impl Session {
                 P::Swap(swap) => self.swap(&swap),
                 P::Move(moved) => self.move_pane(moved),
                 P::Rename(rename) => self.rename_pane(rename),
-                P::SetColor(set) => self.set_pane_color(set),
+                P::SetColor(set) => self.set_pane_color(&set),
                 P::Report(report) => self.report(report),
                 P::Seen(seen) => self.seen(&seen.panes),
                 P::Compact(compact) => self.compact(&compact),
@@ -4341,7 +4341,7 @@ impl Session {
         Reply::done()
     }
 
-    fn set_pane_color(&mut self, set: pane_request::SetColor) -> Reply {
+    fn set_pane_color(&mut self, set: &pane_request::SetColor) -> Reply {
         let Some(index) = self.pane_index(&set.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", set.pane));
         };
