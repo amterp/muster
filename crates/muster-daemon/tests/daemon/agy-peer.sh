@@ -3,6 +3,10 @@ set -eu
 
 if [ "${1-}" = report ]; then
     printf '%s\n' "$*" > "$AGY_TEST_WORK/last-report"
+    if [ -f "$AGY_TEST_WORK/hold-report" ]; then
+        mv "$AGY_TEST_WORK/hold-report" "$AGY_TEST_WORK/held-report"
+        exec sleep 10
+    fi
     exec "$AGY_TEST_DAEMON" "$@"
 fi
 

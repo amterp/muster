@@ -304,6 +304,32 @@ fn antigravity_drops_the_previous_launch_and_ignores_a_stale_invocation() {
 }
 
 #[test]
+fn antigravity_retries_a_clear_after_the_start_report_times_out() {
+    let mut agent = AntigravityPane::start();
+    let start = payload("start");
+    let first = conversation(&start);
+    agent.hook(&start, first);
+
+    let mut next = payload("second-start");
+    std::fs::write(agent.work.join("hold-report"), "hold once\n").unwrap();
+    agent.hook(&next, conversation(&next));
+    assert!(agent.work.join("held-report").exists());
+    assert_eq!(agent.transcript().unwrap().session_id, first);
+    assert!(agent.pane().context_change.is_none());
+
+    next["hookEventName"] = "PreInvocation".into();
+    let second = conversation(&next);
+    agent.hook(&next, second);
+    assert_eq!(agent.transcript().unwrap().session_id, second);
+    let change = agent.pane().context_change.expect("retry reports the clear");
+    assert_eq!(change.kind(), proto::ContextChangeKind::Cleared);
+
+    agent.hook(&payload("pre-invocation"), first);
+    assert_eq!(agent.transcript().unwrap().session_id, second);
+    assert_eq!(agent.pane().context_change, Some(change));
+}
+
+#[test]
 fn antigravity_keeps_session_identity_when_protocol_1_18_omits_provenance() {
     let mut agent = AntigravityPane::start();
     let socket = agent.daemon.root().join("old-report.sock");
