@@ -110,6 +110,9 @@ daemon replacement. `muster window` shows the saved value.
 `pane color` can reach this machine's daemon with no window. `tab color` uses a window so it
 can reach every daemon holding part of the tab.
 
+Setting a color requires daemon protocol 1.18. A manual daemon replacement with an older
+version can transfer the live sessions and drops their color records.
+
 ## Machine names
 
 A machine's name is the `id` of its `[[daemon]]` block, and `local` when your config names

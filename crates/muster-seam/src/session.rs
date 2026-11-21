@@ -7458,7 +7458,7 @@ fn arrival(
     pane: &PaneId,
     spot: spanning::Spot,
 ) -> Result<(InTree, Vec<spanning::Write>, Read), Refusal> {
-    let (worked_out, read, hidden) = {
+    let (worked_out, read, hidden, color) = {
         let mut session = poison::lock(&SESSION, "session");
         let stale = session.stale_reads > 0;
         if stale {
@@ -7491,7 +7491,13 @@ fn arrival(
         let change =
             spanning::Change::Place { pane: pane.clone(), daemon: daemon.clone(), at: spot };
         let hidden = mirrors.values().any(|held| held.tab(tab).is_some_and(|part| part.hidden));
-        (spanning::rearrange(&parts, &settled, &change), read, hidden)
+        let color = mirrors
+            .values()
+            .filter_map(|held| held.tab(tab).map(|part| &part.color))
+            .max()
+            .filter(|color| color.generation != 0 || color.value.is_some())
+            .cloned();
+        (spanning::rearrange(&parts, &settled, &change), read, hidden, color)
     };
     let mut writes = worked_out
         .map_err(|detail| {
@@ -7520,6 +7526,7 @@ fn arrival(
         generation: own.generation,
         based_on: own.based_on,
         hidden,
+        color,
     };
     Ok((at, writes, read))
 }

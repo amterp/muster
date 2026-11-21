@@ -329,6 +329,10 @@ fn in_tree(at: &InTree) -> placement::Where {
         based_on: at.based_on,
         label: Some(proto::Label::default()),
         hidden: at.hidden,
+        color: at.color.as_ref().map(|color| proto::TabColor {
+            generation: color.generation,
+            value: color.value.clone(),
+        }),
     })
 }
 

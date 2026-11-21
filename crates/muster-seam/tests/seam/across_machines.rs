@@ -24,8 +24,8 @@ use muster::proto::{
 };
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{
-    among_helpers, close_request, create, expect, helper, in_new_tab, make, read_text,
-    set_zoomed_tree_request, shape,
+    among_helpers, close_request, create, events_until, expect, helper, in_new_tab, make,
+    read_text, set_zoomed_tree_request, shape, subscribe_request,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -1576,7 +1576,7 @@ fn a_tab_can_hold_panes_from_two_machines() {
 /// part left nameless is what another window reading only that machine shows - and what this
 /// window shows too, once the laptop's panes close and the devenv's part is all that is left.
 #[test]
-fn a_new_part_of_a_named_tab_takes_its_name() {
+fn a_new_part_of_a_tab_takes_its_name_and_opens_with_its_color() {
     let _turn = muster::testing::fresh_session();
     let TwoMachines { laptop: _laptop, devenv } = a_window_showing_two_machines();
     let on_laptop = pane_on("laptop").expect("the fixture waited for it");
@@ -1593,11 +1593,30 @@ fn a_new_part_of_a_named_tab_takes_its_name() {
         color: "cyan".to_string(),
         ..SetTabColor::default()
     })));
+    let mut control = devenv.connect();
+    expect(&mut control, subscribe_request(), daemon_proto::Outcome::Done);
     assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
         pane_id: on_devenv,
         tab_id: laptop_tab.clone(),
         ..ArrangePane::default()
     })));
+
+    let opened_color = |events: &[daemon_proto::Event]| {
+        events.iter().find_map(|event| {
+            let Some(daemon_proto::event::Event::TabOpened(opened)) = &event.event else {
+                return None;
+            };
+            let tab = opened.tab.as_ref()?;
+            (tab.tab == laptop_tab).then(|| tab.color.clone())
+        })
+    };
+    let events = events_until(&mut control, "the new part of the tab to open", |events| {
+        opened_color(events).is_some()
+    });
+    assert_eq!(
+        opened_color(&events).flatten().and_then(|color| color.value).as_deref(),
+        Some("cyan")
+    );
 
     let devenv_label = || {
         snapshot(&devenv)
@@ -1611,11 +1630,6 @@ fn a_new_part_of_a_named_tab_takes_its_name() {
         "the devenv's part of the tab to be called what the tab is called",
         || devenv_label().as_deref() == Some("work"),
         || format!("the devenv's part is labelled {:?}", devenv_label()),
-    );
-    until(
-        "the devenv's new tab part to take the current color",
-        || tab_color(&devenv, &laptop_tab).and_then(|color| color.value).as_deref() == Some("cyan"),
-        || format!("the devenv holds {:?}", tab_color(&devenv, &laptop_tab)),
     );
 }
 

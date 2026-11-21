@@ -233,6 +233,7 @@ pub fn in_tree(tab: &str, text: &str, generation: u64, based_on: u64) -> proto::
             based_on,
             label: None,
             hidden: false,
+            color: None,
         })),
     }
 }

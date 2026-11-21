@@ -157,6 +157,7 @@ fn a_pane_made_in_a_tree_on_a_machine_with_no_part_of_the_tab_makes_one() {
             based_on: 0,
             label: Some(proto::Label { text: Some("work".to_string()), generation: 4 }),
             hidden: true,
+            color: None,
         })),
     };
     make(&mut control, create("e", hidden));

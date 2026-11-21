@@ -764,6 +764,8 @@ message Placement {
     uint64 based_on = 4;
     Label label = 5;
     bool hidden = 6;
+    // Since 1.18. The tab's current color when this placement makes a new part.
+    TabColor color = 7;
   }
 }
 

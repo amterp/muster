@@ -118,6 +118,7 @@ pub struct InTree {
     /// Whether the tab is hidden, which a part this makes has to say too: every part of a tab
     /// says the same.
     pub hidden: bool,
+    pub color: Option<crate::color::TabColor>,
 }
 
 /// Which child a step down a tree takes.

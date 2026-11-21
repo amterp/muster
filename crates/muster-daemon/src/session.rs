@@ -1473,6 +1473,7 @@ enum Target {
         based_on: u64,
         makes: bool,
         label: proto::Label,
+        color: Option<proto::TabColor>,
         hidden: bool,
     },
     /// Where a reopened pane was, decided as it is placed ([`Session::place_reopened`]): the tab
@@ -2764,9 +2765,12 @@ impl Session {
                     Some(moving),
                 )?;
                 let new_part = self.tab_index(&in_tree.tab).is_none();
-                if new_part {
+                let color = if new_part {
                     self.free_tab(&in_tree.tab)?;
-                }
+                    in_tree.color.map(canonical_tab_color).transpose()?
+                } else {
+                    None
+                };
                 Ok(Target::InTree {
                     tab: in_tree.tab,
                     root,
@@ -2774,6 +2778,7 @@ impl Session {
                     based_on: in_tree.based_on,
                     makes: new_part,
                     label: in_tree.label.unwrap_or_default(),
+                    color,
                     hidden: in_tree.hidden,
                 })
             }
@@ -2928,7 +2933,7 @@ impl Session {
             Target::Reopened { tab, fresh } => {
                 self.place_reopened(pane, &tab, fresh);
             }
-            Target::InTree { tab: name, root, generation, label, hidden, .. } => {
+            Target::InTree { tab: name, root, generation, label, color, hidden, .. } => {
                 if let Some(index) = self.tab_index(&name) {
                     let tab = &mut self.tabs[index];
                     tab.root = root;
@@ -2942,7 +2947,7 @@ impl Session {
                     let tab = Tab {
                         name,
                         label,
-                        color: None,
+                        color,
                         root,
                         zoomed: None,
                         hidden,
@@ -4469,12 +4474,12 @@ impl Session {
         let Some(index) = self.tab_index(&set.tab) else {
             return Reply::not_there(format!("no tab {} on this daemon", set.tab));
         };
-        let Some(mut color) = set.color else {
+        let Some(color) = set.color else {
             return Reply::refused("the request carries no tab color generation");
         };
-        color.value = match parse_color(color.value.as_deref().unwrap_or("none")) {
-            Ok(value) => value,
-            Err(why) => return Reply::refused(why),
+        let color = match canonical_tab_color(color) {
+            Ok(color) => color,
+            Err(refusal) => return refusal,
         };
         let tab = &mut self.tabs[index];
         let current = tab
@@ -6011,6 +6016,11 @@ fn scrollback(settings: &proto::Settings) -> usize {
     settings
         .scrollback_bytes
         .map_or(screen::DEFAULT_SCROLLBACK, |bytes| usize::try_from(bytes).unwrap_or(usize::MAX))
+}
+
+fn canonical_tab_color(mut color: proto::TabColor) -> Result<proto::TabColor, Reply> {
+    color.value = parse_color(color.value.as_deref().unwrap_or("none")).map_err(Reply::refused)?;
+    Ok(color)
 }
 
 /// The name somebody gave a pane, as its record reads it (`proto::Pane::name`): blank is none.

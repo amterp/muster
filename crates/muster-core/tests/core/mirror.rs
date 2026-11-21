@@ -205,9 +205,11 @@ fn describe(change: &Change) -> String {
         }
         Change::FinishedUnseen { pane, unseen } => format!("finishedUnseen:{pane}:{unseen}"),
         Change::PaneRelabelled(pane) => format!("paneRelabelled:{pane}"),
+        Change::PaneRecolored => "paneRecolored".to_string(),
         Change::AgentDescribed(pane) => format!("agentDescribed:{pane}"),
         Change::TabAdded(tab) => format!("tabAdded:{tab}"),
         Change::TabRelabelled(tab) => format!("tabRelabelled:{tab}"),
+        Change::TabRecolored(tab) => format!("tabRecolored:{tab}"),
         Change::TabRemoved(tab) => format!("tabRemoved:{tab}"),
         Change::LayoutChanged(tab) => format!("layoutChanged:{tab}"),
         Change::Restored(restored) => format!(
