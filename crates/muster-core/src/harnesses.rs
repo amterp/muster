@@ -134,10 +134,8 @@ mod tests {
         assert_eq!(standing(Some("codex"), Adapter::Unsaid).as_str(), "");
     }
 
-    /// Every adapter directory in `extras/` has a row, and every row a directory, so the table
-    /// cannot drift from what ships.
     #[test]
-    fn the_table_is_what_extras_holds() {
+    fn adapter_directories_match_the_registry_and_staged_assets() {
         let extras = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../extras");
         let mut shipped: Vec<String> = std::fs::read_dir(&extras)
             .unwrap()
@@ -150,6 +148,8 @@ mod tests {
         shipped.sort();
         let mut listed: Vec<String> =
             WITH_ADAPTERS.iter().map(|harness| harness.dir.to_string()).collect();
+        // Antigravity's plugin ships before the install catalog can register it.
+        listed.push("agy".to_string());
         listed.sort();
         assert_eq!(shipped, listed, "extras/ and harnesses::WITH_ADAPTERS disagree");
     }
