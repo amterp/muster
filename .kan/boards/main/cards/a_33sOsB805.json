@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "a-master-without-the",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_33sOwECO3",
+      "body": "agent-approved: it fixes a defect (a flaky test); it overturns no decision, adds no interface, format or dependency, and changes nothing outside this repo.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795282530825
+    }
+  ],
+  "created_at_millis": 1795282528387,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-21 in a full ./dev run on main at 8bfbecc4, with the machine's load at 42 against 6 performance cores. muster-ssh's fake_ssh test foreign_master::a_master_without_the_forward_is_ended_and_replaced panicked at crates/muster-ssh/tests/fake_ssh/foreign_master.rs:18: unwrap_err() on an Ok UnixStream, so a connect the test expects to be refused succeeded. It passed alone in 2 s straight after. The other five fake_ssh tests passed in the same run. The change under test in that run touched no ssh code. Likely an ordering assumption in the test (the forward's socket gone before the connect) that load breaks; read line 18's setup before calling it starvation only. Related: a_2shK7DirB, another fake master timing failure under load.",
+  "id": "a_33sOsB805",
+  "position": "b22",
+  "provenance": "agent-approved",
+  "title": "🎲 a_master_without_the_forward_is_ended_and_replaced saw the forward still accept under load",
+  "type": "bug",
+  "updated_at_millis": 1795282530826,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795282528387}
+  ]
+}
