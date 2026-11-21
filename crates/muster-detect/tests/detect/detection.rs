@@ -70,6 +70,7 @@ fn recorded_antigravity_screens_and_prompts() {
         Ok(fields([
             ("state", Some(json!(detected.state.as_str()))),
             ("skipStateUpdate", detected.skip_state_update.then_some(json!(true))),
+            ("waiting", detected.waiting.map(Value::String)),
             ("prompt", Some(prompt)),
         ]))
     });

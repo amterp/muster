@@ -410,6 +410,37 @@
       },
       "name": "agy 1.5.14: cancel (60 columns)",
       "why": "Esc cancels compaction and the empty composer becomes readable again."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": "",
+        "waiting": "its background tasks"
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Start exactly sleep 30 as a tracked background task with your shell tool (set WaitMsBeforeAsync\n  to 100), then reply only TASK-STARTED without waiting or checking it.\n\n● Running (sleep 30) (ctrl+o to expand)\n\n  TASK-STARTED\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ● [14:13:06] sleep 30 running\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                   auto · Gemini 3.8 Flash · low · 1 task(s) · /tasks\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Start exactly sleep 30 as a tracked background task with your shell tool (set WaitMsBeforeAsync\n  to 100), then reply only TASK-STARTED without waiting or checking it.\n\n● Running (sleep 30) (ctrl+o to expand)\n\n  TASK-STARTED\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ● [14:13:06] sleep 30 running\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                   auto"
+      },
+      "name": "agy 1.5.14: idle with a background task",
+      "why": "A tracked task can still be running below an idle, empty composer. Its completion begins the next turn."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Start exactly sleep 30 as a tracked background task with your shell tool (set WaitMsBeforeAsync\n  to 100), then reply only TASK-STARTED without waiting or checking it.\n\n● Ran (sleep 30) (ctrl+o to expand)\n\n  TASK-STARTED\n\n  The background task (sleep 30) has completed successfully.\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Start exactly sleep 30 as a tracked background task with your shell tool (set WaitMsBeforeAsync\n  to 100), then reply only TASK-STARTED without waiting or checking it.\n\n● Ran (sleep 30) (ctrl+o to expand)\n\n  TASK-STARTED\n\n  The background task (sleep 30) has completed successfully.\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: background task finished",
+      "why": "After the job exits, the composer remains usable."
     }
   ]
 }

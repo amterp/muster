@@ -17,6 +17,15 @@ Folder trust and tool approval both take Return as an answer. The approval scree
 While approval is showing, the status line can report `tool_use` with
 `tool_confirmation_pending: true`. The pending field takes precedence.
 
+A tracked background `sleep` remained in the footer as `1 task(s) · /tasks` after the turn.
+`Stop` sent `fullyIdle: false` and `continuationActive: false`, while the status line sent
+`agent_state: "idle"` and `task_count: 1`. The composer was empty and usable above a separate
+task panel. When the job ended, agy started another invocation without input and reported its
+completion. Muster reads the composer as idle and reports an inferred wait on the background
+tasks while that footer is visible.
+[Antigravity task manager](https://antigravity.google/docs/subagents?tab=cli) ·
+[Antigravity schedules](https://antigravity.google/docs/commands/schedule/)
+
 ## Session commands and reports
 
 Pasting `/rename Muster Capture` and pressing Return once renames the session. The status line

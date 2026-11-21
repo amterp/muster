@@ -1,0 +1,21 @@
+id = "agy-background-task-state"
+question = "How should Muster read Antigravity's composer while tracked background tasks are running?"
+tags = ["agy", "detection", "waiting"]
+paths = ["crates/muster-detect/manifests/antigravity.toml", "corpus/conformance/agent-detection-agy.json"]
+
+[[revisions]]
+id = "u2bxpa3z"
+date = 2026-11-21
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Use the active composer and spinner for foreground state. When the composer
+is idle and the footer lists running tasks, add an inferred wait on its
+background tasks. Keep the actual composer readable above the task panel.'''
+why = '''
+The Antigravity 1.5.14 recording shows a usable composer above a running
+shell task. Completion starts a new model invocation without terminal input.
+The footer therefore describes work that can wake an idle agent, as distinct
+from a model turn that is already working.'''

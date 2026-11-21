@@ -1,5 +1,5 @@
 id = "agy"
-version = "2026.11.21.1"
+version = "2026.11.21.2"
 min_engine_version = 21
 updated_at = "2026-11-21T00:00:00Z"
 aliases = ["antigravity", "antigravity-cli"]
@@ -11,18 +11,36 @@ id = "last_content"
 regex = '\S'
 
 [[rows]]
-id = "composer_bottom"
+id = "last_rule"
 regex = '^─{12,}$'
 start = { row = "last_content", offset = -5 }
 
 [[rows]]
+id = "composer_prompt"
+regex = '^>(?:\s|$)'
+end = { row = "last_rule" }
+
+[[rows]]
 id = "composer_top"
 regex = '^─{12,}$'
-end = { row = "composer_bottom", offset = -1 }
+start = { row = "composer_prompt", offset = -1 }
+end = { row = "composer_prompt" }
+
+# A running task adds another rule below the composer. The first rule after the prompt
+# still ends the input; the last one can belong to the task panel.
+[[rows]]
+id = "composer_bottom"
+regex = '^─{12,}$'
+take = "first"
+start = { row = "composer_prompt", offset = 1 }
+end = { row = "last_rule", offset = 1 }
 
 [regions.composer]
 start = { row = "composer_top", offset = 1 }
 end = { row = "composer_bottom" }
+
+[regions.task_footer]
+start = { row = "composer_bottom", offset = 1 }
 
 [session]
 rename = "/rename {name}"
@@ -74,14 +92,6 @@ visible_working = true
 line_regex = ['^\s*[\u2800-\u28FF]+\s+\p{Alphabetic}+\w*ing\b', '^esc to cancel(?:\s|$)']
 
 [[rules]]
-id = "background_tasks_working"
-state = "working"
-priority = 90
-region = "bottom_non_empty_lines(5)"
-visible_working = true
-line_regex = ['(?i)·\s*[1-9][0-9]*\s+task']
-
-[[rules]]
 id = "slash_menu"
 state = "unknown"
 priority = 180
@@ -97,3 +107,10 @@ region = "composer"
 line_regex = ['^>(?:\s|$)']
 prompt = '^> ?'
 prompt_placeholder = '^Auto mode: edits & safe commands auto-approved \(shift\+(?:tab to cycle\)|\.\.\.)$'
+
+[[rules]]
+id = "background_tasks_waiting"
+state = "idle"
+region = "task_footer"
+waiting = "its background tasks"
+line_regex = ['\b[1-9][0-9]*\s+task\(s\)\s+·\s+/tasks\s*$']
