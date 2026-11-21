@@ -2,7 +2,7 @@
 //! their reasoning live in corpus/conformance/agent-detection*.json.
 
 use conformance::{CaseError, Conformance, fields};
-use muster_detect::{Agent, Input, Manifests};
+use muster_detect::{Agent, Input, Manifests, Prompt};
 use serde_json::{Value, json};
 
 fn detect(manifests: &Manifests, given: &Value) -> Result<Value, CaseError> {
@@ -45,6 +45,32 @@ fn recorded_screen_conformance() {
             ("state", detected.get("state").cloned()),
             ("skipStateUpdate", detected.get("skipStateUpdate").cloned()),
             ("waiting", detected.get("waiting").cloned()),
+        ]))
+    });
+    assert_eq!(ran, corpus.cases.len());
+    assert!(ran > 0);
+}
+
+#[test]
+fn recorded_antigravity_screens_and_prompts() {
+    let manifests = Manifests::built_in();
+    let agent = Agent::new("agy");
+    let corpus = Conformance::load("agent-detection-agy.json");
+    let ran = corpus.run(|given| {
+        let text = |key: &str| given.get(key).and_then(Value::as_str).unwrap_or("");
+        let input =
+            Input { screen: text("screen"), title: text("title"), progress: text("progress") };
+        let typed = given["typed"].as_str().unwrap_or(input.screen);
+        let detected = manifests.detect(Some(&agent), input);
+        let prompt = match manifests.prompt(&agent, input, typed) {
+            Some(Prompt::Empty) => json!(""),
+            Some(Prompt::Holds(text)) => json!(text),
+            None => Value::Null,
+        };
+        Ok(fields([
+            ("state", Some(json!(detected.state.as_str()))),
+            ("skipStateUpdate", detected.skip_state_update.then_some(json!(true))),
+            ("prompt", Some(prompt)),
         ]))
     });
     assert_eq!(ran, corpus.cases.len());

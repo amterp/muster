@@ -18,23 +18,27 @@ window`).
 | Capability | Claude Code | Codex | OpenCode | Every other harness |
 |---|---|---|---|---|
 | Its state read off the screen | yes | yes | yes | yes |
-| Its own report of its state | yes | yes | yes | no |
-| Context used, model and cost | yes | yes | yes | no |
+| Its own report of its state | yes | yes | yes | agy |
+| Context used and model | yes | yes | yes | agy |
 | Sub-agents counted | yes | yes | no | no |
-| Rung at an empty prompt | yes | yes | yes | no |
+| Rung at an empty prompt | yes | yes | yes | agy |
 | Rung while it works, for an urgent post | yes | yes | no | no |
 | Messages fetched by its hooks | yes | yes | no | no |
 | Woken by its own command, typing nothing | no | no | no | no |
-| Its session named after the pane | yes | yes | no | no |
-| The pane named after its session | yes | no | no | no |
-| Compacted when asked | yes | yes | no | no |
-| Cleared when asked | yes | yes | no | no |
+| Its session named after the pane | yes | yes | no | agy |
+| The pane named after its session | yes | no | no | agy |
+| Compacted when asked | yes | yes | no | agy |
+| Cleared when asked | yes | yes | no | agy |
 | Says when its context was cleared or compacted | yes | yes | no | no |
-| Resumed after a restart | yes | yes | yes | no |
+| Resumed after a restart | yes | yes | yes | agy |
 | Clipboard image pasted into a remote composer | yes | yes | no | no |
 
 Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
 kimi, kiro, maki, pi, qodercli.
+
+The Antigravity CLI (`agy`) uses the [native plugin and status-line wrapper](../../extras/agy/README.md).
+Its hooks report the conversation ID and turn state. Its status line supplies the model, effort,
+context usage and conversation title once a hook identifies the conversation.
 
 - **Its state read off the screen**: working, blocked or idle, from rules Muster keeps for each
   harness's screens.

@@ -73,3 +73,44 @@ fn opencode_resumes_by_its_session_flag_with_the_flags_it_was_started_with() {
     assert_eq!(again.0, "opencode -m opencode/big-pickle --session s-2");
     assert_eq!(resumed("opencode", &["--continue", "--prompt", "hi"]).0, "opencode --session s-2");
 }
+
+#[test]
+fn antigravity_resumes_only_the_named_conversation() {
+    let (command, uncarried) = resumed(
+        "agy",
+        &[
+            "--conversation",
+            "older",
+            "--continue",
+            "--prompt-interactive",
+            "hi",
+            "--project",
+            "elsewhere",
+            "--remote-agent",
+            "--remote-control",
+            "--model",
+            "gemini-3.8-flash-low",
+            "--effort=low",
+            "--mode",
+            "auto",
+            "--agent",
+            "worker",
+            "--add-dir",
+            "src",
+            "--settings",
+            "settings.json",
+            "--sandbox",
+        ],
+    );
+    assert_eq!(
+        command,
+        "agy --model gemini-3.8-flash-low --effort=low --mode auto \
+                         --agent worker --add-dir src --settings settings.json --sandbox \
+                         --conversation s-2"
+    );
+    assert_eq!(uncarried, None);
+    assert_eq!(
+        resumed("agy", &["-p", "hi", "--output-format", "json"]).0,
+        "agy --conversation s-2"
+    );
+}

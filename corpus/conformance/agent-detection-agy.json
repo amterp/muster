@@ -1,0 +1,415 @@
+{
+  "concept": "agent detection - recorded Antigravity screens",
+  "source": "recorded",
+  "regenerate": "python3 tools/detection-capture.py --harness agy <scratch>; cargo run -q -p muster-detect --example render_capture -- <scratch>",
+  "why": "An empty composer is safe to ring. A trust or approval dialog, a slash menu, a running turn, and a composer holding a draft each prevent the same Return from submitting a wake.",
+  "cases": [
+    {
+      "expect": {
+        "state": "blocked",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "Accessing workspace:\n\n[redacted]                                      \n\nDo you trust the contents of this project?\n\nAntigravity CLI requires permission to read, edit, and execute files here.\n\n> Yes, I trust this folder\n  No, exit\n\n  ↑/↓ Navigate · enter Confirm\n                                                                       auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "Accessing workspace:\n\n[redacted]                                      \n\nDo you trust the contents of this project?\n\nAntigravity CLI requires permission to read, edit, and execute files here.\n\n> Yes, I trust this folder\n  No, exit\n\n  ↑/↓ Navigate · enter Confirm\n                                                                       auto"
+      },
+      "name": "agy 1.5.14: trust",
+      "why": "Folder trust takes Return as an answer."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Auto is now the default agent mode\n ┃ Press Shift+Tab to switch agent modes, or change Agent Mode in /config.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Auto is now the default agent mode\n ┃ Press Shift+Tab to switch agent modes, or change Agent Mode in /config.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: empty",
+      "why": "The mode hint is a placeholder in the empty startup composer."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Auto is now the default agent mode\n ┃ Press Shift+Tab to switch agent modes, or change Agent Mode in /config.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> /\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> /add-dir                                            Add a directory to the workspace\n  /agents                                             List available custom agents\n  /artifact                                           View and review artifacts\n  /btw                                                Ask a side question without interrupting t...\n  /changelog                                          Show release notes and changes\n   ↓ 122 more\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel                                                          auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Auto is now the default agent mode\n ┃ Press Shift+Tab to switch agent modes, or change Agent Mode in /config.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> /\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> /add-dir\n  /agents\n  /artifact\n  /btw\n  /changelog\n\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel                                                          auto"
+      },
+      "name": "agy 1.5.14: slash",
+      "why": "The slash menu takes Return, which would otherwise submit the underlying draft."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": "first draft line second draft line"
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Auto is now the default agent mode\n ┃ Press Shift+Tab to switch agent modes, or change Agent Mode in /config.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n  first draft line\n  second draft line\n────────────────────────────────────────────────────────────────────────────────────────────────────\n                                                                       auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Auto is now the default agent mode\n ┃ Press Shift+Tab to switch agent modes, or change Agent Mode in /config.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n  first draft line\n  second draft line\n────────────────────────────────────────────────────────────────────────────────────────────────────\n                                                                       auto"
+      },
+      "name": "agy 1.5.14: multiline",
+      "why": "A leading blank in the composer leaves the following draft text intact."
+    },
+    {
+      "expect": {
+        "state": "working",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n⣷  Generating...\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n⣷  Generating...\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto"
+      },
+      "name": "agy 1.5.14: working",
+      "why": "The first model turn paints a working spinner above the composer."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: after_turn",
+      "why": "The active composer is empty even though the screen still shows the prompt from the last turn."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: rename",
+      "why": "The rename command was submitted in one Return. This sandbox denied its annotation write."
+    },
+    {
+      "expect": {
+        "state": "working",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n⢿  Compacting conversation… (2s · esc to cancel)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n⢿  Compacting conversation… (2s · esc to cancel)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto"
+      },
+      "name": "agy 1.5.14: compact",
+      "why": "The compact command was submitted in one Return and is still running."
+    },
+    {
+      "expect": {
+        "state": "blocked",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n                6 steps summarized · context 37.8k → ~40.1k (369 summary) · took 5s\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\nCommand\n────────────────────────────────────────────────────────────────────────────────────────────────────\n\nRequesting permission for:\n   printf muster-approval\n\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'printf'\n  3. Yes, and always allow for commands that start with 'printf' (Persist to settings.json)\n  4. No, cancel\n\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel                                                          auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\nCommand\n────────────────────────────────────────────────────────────────────────────────────────────────────\n\nRequesting permission for:\n   printf muster-approval\n\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'printf'\n  3. Yes, and always allow for commands that start with 'printf' (Persist to settings.json)\n  4. No, cancel\n\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel                                                          auto"
+      },
+      "name": "agy 1.5.14: approval",
+      "why": "The tool approval takes Return as an answer. The first option runs the command."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n                6 steps summarized · context 37.8k → ~40.1k (369 summary) · took 5s\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n  ⎿  Interrupted · What should Antigravity CLI do instead?\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n  ⎿  Interrupted · What should Antigravity CLI do instead?\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: dismissal",
+      "why": "After Esc closes tool approval, Return belongs to the empty composer."
+    },
+    {
+      "expect": {
+        "state": "working",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n                6 steps summarized · context 37.8k → ~40.1k (369 summary) · took 5s\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n────────────────────────────────────────────────────────────\n> Write a numbered list of 100 short animal names.\n⣾  Running command...\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "────────────────────────────────────────────────────────────\n> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n────────────────────────────────────────────────────────────\n> Write a numbered list of 100 short animal names.\n⣾  Running command...\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto"
+      },
+      "name": "agy 1.5.14: before_esc",
+      "why": "An active turn with a visible spinner is working."
+    },
+    {
+      "expect": {
+        "state": "working",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n                6 steps summarized · context 37.8k → ~40.1k (369 summary) · took 5s\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n────────────────────────────────────────────────────────────\n> Write a numbered list of 100 short animal names.\n⣽  Working...\n└ Tip: When reviewing a file edit, press f to see the full diff.\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> draft while working\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "> first draft line\n  Reply with exactly MUSTER-AGY-OK.\n\n  MUSTER-AGY-OK.\n\n> /rename\n  ⎿  Error: Failed to rename conversation: open\n     [redacted]                                                                                    \n     [redacted]                              \n     operation not permitted\n\n────────────────────────────────────────────────────────────\n> /compact\n\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n────────────────────────────────────────────────────────────\n> Write a numbered list of 100 short animal names.\n⣽  Working...\n└ Tip: When reviewing a file edit, press f to see the full diff.\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> draft while working\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto"
+      },
+      "name": "agy 1.5.14: working_draft",
+      "why": "A draft typed during a turn does not end it or make it eligible for an idle wake."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": "draft while working"
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n                6 steps summarized · context 37.8k → ~40.1k (369 summary) · took 5s\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n────────────────────────────────────────────────────────────\n> Write a numbered list of 100 short animal names.\n\n\n  1. Cat\n  2. Dog\n  3. Fox\n  4. Cow\n  5. Pig\n  6. Rat\n  7. Bat\n  8. Ant\n  9. Bee\n  10. Ape\n  11. Elk\n\n  ⎿  Interrupted · What should Antigravity CLI do instead?\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> draft while working\n────────────────────────────────────────────────────────────────────────────────────────────────────\n                                                                       auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n───────────────────────────────────── Conversation compacted ──────────────────────────────────────\n\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n────────────────────────────────────────────────────────────\n> Write a numbered list of 100 short animal names.\n\n\n  1. Cat\n  2. Dog\n  3. Fox\n  4. Cow\n  5. Pig\n  6. Rat\n  7. Bat\n  8. Ant\n  9. Bee\n  10. Ape\n  11. Elk\n\n  ⎿  Interrupted · What should Antigravity CLI do instead?\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> draft while working\n────────────────────────────────────────────────────────────────────────────────────────────────────\n                                                                       auto"
+      },
+      "name": "agy 1.5.14: interrupted",
+      "why": "An interrupted turn leaves a draft in the idle composer."
+    },
+    {
+      "expect": {
+        "state": "working",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "                6 steps summarized · context 37.8k → ~40.1k (369 summary) · took 5s\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n────────────────────────────────────────────────────────────\n> Write a numbered list of 100 short animal names.\n\n\n  1. Cat\n  2. Dog\n  3. Fox\n  4. Cow\n  5. Pig\n  6. Rat\n  7. Bat\n  8. Ant\n  9. Bee\n  10. Ape\n  11. Elk\n\n────────────────────────────────────────────────────────────\n> /compact keep the animal names\n⣽  Compacting conversation… (0s · esc to cancel)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n\n────────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n────────────────────────────────────────────────────────────\n> Write a numbered list of 100 short animal names.\n\n\n  1. Cat\n  2. Dog\n  3. Fox\n  4. Cow\n  5. Pig\n  6. Rat\n  7. Bat\n  8. Ant\n  9. Bee\n  10. Ape\n  11. Elk\n\n────────────────────────────────────────────────────────────\n> /compact keep the animal names\n⣽  Compacting conversation… (0s · esc to cancel)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\nesc to cancel                                                          auto"
+      },
+      "name": "agy 1.5.14: compact_focus",
+      "why": "One Return submits /compact with focus and the conversation starts compacting."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: cleared",
+      "why": "After /clear, the new composer is empty before the first turn."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Reply with exactly FRESH.\n\n  FRESH\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Reply with exactly FRESH.\n\n  FRESH\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: fresh_turn",
+      "why": "After the first turn of the new conversation, the last prompt is now in scrollback."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency.\n ┃ Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────\n> Auto mode: edits & safe commands auto-approved (shift+...\n────────────────────────────────────────────────────────────\n? for shortcuts                auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency.\n ┃ Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────\n> Auto mode: edits & safe commands auto-approved (shift+...\n────────────────────────────────────────────────────────────\n? for shortcuts                auto"
+      },
+      "name": "agy 1.5.14: startup composer (60 columns)",
+      "why": "The faint starter hint is a placeholder, so the composer is empty."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency.\n ┃ Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────\n> /\n────────────────────────────────────────────────────────────\n> /add-dir                                            Ad...\n  /agents                                             Li...\n  /artifact                                           Vi...\n  /btw                                                As...\n  /changelog                                          Sh...\n   ↓ 122 more\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel                  auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency.\n ┃ Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────\n> /\n────────────────────────────────────────────────────────────\n> /add-dir\n  /agents\n  /artifact\n  /btw\n  /changelog\n\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel                  auto"
+      },
+      "name": "agy 1.5.14: slash menu (60 columns)",
+      "why": "The menu takes Return and covers the composer."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": "first draft line second draft line"
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency.\n ┃ Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────\n>\n  first draft line\n  second draft line\n────────────────────────────────────────────────────────────\n                               auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                          \n  ▄▀▀      ▀▀▄\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency.\n ┃ Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────\n>\n  first draft line\n  second draft line\n────────────────────────────────────────────────────────────\n                               auto"
+      },
+      "name": "agy 1.5.14: multiline draft (60 columns)",
+      "why": "The draft starts with a blank line and holds two lines of text."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Reply with exactly RESUME-ME.\n\n  RESUME-ME.\n\n> /rename\n  ⎿  Conversation renamed to: Muster Capture\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Reply with exactly RESUME-ME.\n\n  RESUME-ME.\n\n> /rename\n  ⎿  Conversation renamed to: Muster Capture\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: rename_ok",
+      "why": "One Return renames the conversation with a multiword name."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Reply with exactly RESUME-ME.\n\n  RESUME-ME.\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency. Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n────────────────────────────────────────────────────────────\n> Reply with exactly RESUME-ME.\n\n  RESUME-ME.\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency. Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: resumed",
+      "why": "The known conversation restores into an empty interactive composer."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "warning: conversation \"[redacted]                          \" not found\n\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency. Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "warning: conversation \"[redacted]                          \" not found\n\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n\n ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency. Get building today with Neon.\n ┃ esc to dismiss\n────────────────────────────────────────────────────────────────────────────────────────────────────\n> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n? for shortcuts                                                        auto"
+      },
+      "name": "agy 1.5.14: stale",
+      "why": "An unknown conversation ID warns and opens a fresh composer."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n─────────────────────────────────────────────────────────\n> draft seleReply once with exactly CONTINUE-PROBE.\n\n  CONTINUE-PROBE.\n\n  CONTINUED\n\n────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────\n? for shortcuts                auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n─────────────────────────────────────────────────────────\n> draft seleReply once with exactly CONTINUE-PROBE.\n\n  CONTINUE-PROBE.\n\n  CONTINUED\n\n────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────\n? for shortcuts                auto"
+      },
+      "name": "agy 1.5.14: continuation (60 columns)",
+      "why": "The composer is empty after the requested continuation has also finished."
+    },
+    {
+      "expect": {
+        "state": "blocked",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "  CONTINUE-PROBE.\n\n  CONTINUED\n\n─────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf\n  muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\nCommand\n────────────────────────────────────────────────────────────\n\nRequesting permission for:\n   printf muster-approval\n\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands\nthat start with 'printf'\n  3. Yes, and always allow for commands that start with\n'printf' (Persist to settings.json)\n  4. No, cancel\n\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel                  auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "  CONTINUE-PROBE.\n\n  CONTINUED\n\n─────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf\n  muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\nCommand\n────────────────────────────────────────────────────────────\n\nRequesting permission for:\n   printf muster-approval\n\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands\nthat start with 'printf'\n  3. Yes, and always allow for commands that start with\n'printf' (Persist to settings.json)\n  4. No, cancel\n\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel                  auto"
+      },
+      "name": "agy 1.5.14: command approval (60 columns)",
+      "why": "Return still approves the tool at 60 columns, where the choices wrap."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n─────────────────────────────────────────────────────────\n> draft seleReply once with exactly CONTINUE-PROBE.\n\n  CONTINUE-PROBE.\n\n  CONTINUED\n\n─────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf\n  muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n  ⎿  Interrupted · What should Antigravity CLI do instead?\n────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────\n? for shortcuts                auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "\n      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n─────────────────────────────────────────────────────────\n> draft seleReply once with exactly CONTINUE-PROBE.\n\n  CONTINUE-PROBE.\n\n  CONTINUED\n\n─────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf\n  muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n  ⎿  Interrupted · What should Antigravity CLI do instead?\n────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────\n? for shortcuts                auto"
+      },
+      "name": "agy 1.5.14: approval dismissed (60 columns)",
+      "why": "The narrow composer is empty after Esc dismisses tool approval."
+    },
+    {
+      "expect": {
+        "state": "working",
+        "prompt": null
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n─────────────────────────────────────────────────────────\n> draft seleReply once with exactly CONTINUE-PROBE.\n\n  CONTINUE-PROBE.\n\n  CONTINUED\n\n─────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf\n  muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n─────────────────────────────────────────────────────────\n> /compact keep the short responses\n⣻  Compacting conversation… (0s · esc to cancel)\n────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────\nesc to cancel                  auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "      ▄▀▀▄        Antigravity CLI 1.5.14\n     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n─────────────────────────────────────────────────────────\n> draft seleReply once with exactly CONTINUE-PROBE.\n\n  CONTINUE-PROBE.\n\n  CONTINUED\n\n─────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf\n  muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n─────────────────────────────────────────────────────────\n> /compact keep the short responses\n⣻  Compacting conversation… (0s · esc to cancel)\n────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────\nesc to cancel                  auto"
+      },
+      "name": "agy 1.5.14: focus (60 columns)",
+      "why": "A narrow composer stays unavailable while focused compaction is running."
+    },
+    {
+      "expect": {
+        "state": "idle",
+        "prompt": ""
+      },
+      "given": {
+        "agent": "agy",
+        "progress": "",
+        "screen": "     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n─────────────────────────────────────────────────────────\n> draft seleReply once with exactly CONTINUE-PROBE.\n\n  CONTINUE-PROBE.\n\n  CONTINUED\n\n─────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf\n  muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n─────────────────────────────────────────────────────────\n> /compact keep the short responses\n\n  ⎿  Compaction cancelled. Conversation was not compacted.\n────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────\n? for shortcuts                auto · Gemini 3.8 Flash · low\n",
+        "title": "",
+        "typed": "     ▀▀▀▀▀▀       [redacted]               (Google AI Pro)\n    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)\n   ▄▀▀    ▀▀▄     [redacted]                        \n  ▄▀▀      ▀▀▄\n\n─────────────────────────────────────────────────────────\n> draft seleReply once with exactly CONTINUE-PROBE.\n\n  CONTINUE-PROBE.\n\n  CONTINUED\n\n─────────────────────────────────────────────────────────\n> Use your shell tool to run exactly: printf\n  muster-approval\n\n● Ran (printf muster-approval) (ctrl+o to expand)\n\n─────────────────────────────────────────────────────────\n> /compact keep the short responses\n\n  ⎿  Compaction cancelled. Conversation was not compacted.\n────────────────────────────────────────────────────────────\n>\n────────────────────────────────────────────────────────────\n? for shortcuts                auto"
+      },
+      "name": "agy 1.5.14: cancel (60 columns)",
+      "why": "Esc cancels compaction and the empty composer becomes readable again."
+    }
+  ]
+}

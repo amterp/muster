@@ -1,28 +1,77 @@
 id = "agy"
-version = "2026.06.24.1"
-min_engine_version = 1
-updated_at = "2026-06-24T00:00:00Z"
+version = "2026.11.21.1"
+min_engine_version = 21
+updated_at = "2026-11-21T00:00:00Z"
 aliases = ["antigravity", "antigravity-cli"]
+
+defer_idle_while_working = true
+
+[[rows]]
+id = "last_content"
+regex = '\S'
+
+[[rows]]
+id = "composer_bottom"
+regex = '^─{12,}$'
+start = { row = "last_content", offset = -5 }
+
+[[rows]]
+id = "composer_top"
+regex = '^─{12,}$'
+end = { row = "composer_bottom", offset = -1 }
+
+[regions.composer]
+start = { row = "composer_top", offset = 1 }
+end = { row = "composer_bottom" }
+
+[session]
+rename = "/rename {name}"
+clear = "/clear"
+compact = "/compact {focus}"
+resume = ["agy", "{args}", "--conversation", "{session}"]
+resume_drops = [
+  "-c", "--continue", "--conversation", "-i", "--prompt-interactive", "-p", "--print", "--prompt",
+  "--disable-slash-commands", "--input-format", "--output-format", "--json-schema", "--print-timeout",
+  "--log-file", "--project", "--new-project", "--remote-agent", "--remote-control",
+  "--dangerously-skip-permissions", "-h", "--help", "--version",
+]
+resume_values = [
+  "--conversation", "-i", "--prompt-interactive", "-p", "--print", "--prompt", "--input-format",
+  "--output-format", "--json-schema", "--print-timeout", "--log-file", "--project", "--add-dir",
+  "--agent", "--effort", "--mode", "--model", "--settings",
+]
+resume_keeps = ["--add-dir", "--agent", "--effort", "--mode", "--model", "--settings"]
+resume_files = ["--settings"]
+
+[[rules]]
+id = "trust_project"
+state = "blocked"
+priority = 310
+region = "bottom_non_empty_lines(15)"
+visible_blocker = true
+contains = ["yes, i trust this folder", "no, exit", "navigate · enter confirm"]
 
 [[rules]]
 id = "permission_prompt"
 state = "blocked"
 priority = 300
-region = "whole_recent"
+region = "bottom_non_empty_lines(18)"
 visible_blocker = true
 contains = ["requesting permission for:"]
 any = [
   { contains = ["do you want to proceed?"] },
   { contains = ["tab amend", "edit command"] },
+  { contains = ["run this command?", "no, cancel", "tab amend"] },
+  { contains = ["run this command?", "no, cancel", "navigate"] },
 ]
 
 [[rules]]
 id = "spinner_working"
 state = "working"
 priority = 100
-region = "whole_recent"
+region = "bottom_non_empty_lines(12)"
 visible_working = true
-line_regex = ['^\s*[\u2800-\u28FF]+\s+\p{Alphabetic}+\w*ing\b']
+line_regex = ['^\s*[\u2800-\u28FF]+\s+\p{Alphabetic}+\w*ing\b', '^esc to cancel(?:\s|$)']
 
 [[rules]]
 id = "background_tasks_working"
@@ -31,3 +80,20 @@ priority = 90
 region = "bottom_non_empty_lines(5)"
 visible_working = true
 line_regex = ['(?i)·\s*[1-9][0-9]*\s+task']
+
+[[rules]]
+id = "slash_menu"
+state = "unknown"
+priority = 180
+region = "bottom_non_empty_lines(12)"
+skip_state_update = true
+contains = ["navigate · enter select · tab complete"]
+
+[[rules]]
+id = "composer"
+state = "idle"
+priority = 50
+region = "composer"
+line_regex = ['^>(?:\s|$)']
+prompt = '^> ?'
+prompt_placeholder = '^Auto mode: edits & safe commands auto-approved \(shift\+(?:tab to cycle\)|\.\.\.)$'

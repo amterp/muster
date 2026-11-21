@@ -1,5 +1,6 @@
 //! muster-daemon's integration tests, as one binary rather than one per file: see docs/testing.md.
 
+mod agy;
 mod api;
 mod api_acting;
 mod api_attention;

@@ -1,0 +1,13 @@
+{
+  "muster": {
+    "SessionStart": [
+      {"type": "command", "command": "python3 ./report.py hook", "timeout": 5}
+    ],
+    "PreInvocation": [
+      {"type": "command", "command": "python3 ./report.py hook", "timeout": 5}
+    ],
+    "Stop": [
+      {"type": "command", "command": "python3 ./report.py hook", "timeout": 5}
+    ]
+  }
+}

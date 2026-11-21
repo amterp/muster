@@ -36,7 +36,7 @@ type Row = (&'static str, fn(&Supplied) -> bool);
 
 const ROWS: [Row; 14] = [
     ("Its own report of its state", |supplied| supplied.reported_state),
-    ("Context used, model and cost", |supplied| supplied.context),
+    ("Context used and model", |supplied| supplied.context),
     ("Sub-agents counted", |supplied| supplied.subagents),
     ("Rung at an empty prompt", |supplied| supplied.prompt),
     ("Rung while it works, for an urgent post", |supplied| supplied.prompt_at_work),

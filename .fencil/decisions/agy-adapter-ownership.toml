@@ -1,0 +1,21 @@
+id = "agy-adapter-ownership"
+question = "Who owns the Antigravity hook plugin and status-line setting?"
+tags = ["agy", "harnesses", "hooks"]
+paths = ["extras/agy/**", "docs/observations/antigravity-1.5.14.md"]
+
+[[revisions]]
+id = "oz4ptwho"
+date = 2026-11-21
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+The native Antigravity plugin owns the Muster lifecycle hooks. The user or their
+configuration manager owns the statusLine setting and may use the Muster wrapper
+to report state and facts while retaining a custom command.'''
+why = '''
+Antigravity copies and enables its own plugins, and loads their hooks alongside
+workspace and user hooks. Using one native plugin gives the Muster hooks one
+installation and one configuration source. A separate statusLine setting preserves
+the user's command, padding, stacking and enabled state.'''
