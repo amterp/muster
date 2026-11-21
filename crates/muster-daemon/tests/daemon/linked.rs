@@ -400,6 +400,7 @@ fn post_outcomes_distinguish_a_new_peer_an_old_peer_and_a_cut_link() {
         recipient.disposition()
     };
     assert_eq!(post_to_critic("current", "review"), api::PostDisposition::Waiting);
+    assert_eq!(post_to_critic("current-home", "desk@far"), api::PostDisposition::Waiting);
 
     cut(holding, &mut near_log, &mut far_log, 1);
     assert_eq!(post_to_critic("cut", "review"), api::PostDisposition::Unreachable);
