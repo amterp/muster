@@ -711,13 +711,13 @@ public enum SidebarModel {
       let hidden: Bool
     }
     var under: [String: [Helper]] = [:]
-    let hiddenTabs = Set(roster.hidden.map(\.id))
     // A tab moves between the roster's two lists when shown. Order the tabs by id so
     // that move cannot reorder a maker's pills.
-    for tab in (roster.tabs + roster.hidden).sorted(by: { $0.id < $1.id }) {
+    let tabs = roster.tabs.map { ($0, false) } + roster.hidden.map { ($0, true) }
+    for (tab, hidden) in tabs.sorted(by: { $0.0.id < $1.0.id }) {
       for pane in tab.panes where !pane.under.isEmpty {
         under[pane.under, default: []].append(
-          Helper(pane: pane, tab: tab.id, hidden: hiddenTabs.contains(tab.id)))
+          Helper(pane: pane, tab: tab.id, hidden: hidden))
       }
     }
     func name(_ pane: Roster.Pane) -> String {

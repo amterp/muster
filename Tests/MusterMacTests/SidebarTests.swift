@@ -692,7 +692,9 @@ struct SidebarTests {
     let maker = PaneKey(daemon: "local", pane: "w1:p1")
     let first = PaneKey(daemon: "local", pane: "w1:h1")
     let second = PaneKey(daemon: "devenv", pane: "w1:h2")
-    func rows(shown: PaneKey?, keyboard: PaneKey, expanded: Bool) -> [SidebarModel.Row] {
+    func rows(
+      shown: PaneKey?, keyboard: PaneKey, expanded: Bool, spanning: Bool = false
+    ) -> [SidebarModel.Row] {
       let base = tab(
         "local", "w1:t1",
         onScreen: keyboard == maker,
@@ -704,7 +706,8 @@ struct SidebarTests {
           key: key, label: key.pane, onScreen: key == keyboard, maker: maker.pane,
           under: maker.pane)
         return tab(
-          key.daemon, "w1:t\(at + 2)", place: 0, onScreen: key == keyboard, panes: [helper])
+          key.daemon, spanning ? "w1:t2" : "w1:t\(at + 2)", place: 0, onScreen: key == keyboard,
+          panes: [helper])
       }
       let (visible, hidden) = (
         tabs.filter { $0.panes[0].key == shown },
@@ -733,6 +736,8 @@ struct SidebarTests {
     #expect(
       rows(shown: second, keyboard: second, expanded: false).map(\.label)
         == ["w1:t1", "w1:p1", "w1:p2"])
+    let settling = rows(shown: second, keyboard: second, expanded: true, spanning: true)
+    #expect(settling.first { $0.pane == second }?.hidden == false)
   }
 
   /// Hide Helpers takes back only a tab holding nothing but the pane's helpers, so a helper moved
