@@ -248,13 +248,9 @@ struct SidebarTests {
     #expect(rows.map(\.onScreen) == [true, false])
   }
 
-  @Test("an empty roster draws nothing, not an empty heading")
+  @Test("an empty roster has no rows")
   func nothingIsNothing() {
-    // A window on the way up has an attached daemon and no panes yet. A heading over no rows
-    // reads as a machine that lost its session.
-    #expect(SidebarModel.rows(roster: roster([]), agents: [:]).isEmpty)
-    let bare = roster([])
-    #expect(SidebarModel.rows(roster: bare, agents: [:]).isEmpty)
+    #expect(SidebarModel.rows(roster: Roster(tabs: []), agents: [:]).isEmpty)
   }
 
   @Test("a lone tab keeps its caption and its panes still have direct chords")

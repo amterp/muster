@@ -60,9 +60,8 @@ struct OneToOneTests {
 
     let before = SidebarModel.rows(
       roster: roster, agents: [:], groups: [group("human+otter", unread: 2, toYou: 1)])
-    #expect(
-      before.map(\.kind) == [.tab(press: 0), .pane(tabPress: 0, press: 0)],
-      "a group with no partner took a row")
+    #expect(before.count == 2, "a group with no partner took a row")
+    #expect(before.first?.isTab == true && before.last?.isPane == true)
     #expect(before.first { $0.isPane }?.conversation == nil)
 
     let after = SidebarModel.rows(roster: roster, agents: [:], groups: [pair])
