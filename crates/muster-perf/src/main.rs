@@ -481,7 +481,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
             id: tab.clone(),
             label: Some("t1".to_string()),
             generation: 1,
-            color: Default::default(),
+            color: muster_core::color::TabColor::default(),
             copy: CopyNode::of(&nested(&ids)),
             copy_zoomed: None,
             root: nested(&ids),
