@@ -150,8 +150,13 @@ fn moving_one_of_two_tabs_preserves_the_remaining_tabs_fold() {
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     let daemon = Daemon::start_built();
     let (first, _) = two_windows(&daemon);
+    let first_pane = keyboard_in("window-1").expect("first pane");
     new_tab_in("window-1");
     let second = listed("window-1").into_iter().find(|tab| tab != &first).expect("second tab");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::FocusPane(FocusPane { pane_id: first_pane, ..FocusPane::default() }),
+    )));
     assert_ok(&answer(&in_window(
         "window-1",
         request::Payload::SetTabFolded(SetTabFolded { tab_id: first.clone(), folded: true }),
@@ -195,8 +200,7 @@ fn closing_a_tab_unfolds_the_tab_that_receives_the_keyboard() {
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     let daemon = Daemon::start_built();
     two_windows(&daemon);
-    new_tab_in("window-1");
-    let receiving = showing_in("window-1").expect("second tab");
+    let receiving = showing_in("window-1").expect("first tab");
     let closing_pane = new_tab_in("window-1");
     assert_ok(&answer(&in_window(
         "window-1",
