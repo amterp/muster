@@ -219,7 +219,9 @@ fn antigravity_provenance_requires_the_foreground_hook_and_the_live_directory() 
     let output = Command::new("python3")
         .args([
             "-c",
-            "import os, sys; os.setsid(); os.execv(sys.executable, [sys.executable, *sys.argv[1:]])",
+            // With no PATH, Linux's python3 leaves sys.executable empty.
+            "import os, sys; exe = sys.executable or os.path.realpath('/proc/self/exe'); \
+             os.setsid(); os.execv(exe, [exe, *sys.argv[1:]])",
         ])
         .arg(format!("{PLUGIN}/report.py"))
         .arg("hook")
