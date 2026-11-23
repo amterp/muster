@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "antigravity-probe",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1795395117179,
+  "creator": "Alexander Terp",
+  "description": "## Why\n\nThe Antigravity round (2026-11-21) built and live-checked agy support on this Mac, and left three\nbehaviors unobserved. Muster, Ordo, memri and Fencil each rely on a guess about them.\n\n## What to observe\n\n1. **Compaction.** Fill an agy conversation until it compacts. Does the session ID change, do the\n   session-start hooks run again (Ordo's practices, memri's index, Fencil's notice), does Muster's\n   context reading and `muster pane compact` still work, and what does the transcript record?\n2. **A hook that misbehaves.** Install a scratch hook that sleeps past agy's timeout, and one that\n   prints malformed JSON. Does agy drop the hook's output, fail the turn, or stall? One unexplained\n   170 s hang on `gemini-3.8-flash-medium` was seen on 2026-11-21 and may be this.\n3. **agy on Linux.** Install agy on a Linux machine and run Muster's adapter there: screen\n   detection, the plugin's hooks, transcript provenance (the test that failed on Linux CI covers\n   only the report script).\n\nRecord what is found in `~/src/tai-personal/docs/antigravity.md`, which lists these as not probed,\nand raise a card in the affected tool for anything that breaks.\n\n## Cost and limits\n\nItems 1 and 2 spend Gemini quota: a few Flash turns for the hooks, and a long conversation for\ncompaction. Run them when the 5-hour Gemini window has room and no benchmark run needs it.\n\nItem 3 waits on the owner: agy must be signed in with his Google account on a Linux machine, and\nonly he can do that. Which machine is his call; the work devenv is not an obvious fit for a\npersonal Google login.",
+  "id": "a_34ddp0ua9",
+  "position": "b3W",
+  "provenance": "agent-approved",
+  "title": "Antigravity: probe compaction, misbehaving hooks, and agy on Linux",
+  "updated_at_millis": 1795395117179,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795395117179}
+  ]
+}
