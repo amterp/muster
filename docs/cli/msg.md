@@ -408,8 +408,11 @@ over, as every upgrade does, is handed what was told and says none of it again w
 message is the first unread. Nor is a pane an agent closed
 with `muster pane close` while only that agent's messages were unread, as a reviewer it thanked
 and then closed: it closed it on purpose. A helper closed with no agent saying so, as from its
-menu, is taken as its maker's close. A message from anybody else to it is still
-told to them.
+menu, is taken as its maker's close, and who closed a pane is kept with the messages, so this
+holds across a restart or a handover too. A message from anybody else to it is still told to them.
+A daemon that first finds such a message more than an hour after the pane closed, as one taking
+the panes over can, or finds no record of the close, tells nobody, since a notice that late wakes
+a session that has moved on.
 
 **A stall only a person can free is told to you, after half an hour.** When the member is at a
 dialog, or something covers its prompt, its poster is told at two minutes as above, but is often an

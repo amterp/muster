@@ -1,0 +1,31 @@
+{
+  "_v": 4,
+  "alias": "a-pane-closed-on",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "review",
+  "comments": [
+    {
+      "id": "c_353bF38sL",
+      "body": "Built in 17105b15+amend (d9c0ef48), unpushed. Who closed a pane is now stored on its participants in the messaging store; a stall not yet begun on a pane closed over an hour ago, or with no recorded close, is told to nobody. Review (opus helper) found a P2, a notice held for a busy poster dropped at the hour mark, fixed by applying the hour only to stalls not yet begun; plus a handover-race requeue and a tightened test. Accepted as is: the conversation view can show a just-closed pane as unread until the next stall look (under 30 s). Gate green. To check: the next Muster upgrade should not burst '@muster ... no agent is in its pane any more' notices.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795456983216
+    }
+  ],
+  "created_at_millis": 1795453774523,
+  "creator": "Alexander Terp",
+  "description": "The stall watch tells an agent that a pane it closed on purpose \"has not read\" its message, hours or days after the close. Each notice wakes the agent for a turn with nothing to act on, often in a session that has gone cold. Seen 2026-11-23 on 0.29.2-dev: kayak (an Antigravity integrator) was woken for button+kayak-2 #6 (1789 minutes after posting) and kayak+lotus #10 (921 minutes), both panes kayak had closed itself after a review.\n\n## Cause\n\n`closed_by_who_waits` (`crates/muster-daemon/src/messages/stalls.rs`) skips a closed pane only while `Session::closed_by` still lists it. That list lives only in memory and is lost in two ways:\n\n1. A daemon handover or restart empties it. Two minutes after the 0.29.1-dev -\u003e 0.29.2-dev handover at 2026-11-21T23:33:24Z, the run log has 129 `msg.group.stalled` lines with `activity: no agent` and `unlock: tell`, almost all for kayak's long-closed helpers. a_2jQ9Vw98w carries episodes already told across a handover, but not who closed a pane.\n2. It keeps only the last 64 closes (`CLOSED_BY_KEPT`). This machine closed 89 panes between button's close and its notice, and 73 between lotus's close and its notice; each late notice fires when its entry falls off the end. The same log shows these one at a time on 2026-11-23 (04:xx through 16:xx).\n\nOnce the skip lapses, the episode counts from the message's posting, so a message 30 hours old is a stall immediately and is told at once.\n\n## Fix\n\n- Persist the closer with the participant in the messaging store (muster-msg), set when its pane closes by request, so the skip has no cap and survives a handover, a restart and a reboot. This replaces `Session::closed_by` and `CLOSED_BY_KEPT` for the stall watch.\n- Count a no-agent stall from when the pane closed, and tell nobody about one whose pane closed longer ago than the reopen window (`reopen_closed_minutes`, 60 by default). A pane gone for good is settled; whoever waited on it heard within minutes of the close or never needed to. This also covers any future way of losing the record.\n- Tests: a daemon test that closes a helper by its maker, hands over (and separately closes 65 more panes), and asserts no `@muster` post for it.\n\nRelated: tooling-feedback a_33skprKXj (same symptom, with the 2026-11-21 handover instance), a_2z9361thq (cross-machine closer, which the persisted closer can also carry), a_2x07y2Daj / a_2xmxqHbeY / a_2z7ZZXk4j (the in-memory skip this extends).",
+  "id": "a_352Fldw4c",
+  "position": "Zr",
+  "provenance": "approved",
+  "title": "A pane closed on purpose is reported as a stall again after a handover or 64 later closes",
+  "type": "bug",
+  "updated_at_millis": 1795456983387,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1795453774523},
+    {"field":"column","value":"in-progress","at":1795453910910},
+    {"field":"column","value":"review","at":1795456983387}
+  ]
+}

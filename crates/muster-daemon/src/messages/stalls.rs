@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_msg::{Activity, Holding, Peer, Presence, Ringable, Via};
+use muster_msg::{Activity, Holding, PaneClosed, Peer, Presence, Ringable, Via};
 
 use super::busy::ASK_BUSY_AGAIN;
 use super::doorbell::Held;
@@ -48,8 +48,26 @@ pub(crate) const STALL_AFTER: Duration = Duration::from_mins(2);
 /// integrator's messages for seven hours - while a turn that long is rare enough to say so.
 pub(crate) const WORKED_AFTER: u64 = 15;
 
+/// How long after a pane closes a message to it can still hold anybody up. Past this the pane is
+/// gone for good, a reopen included, and whoever waited on it heard within minutes of the close
+/// or had no need to: a notice now would wake a session that has moved on.
+const GONE_FOR: Duration = Duration::from_hours(1);
+
 /// A debug build's [`STALL_AFTER`] in milliseconds, when set, so a test need not wait for it.
 const STALL_AFTER_SAID: &str = "MUSTER_DAEMON_STALL_MS";
+
+/// A debug build's [`GONE_FOR`] in milliseconds, when set.
+const GONE_FOR_SAID: &str = "MUSTER_DAEMON_GONE_FOR_MS";
+
+fn gone_for_ms() -> u64 {
+    if cfg!(debug_assertions)
+        && let Ok(said) = std::env::var(GONE_FOR_SAID)
+        && let Ok(millis) = said.trim().parse::<u64>()
+    {
+        return millis;
+    }
+    u64::try_from(GONE_FOR.as_millis()).unwrap_or(u64::MAX)
+}
 
 fn stall_after() -> Duration {
     if cfg!(debug_assertions)
@@ -236,6 +254,11 @@ pub(crate) struct Stalls {
 }
 
 impl Stalls {
+    /// Whether a stall of `holding` is being watched already.
+    fn begun(&self, holding: &Holding) -> bool {
+        self.episodes.contains_key(&(holding.name.clone(), holding.group.clone()))
+    }
+
     pub(crate) fn new(now: Instant) -> Stalls {
         Stalls::after(stall_after(), now, now_ms())
     }
@@ -841,14 +864,26 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -
     }
     stalls.due = now + stalls.every;
     let panes = Panes::of(shared);
+    // Taken only while they can be recorded: the session's lock is never taken under this one.
+    if shared.messages().handing_over {
+        return stalls.every;
+    }
+    let closes = shared.lock().take_closes();
     let mut elsewhere: HashSet<String> = HashSet::new();
     let (members, others, called) = {
         let mut messages = shared.messages();
         if messages.handing_over {
+            drop(messages);
+            shared.lock().requeue_closes(closes);
             return stalls.every;
         }
-        let mut members = members(&messages, &panes);
+        record_closes(&mut messages, closes);
         let now = now_ms();
+        let mut members = members(&messages, &panes);
+        // Only a stall not yet begun: one begun may owe a busy poster its notice still.
+        members.retain(|member| {
+            stalls.begun(&member.holding) || !gone_long(&messages, &panes, &member.holding, now)
+        });
         stalls.human_in_reach = messages.service.human_in_reach(&panes);
         for member in &mut members {
             member.maker = makers::tells(&messages.service, &panes, makers, &member.holding.pane);
@@ -986,6 +1021,31 @@ pub(crate) fn members(messages: &Messages, panes: &Panes) -> Vec<Member> {
         .collect()
 }
 
+/// Records each of `closes` with the participants in its pane, where it outlives this daemon.
+fn record_closes(messages: &mut Messages, closes: Vec<crate::session::Close>) {
+    for close in closes {
+        let saved = messages.service.pane_closed(&close.pane, close.by.as_deref(), close.at_ms);
+        if let Err(refusal) = saved {
+            log::warn(
+                "msg.pane_closed.unsaved",
+                fields! {
+                    "pane" => close.pane,
+                    "error" => words(&refusal),
+                    "impact" => "a message left unread in this pane may be told as a stall to \
+                                 whoever closed it, or after the daemon restarts",
+                    "check" => "the messaging store's directory under the daemon's data \
+                                directory: whether it is writable and the disk has room",
+                },
+            );
+            continue;
+        }
+        log::info(
+            "msg.pane.closed",
+            fields! { "pane" => close.pane, "by" => close.by.unwrap_or_default() },
+        );
+    }
+}
+
 /// Whether `holding` waits only on messages from the agent that closed its pane by request, or
 /// for a helper closed with no agent saying so, from its maker: whoever closed it did so on
 /// purpose, as an agent does a reviewer it has thanked, and nothing is stalled. Anybody else's
@@ -994,10 +1054,23 @@ fn closed_by_who_waits(messages: &Messages, panes: &Panes, holding: &Holding) ->
     if panes.exists(&holding.pane) {
         return false;
     }
-    let Some(closer) = panes.closed_by(&holding.pane) else { return false };
-    let closers = messages.service.in_pane(closer);
-    !holding.authors.is_empty()
-        && holding.authors.iter().all(|author| closers.contains(&author.as_str()))
+    let Some(closed) = closed_record(messages, holding) else { return false };
+    !holding.authors.is_empty() && holding.authors.iter().all(|author| closed.by.contains(author))
+}
+
+/// Whether `holding` waits on a pane closed longer ago than [`GONE_FOR`], or one whose closing
+/// was never recorded: it closed before this was kept, or while no daemon was looking, and how
+/// long ago is not known.
+fn gone_long(messages: &Messages, panes: &Panes, holding: &Holding, now_ms: u64) -> bool {
+    if panes.exists(&holding.pane) {
+        return false;
+    }
+    closed_record(messages, holding)
+        .is_none_or(|closed| now_ms.saturating_sub(closed.at_ms) > gone_for_ms())
+}
+
+fn closed_record<'a>(messages: &'a Messages, holding: &Holding) -> Option<&'a PaneClosed> {
+    messages.service.participant(&holding.name)?.pane_closed()
 }
 
 /// What each pane and each participant named after one is called, by id, to say `members` by.

@@ -112,8 +112,6 @@ pub(crate) struct Panes {
     makers: HashMap<String, String>,
     /// The helpers whose maker has closed and that nobody has taken over, which close once idle.
     closing: Vec<String>,
-    /// The pane whose agent closed each pane closed by request recently, by the closed pane.
-    closed_by: HashMap<String, String>,
 }
 
 /// The declared waits the maker watch tells of once they run long, by pane: every wait but a
@@ -211,7 +209,6 @@ impl Panes {
             attended: session.attended(),
             restoring: session.restoring(),
             zoomed: session.zoomed_away().into_iter().collect(),
-            closed_by: session.closed_by().cloned().collect(),
             ..Panes::default()
         };
         drop(session);
@@ -262,11 +259,6 @@ impl Panes {
     }
 
     /// Every helper open here whose maker has not closed, with the pane that made it.
-    /// The pane whose agent closed `pane`, when it was closed by request recently.
-    pub(crate) fn closed_by(&self, pane: &str) -> Option<&str> {
-        self.closed_by.get(pane).map(String::as_str)
-    }
-
     pub(crate) fn makers(&self) -> impl Iterator<Item = (&String, &String)> {
         self.makers.iter()
     }
@@ -419,6 +411,7 @@ mod tests {
             pull: false,
             removed: std::collections::BTreeMap::default(),
             folds_owed: std::collections::BTreeMap::default(),
+            closed: None,
         };
         assert!(!Panes::default().alive(&participant));
     }

@@ -91,6 +91,22 @@ pub struct Participant {
     /// comes up ([`Messaging::folds_owed_to`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub folds_owed: BTreeMap<String, String>,
+    /// Its pane closing, as its host saw it close. Kept with the participant rather than by the
+    /// host, so that what a host decides from it outlives the host: a restart, a handover, and
+    /// any number of other panes closing since.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed: Option<PaneClosed>,
+}
+
+/// A participant's pane closing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneClosed {
+    pub pane: String,
+    pub at_ms: u64,
+    /// The participants whose agent asked for it to close, or none when nobody asked, as when
+    /// its program exited.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub by: Vec<String>,
 }
 
 /// What a participant removed from a group may still read there: the entries after where it had
@@ -115,7 +131,13 @@ impl Participant {
             pull: false,
             removed: BTreeMap::new(),
             folds_owed: BTreeMap::new(),
+            closed: None,
         }
+    }
+
+    /// Its pane's closing, while that is still the pane it is in.
+    pub fn pane_closed(&self) -> Option<&PaneClosed> {
+        self.closed.as_ref().filter(|closed| self.pane.as_ref() == Some(&closed.pane))
     }
 }
 
@@ -808,6 +830,26 @@ impl<S: Store> Messaging<S> {
     /// The participant whose inbox `inbox` is, if any.
     pub fn holding_inbox(&self, inbox: &Inbox) -> Option<&Participant> {
         self.participants.get(&self.by_inbox(inbox)?)
+    }
+
+    /// Records that `pane` closed at `at_ms`, at the request of the agent in pane `by` when one
+    /// asked, on every participant in it.
+    pub fn pane_closed(&mut self, pane: &str, by: Option<&str>, at_ms: u64) -> Result<(), Refusal> {
+        let by: Vec<String> = by
+            .map(|by| self.in_pane(by))
+            .unwrap_or_default()
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let mut changed = false;
+        for participant in self.participants.values_mut() {
+            if participant.pane.as_deref() != Some(pane) {
+                continue;
+            }
+            participant.closed = Some(PaneClosed { pane: pane.to_string(), at_ms, by: by.clone() });
+            changed = true;
+        }
+        if changed { self.save() } else { Ok(()) }
     }
 
     /// Every participant that is, or was, the agent in `pane`.

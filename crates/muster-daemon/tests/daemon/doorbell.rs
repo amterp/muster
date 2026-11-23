@@ -2365,6 +2365,67 @@ fn a_pane_closed_by_the_agent_waiting_on_it_is_no_stall() {
     assert!(told.iter().all(|said| !said.contains("(p2)")), "its own close: {told:?}");
 }
 
+/// Who closed a pane is kept with the messages rather than by the daemon that saw it close, so a
+/// newer daemon taking the panes over does not tell the agent of a pane it closed itself.
+#[test]
+fn a_pane_closed_by_the_agent_waiting_on_it_is_no_stall_after_a_handoff() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_STALL_MS", "2000")]);
+    make(&mut agent.control, create("p2", in_new_tab("t2")));
+    agent.daemon.run_agent("p2");
+    let mut logging = following(&agent.daemon);
+    post_from_pane(&mut agent.control, "p1", "p2", "Thanks, that is all.");
+    agent.read_in_its_pane();
+    expect(&mut agent.control, close_request_by("p2", "p1"), proto::Outcome::Done);
+    logging.logged_until(r#""event":"msg.pane.closed""#, Duration::from_secs(10));
+
+    let answer = agent.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    // Three stall lengths on the new daemon, which starts counting from its own start.
+    let stalled = r#""event":"msg.group.stalled""#;
+    let mut logging = following(&agent.daemon);
+    let logged = logging.logged_until(stalled, Duration::from_secs(6));
+    let stalls: Vec<&str> = logged
+        .iter()
+        .map(|line| line.line.as_str())
+        .filter(|line| line.contains(stalled))
+        .collect();
+    assert!(stalls.is_empty(), "a stall after the handoff: {stalls:?}");
+}
+
+/// A pane that closed longer ago than a stall can matter holds nobody up on a daemon that first
+/// looks at it then, as a newer one does after a handover: a notice that late reaches a session
+/// that has moved on. A stall the older daemon had begun would still be told.
+#[test]
+fn a_pane_closed_long_before_a_handoff_is_no_stall() {
+    let mut agent = Agent::in_a_pane_with(&[
+        ("MUSTER_DAEMON_STALL_MS", "4000"),
+        ("MUSTER_DAEMON_GONE_FOR_MS", "500"),
+    ]);
+    make(&mut agent.control, create("p2", in_new_tab("t2")));
+    agent.daemon.run_agent("p2");
+    let mut logging = following(&agent.daemon);
+    post_from_pane(&mut agent.control, "p1", "p2", "One more thing.");
+    agent.read_in_its_pane();
+    expect(&mut agent.control, close_request("p2"), proto::Outcome::Done);
+    let recorded = r#""event":"msg.pane.closed""#;
+    let logged = logging.logged_until(recorded, Duration::from_secs(10));
+    assert!(logged.iter().any(|line| line.line.contains(recorded)), "the close was not recorded");
+    std::thread::sleep(Duration::from_secs(1));
+
+    let answer = agent.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    // Two stall lengths on the new daemon.
+    let stalled = r#""event":"msg.group.stalled""#;
+    let mut logging = following(&agent.daemon);
+    let logged = logging.logged_until(stalled, Duration::from_secs(8));
+    let stalls: Vec<&str> = logged
+        .iter()
+        .map(|line| line.line.as_str())
+        .filter(|line| line.contains(stalled))
+        .collect();
+    assert!(stalls.is_empty(), "a stall after the handoff: {stalls:?}");
+}
+
 /// A daemon whose helper watch settles in a second, with the fake agent idle in pane `p1` and in
 /// each of `helpers`, quiet helpers each in a hidden tab of its own: `(helper, maker)`.
 fn a_maker_with_idle_helpers(helpers: &[(&str, &str)]) -> Agent {
