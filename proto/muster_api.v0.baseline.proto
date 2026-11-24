@@ -2,7 +2,7 @@
 // muster_api.proto to. A copy, never edited by hand; muster_api.proto's header says when it is
 // replaced.
 //
-// Version: 0.6
+// Version: 0.7
 //
 // Muster's API for other programs, served by muster-daemon (MIP-10).
 //
@@ -297,6 +297,8 @@ message Features {
   // Every option of a request that came in a later minor than the request, as
   // "<request>.<option>".
   repeated string options = 3;
+  // Since 0.7. Optional response data this daemon can provide, by feature name.
+  repeated string fields = 4;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -819,6 +821,17 @@ message Pane {
   bool name_from_session = 18;
   // Since 0.6. Present for a canvas pane.
   Canvas canvas = 19;
+  // Since 0.7. Live transcript provenance for this pane's current session.
+  SessionTranscript session_transcript = 20;
+}
+
+message SessionTranscript {
+  // The harness's session ID, matching Pane.session.
+  string session_id = 1;
+  // The absolute path the harness reported on Pane.source's machine.
+  string path = 2;
+  // The normalized working directory associated with the report.
+  string directory = 3;
 }
 
 // A canvas's metadata. Use ReadCanvas for its document.
@@ -986,10 +999,37 @@ message NewPost {
   bool no_reply = 10;
 }
 
-// What a post came to: its group, and its number there.
+// A post's group, number and initial routing outcomes.
 message Posted {
   string group = 1;
   uint64 number = 2;
+  // Since 0.7. A repeat under an operation ID may omit these. Read Places or look for an
+  // explicit response from the recipient for evidence of delivery.
+  repeated RecipientOutcome recipient_outcomes = 3;
+}
+
+message RecipientOutcome {
+  string recipient = 1;
+  PostDisposition disposition = 2;
+  optional string reason = 3;
+}
+
+enum PostDisposition {
+  POST_DISPOSITION_UNSPECIFIED = 0;
+  // The daemon initiated or handed off a wake.
+  POST_DISPOSITION_WOKEN = 1;
+  POST_DISPOSITION_ALREADY_WOKEN = 2;
+  // The recipient can read the post on its own.
+  POST_DISPOSITION_WAITING = 3;
+  POST_DISPOSITION_GONE = 4;
+  // The daemon will try again once the pane is ready.
+  POST_DISPOSITION_DEFERRED = 5;
+  POST_DISPOSITION_NO_AGENT = 6;
+  POST_DISPOSITION_NO_READABLE_PROMPT = 7;
+  POST_DISPOSITION_PAUSED = 8;
+  POST_DISPOSITION_UNREACHABLE = 9;
+  // E.g. the route went through an older peer or its answer was lost.
+  POST_DISPOSITION_UNKNOWN = 10;
 }
 
 // Moves the human's place in `group` on to `through`, the number of the last message the client
