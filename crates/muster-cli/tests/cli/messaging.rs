@@ -737,6 +737,37 @@ fn a_post_to_an_agent_whose_pane_closed_is_unheard() {
     );
 }
 
+/// A pane whose agent has quit is still there to post to by its callsign: the post is kept for
+/// an agent started there later, and says nobody was woken, as a post to the pair's group does.
+#[test]
+fn a_post_to_a_pane_whose_agent_quit_is_kept_and_unheard() {
+    let daemon = Daemon::start_detecting_with(&[("MUSTER_DAEMON_AGENT_TO_COME_MS", "0")]);
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let word = words(&daemon)["p1"].clone();
+    let pair = if word.as_str() < "lead" { format!("{word}+lead") } else { format!("lead+{word}") };
+    ok(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", &word, "a", "brief"]));
+    daemon.type_into("p1", "quit");
+    until_some("p1's agent to be gone", || {
+        snapshot(&mut control)
+            .panes
+            .into_iter()
+            .find(|pane| pane.pane == "p1")
+            .is_some_and(|pane| pane.agent.is_none())
+            .then_some(())
+    });
+    let unheard_line = format!("not woken: {word} (p1, no agent in its pane)");
+    assert_eq!(
+        unheard(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", &word, "more"])),
+        format!("posted #5 to {pair}\n{unheard_line}")
+    );
+    assert_eq!(
+        unheard(&muster(&daemon, &["msg", "--as", "lead", "post", "--group", &pair, "again"])),
+        format!("posted #6 to {pair}\n{unheard_line}")
+    );
+}
+
 #[test]
 fn a_closed_panes_environment_cannot_post_or_read_as_the_human() {
     let daemon = Daemon::start_detecting();

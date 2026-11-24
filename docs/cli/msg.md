@@ -101,9 +101,11 @@ says otherwise.
 **`--to` takes a pane too**, by its callsign, `otter`, such as the one `muster pane new` prints,
 by a name somebody gave it, or by its id (`muster docs overview`). An agent in that pane need not
 have joined anything, or even have started yet: it becomes a participant known by the pane's id
-and shown by its callsign, and whatever runs `muster msg` in that pane from then on is it. A group
-made for a pair is named by the panes' callsigns, `muster-integrator+otter`. Once the pane closes
-its callsign is free, and the log goes on showing the participant by the callsign it had, beside
+and shown by its callsign, and whatever runs `muster msg` in that pane from then on is it. A pane
+whose agent has quit takes a post too, kept for the next agent started there; the answer says
+`not woken: otter (p1w3r07bsd, no agent in its pane)` and exits 6, as a post to the pair's group
+does. A group made for a pair is named by the panes' callsigns, `muster-integrator+otter`. Once
+the pane closes its callsign is free, and the log goes on showing the participant by the callsign it had, beside
 the id; the callsign then means whichever pane holds it now. When that agent joins under a name of its own, the
 name takes the pane's place in every group the pane was in, whatever their policies say about
 joining, and the log shows the pane leaving and the name joining. From then on the pane means
