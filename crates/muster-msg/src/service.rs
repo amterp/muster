@@ -870,32 +870,29 @@ impl<S: Store> Messaging<S> {
             .collect()
     }
 
-    /// Resolves a wait's sender without registering a participant or joining a group.
+    /// The sender a wait the agent in `waiter` declares on `name` is ended by, read as that
+    /// agent's post `--to` reads `name`, without making a participant: the pane of an agent here,
+    /// the human as [`HUMAN`] wherever they are homed, or the participant itself, an agent on
+    /// another machine among them. A pane that has closed sends nothing, so it is refused as
+    /// nobody.
     pub fn wait_sender(
         &self,
         name: &str,
+        waiter: &str,
         found: &[Found],
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
-        let own = self.own(name);
-        let resolved = self.pane_called(own, found, None, presence)?;
-        let pane = resolved.as_deref().unwrap_or(own);
-        if presence.has_pane(pane) {
-            return Ok(pane.to_string());
+        let author = self.by_pane(waiter).unwrap_or_else(|| waiter.to_string());
+        let sender = self.resolve_addressee(name, &author, found, None, None, presence)?.name;
+        if is_human(&sender) {
+            return Ok(HUMAN.to_string());
         }
-        if let Some(pane) = self.participant(pane).and_then(|p| p.pane.as_ref())
-            && presence.has_pane(pane)
-        {
-            return Ok(pane.clone());
-        }
-        let matches: Vec<_> = found.iter().filter(|f| f.name == name).map(|f| &f.there).collect();
-        match matches.as_slice() {
-            [only] => Ok((*only).clone()),
-            [] => Err(Refusal::NoSuchParticipant { name: name.to_string() }),
-            _ => Err(Refusal::WhichParticipant {
-                name: name.to_string(),
-                candidates: matches.into_iter().cloned().collect(),
-            }),
+        match self.participant(&sender).and_then(|known| known.pane.clone()) {
+            Some(pane) if !presence.has_pane(&pane) => {
+                Err(Refusal::NoSuchParticipant { name: name.to_string() })
+            }
+            Some(pane) => Ok(pane),
+            None => Ok(sender),
         }
     }
 
@@ -2187,9 +2184,34 @@ impl<S: Store> Messaging<S> {
         prefer: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
+        let addressee = self.resolve_addressee(name, author, found, group, prefer, presence)?;
+        if addressee.unmade {
+            self.make_addressed(&addressee.name, presence);
+        }
+        Ok(addressee.name)
+    }
+
+    /// [`Self::addressed_as`], changing nothing: the participant it would make is said to be
+    /// unmade instead.
+    fn resolve_addressee(
+        &self,
+        name: &str,
+        author: &str,
+        found: &[Found],
+        group: Option<&str>,
+        prefer: Option<&str>,
+        presence: &dyn Presence,
+    ) -> Result<Addressee, Refusal> {
         // A pane's name is matched before the syntax of a participant's name is asked of it:
-        // somebody may have named a pane `🤖 A`.
-        let pane = self.pane_called(name, found, prefer, presence)?;
+        // somebody may have named a pane `🤖 A`, or `invoice@far` on the machine called `far`,
+        // which is matched as typed before this machine's name is taken off it. The human and
+        // a pane's id come first even so: `@human@far` and `p2@far` are not a label's to take.
+        let own = self.own(name);
+        let first = if self.is_address(own, presence) { own } else { name };
+        let mut pane = self.pane_called(first, found, prefer, presence)?;
+        if pane.is_none() && first != own {
+            pane = self.pane_called(own, found, prefer, presence)?;
+        }
         if pane.is_none() {
             check_addressee(name).map_err(|bad| {
                 renamed(name, presence).or_else(|| titled(name, presence)).unwrap_or(bad)
@@ -2230,12 +2252,7 @@ impl<S: Store> Messaging<S> {
             reached_by: Option<String>,
         }
 
-        let an_id = presence.has_pane(typed)
-            || self
-                .participants
-                .get(typed)
-                .is_some_and(|known| known.pane.as_deref() == Some(typed));
-        if typed == HUMAN || an_id {
+        if self.is_address(typed, presence) {
             return Ok(None);
         }
         let Some(pane) = presence.pane_named(typed) else {
@@ -2286,28 +2303,28 @@ impl<S: Store> Messaging<S> {
     /// whatever it calls itself; else a member of the group named, or of the author's groups, by
     /// exactly that name, or the one on another machine by that name, so `critic` reaches
     /// `critic@devenv` (MIP-4, section 11); else a participant by that name; else, for a pane
-    /// with an agent in it, a participant made for it, named after the pane, which is what lets
-    /// a post reach an agent that never joined (MIP-4, section 3). The human is made on first
+    /// here, a participant still to be made for it, named after the pane, which is what lets a
+    /// post reach an agent that never joined (MIP-4, section 3). The human is made on first
     /// address too. Else the one another machine said the name means, in `found`.
     fn addressee(
-        &mut self,
+        &self,
         name: &str,
         author: &str,
         found: &[Found],
         group: Option<&str>,
         presence: &dyn Presence,
-    ) -> Result<String, Refusal> {
+    ) -> Result<Addressee, Refusal> {
         let asked = name;
         let name = self.own(name);
         if name == HUMAN
             && let Some(home) = self.human_elsewhere(presence)
         {
-            return Ok(home.human());
+            return Ok(Addressee::made(home.human()));
         }
         // Before any name: a participant named after a pane that it no longer holds is what an
         // agent that renamed itself left behind, and the pane means whoever is in it now.
         if let Some(holder) = self.by_pane(name) {
-            return Ok(holder);
+            return Ok(Addressee::made(holder));
         }
         let scope: Vec<String> = match group {
             Some(group) => vec![group.to_string()],
@@ -2316,7 +2333,7 @@ impl<S: Store> Messaging<S> {
         let members: BTreeSet<&String> =
             scope.iter().flat_map(|group| &self.groups[group].members).collect();
         if members.contains(&name.to_string()) {
-            return Ok(name.to_string());
+            return Ok(Addressee::made(name.to_string()));
         }
         let elsewhere: Vec<String> = members
             .iter()
@@ -2325,7 +2342,7 @@ impl<S: Store> Messaging<S> {
             .collect();
         match elsewhere.as_slice() {
             [] => {}
-            [only] => return Ok(only.clone()),
+            [only] => return Ok(Addressee::made(only.clone())),
             _ => {
                 return Err(Refusal::WhichParticipant {
                     name: name.to_string(),
@@ -2334,10 +2351,10 @@ impl<S: Store> Messaging<S> {
             }
         }
         if self.participants.contains_key(name) {
-            return Ok(name.to_string());
+            return Ok(Addressee::made(name.to_string()));
         }
-        if self.make_addressed(name, presence) {
-            return Ok(name.to_string());
+        if self.may_make_addressed(name, presence) {
+            return Ok(Addressee { name: name.to_string(), unmade: true });
         }
         let found: Vec<String> = found
             .iter()
@@ -2347,7 +2364,7 @@ impl<S: Store> Messaging<S> {
         match found.as_slice() {
             [] => Err(renamed(name, presence)
                 .unwrap_or_else(|| Refusal::NoSuchParticipant { name: name.to_string() })),
-            [only] => Ok(only.clone()),
+            [only] => Ok(Addressee::made(only.clone())),
             _ => Err(Refusal::WhichParticipant { name: name.to_string(), candidates: found }),
         }
     }
@@ -2355,8 +2372,7 @@ impl<S: Store> Messaging<S> {
     /// Makes the participant a name means when it is not one yet: the human, where it is homed,
     /// or an agent that may start in the pane of that name. Says whether it did.
     pub(crate) fn make_addressed(&mut self, name: &str, presence: &dyn Presence) -> bool {
-        let human = name == HUMAN && self.human_elsewhere(presence).is_none();
-        if !human && !presence.has_pane(name) {
+        if !self.may_make_addressed(name, presence) {
             return false;
         }
         let mut participant = Participant::named(name);
@@ -2366,6 +2382,19 @@ impl<S: Store> Messaging<S> {
         }
         self.participants.insert(name.to_string(), participant);
         true
+    }
+
+    /// Whether `name` is the human or a pane's id, here or as a participant known by its pane,
+    /// which no pane's name can stand for.
+    fn is_address(&self, name: &str, presence: &dyn Presence) -> bool {
+        name == HUMAN
+            || presence.has_pane(name)
+            || self.participants.get(name).is_some_and(|known| known.pane.as_deref() == Some(name))
+    }
+
+    fn may_make_addressed(&self, name: &str, presence: &dyn Presence) -> bool {
+        let human = name == HUMAN && self.human_elsewhere(presence).is_none();
+        human || presence.has_pane(name)
     }
 
     /// The participants here who took a name for themselves, rather than being their panes',
@@ -4001,6 +4030,18 @@ pub fn renamed_on(panes: Vec<String>, machine: &str) -> Vec<String> {
             None => format!("{pane}@{machine}"),
         })
         .collect()
+}
+
+/// The participant a name addressed means, and whether addressing it makes it first.
+struct Addressee {
+    name: String,
+    unmade: bool,
+}
+
+impl Addressee {
+    fn made(name: String) -> Addressee {
+        Addressee { name, unmade: false }
+    }
 }
 
 /// The refusal for a `--to` that is no pane's name and cannot be a participant's, when it is

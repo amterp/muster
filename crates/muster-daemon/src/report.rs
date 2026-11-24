@@ -61,7 +61,7 @@ enum Unreported {
 
 const USAGE: &str = "usage: muster-daemon report [--pane PANE] [--context-used PERCENT] \
     [--context-session ID] [--model NAME] [--effort LEVEL] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
-    [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID | --until-message-from PANE]] [--clear] \
+    [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID | --until-message-from SENDER]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
     [--session-id ID [--session-transcript PATH --session-directory DIRECTORY]] \
     [--session-source SOURCE] [--compacting] \
@@ -80,9 +80,10 @@ const USAGE: &str = "usage: muster-daemon report [--pane PANE] [--context-used P
     end lasts 10 minutes at most. --until-exits ends the wait when process \
     PID exits instead, and the daemon then tells the agent in a message, which wakes it: for a \
     harness nothing else wakes when its work ends. Turns do not end such a wait. \
-    --until-message-from ends the wait when a message from that pane is delivered; unrelated \
-    senders leave it standing. Give a pane id, callsign or unique name, including on a linked \
-    machine. It cannot be combined with --until-exits. --state is the \
+    --until-message-from ends the wait when a message from SENDER is delivered; unrelated \
+    senders leave it standing. SENDER is read as `muster msg post --to` reads it: a pane id, \
+    callsign or unique name, including on a linked machine, or @human for the person. It cannot \
+    be combined with --until-exits. --state is the \
     agent's own word on what it is doing, which outranks what detection reads off its screen while fresh; --agent names the agent, \
     as its detection manifest does (claude), and the state counts only while that agent is \
     the pane's. --session-name is what the agent's harness calls its session, empty for no \
@@ -307,7 +308,7 @@ fn parse(
             "--until-message-from" => {
                 let sender = value("--until-message-from")?;
                 if sender.trim().is_empty() {
-                    return Err("--until-message-from needs a pane".to_string());
+                    return Err("--until-message-from needs a sender".to_string());
                 }
                 report.waiting_until_message_from = Some(sender);
             }

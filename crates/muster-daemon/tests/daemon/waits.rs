@@ -541,6 +541,61 @@ fn a_requested_senders_message_delivered_by_session_command_ends_the_wait() {
     );
 }
 
+/// The person is named as a post's `--to` names them, and their answer ends the wait as an
+/// agent's does, while another agent's message leaves it standing.
+#[test]
+fn a_wait_on_the_human_ends_with_the_persons_message() {
+    use proto::AgentState::{Idle, Working};
+    let mut worker = worker_beside(&[("p2", "t2")]);
+    let declared = worker.declares_from("@human");
+    assert_eq!(declared.outcome(), proto::Outcome::Done, "{}", declared.answer.reason);
+    worker.hook_reports(Idle);
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    until_some("the other agent's wake", || (!worker.rings_heard().is_empty()).then_some(()));
+    worker.hook_reports(Working);
+    reads(&mut worker);
+    worker.hook_reports(Idle);
+    assert!(worker.waiting_on().is_some(), "another agent's message ended a wait on the human");
+
+    let from_the_person = proto::request::Service::Msg(proto::MsgRequest {
+        caller: Some(proto::msg_request::Caller::default()),
+        request: Some(proto::msg_request::Request::Post(proto::msg_request::Post {
+            to: vec!["p1".to_string()],
+            body: "yes, go ahead".to_string(),
+            ..Default::default()
+        })),
+    });
+    expect(&mut worker.control, from_the_person, proto::Outcome::Done);
+    worker.until_wait_over();
+}
+
+/// A wait on a participant that had no pane when it was declared ends on its answer from the
+/// pane it has taken the name in since.
+#[test]
+fn a_wait_on_a_name_ends_when_it_answers_from_a_pane_it_took_the_name_in() {
+    use proto::msg_request::{self, Request};
+    let mut worker = worker_beside(&[("p2", "t2")]);
+    let join = |caller: msg_request::Caller| {
+        proto::request::Service::Msg(proto::MsgRequest {
+            caller: Some(caller),
+            request: Some(Request::Join(msg_request::Join {
+                name: Some("reader".to_string()),
+                group: None,
+                pull: false,
+            })),
+        })
+    };
+    let shell = msg_request::Caller { as_name: Some("reader".to_string()), ..Default::default() };
+    expect(&mut worker.control, join(shell), proto::Outcome::Done);
+    let declared = worker.declares_from("reader");
+    assert_eq!(declared.outcome(), proto::Outcome::Done, "{}", declared.answer.reason);
+    worker.hook_reports(proto::AgentState::Idle);
+    let in_pane = msg_request::Caller { pane: Some("p2".to_string()), ..Default::default() };
+    expect(&mut worker.control, join(in_pane), proto::Outcome::Done);
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    worker.until_wait_over();
+}
+
 #[test]
 fn sender_waits_refuse_unknown_ambiguous_and_self_targets_without_changing_facts() {
     let mut worker = Pane::with_an_agent();

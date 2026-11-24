@@ -124,9 +124,9 @@ impl MessageWait {
     pub(super) fn capture(shared: &Shared, reader: &str, authors: &[String]) -> Self {
         let (pane, authors) = {
             let messages = shared.messages();
-            let pane = pane_of(&messages, reader);
+            let pane = wait_name(&messages, reader);
             let authors: Vec<String> =
-                authors.iter().map(|author| pane_of(&messages, author)).collect();
+                authors.iter().flat_map(|author| wait_names(&messages, author)).collect();
             (pane, authors)
         };
         let ends = shared
@@ -150,13 +150,29 @@ impl MessageWait {
     }
 }
 
-/// The pane `name` is the agent in, or `name` itself when it is not known as a participant.
-fn pane_of(messages: &super::Messages, name: &str) -> String {
+/// What a declared wait calls `name` (`Service::wait_sender`): the pane it is the agent in, the
+/// human as `@human` on whichever machine they posted from, or `name` itself when it is not
+/// known as a participant.
+fn wait_name(messages: &super::Messages, name: &str) -> String {
+    if muster_msg::is_human(name) {
+        return muster_msg::HUMAN.to_string();
+    }
     messages
         .service
         .participant(name)
         .and_then(|p| p.pane.clone())
         .unwrap_or_else(|| name.to_string())
+}
+
+/// Every name a wait declared on `name` may have stored: [`wait_name`], and `name` itself,
+/// since a participant with no pane when the wait was declared may have taken one since.
+fn wait_names(messages: &super::Messages, name: &str) -> Vec<String> {
+    let waited = wait_name(messages, name);
+    if waited == name || muster_msg::is_human(name) {
+        vec![waited]
+    } else {
+        vec![waited, name.to_string()]
+    }
 }
 
 /// `author` posted to `reached`: what they answered before is not the answer to what it asked
@@ -165,8 +181,8 @@ pub(super) fn posted(shared: &Shared, author: &str, reached: &[(String, muster_m
     let (pane, recipients) = {
         let messages = shared.messages();
         let recipients: Vec<String> =
-            reached.iter().map(|(name, _)| pane_of(&messages, name)).collect();
-        (pane_of(&messages, author), recipients)
+            reached.iter().flat_map(|(name, _)| wait_names(&messages, name)).collect();
+        (wait_name(&messages, author), recipients)
     };
     shared.lock().forget_heard_from(&pane, &recipients);
 }

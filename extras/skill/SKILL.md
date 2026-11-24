@@ -86,8 +86,8 @@ CALLSIGN` for the original document, or `--output FILE` to save it. See `muster 
   about the first message it was woken by, such as `Read galaxy+ocean message`.
 - **Name the sender when waiting on a reviewer or helper**:
   `"$MUSTER_DAEMON" report --waiting "review from otter" --until-message-from otter`, then end
-  your turn. Its message ends that wait; another sender's message leaves it standing. For a
-  background job, use `--until-exits <pid>` instead.
+  your turn. Its message ends that wait; another sender's message leaves it standing. Name the
+  person as `@human`. For a background job, use `--until-exits <pid>` instead.
 - **Check that your own adapter reports** before relying on what it gives: your state, your
   context for `pane compact` and `compact_at`, your session coming back after a restart.
   `muster window --json | jq -r '.panes[] | select(.pane == env.MUSTER_PANE) | .adapter'` says

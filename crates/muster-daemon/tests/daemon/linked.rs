@@ -1513,6 +1513,65 @@ fn a_declared_wait_can_end_on_a_sender_from_the_linked_machine() {
     });
 }
 
+/// An agent on the dialed machine waits on the person, who is homed on the near one: their
+/// answer, carried across, ends the wait.
+#[test]
+fn a_declared_wait_on_the_human_ends_with_their_message_from_the_linked_machine() {
+    let near = daemon();
+    let far = Daemon::start_detecting();
+    let mut remote = far.connect();
+    make(&mut remote, create("p1", in_new_tab("t1")));
+    far.run_agent("p1");
+    let mut logging = following(&near);
+    let _holding = link(&near, &far, &mut logging, 1);
+    let report = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        waiting: Some("the person's answer".to_string()),
+        waiting_until_message_from: Some("@human".to_string()),
+        ..Default::default()
+    };
+    expect(&mut remote, pane(proto::pane_request::Request::Report(report)), proto::Outcome::Done);
+    let waiting = || snapshot(&mut far.connect()).panes[0].facts.clone().and_then(|f| f.waiting);
+    assert!(waiting().is_some());
+    let person = msg_request::Caller::default();
+    expect(&mut remote, post(&person, None, &["p1"], "go ahead"), proto::Outcome::Done);
+    until_some("the person's message to end the wait", || waiting().is_none().then_some(()));
+}
+
+/// A pane's name is matched as typed before this machine's own name is taken off it, so a pane
+/// named `invoice@far` keeps its posts once a link tells this machine it is `far`, rather than
+/// losing them to the pane named `invoice`. The human and a pane's id keep theirs too: a pane
+/// named `@human@far` or `p2@far` reaches neither the person's posts nor pane `p2`'s.
+#[test]
+fn a_pane_named_with_this_machines_name_keeps_its_posts_once_linked() {
+    let (near, far) = (daemon(), Daemon::start_detecting());
+    let mut far_control = far.connect();
+    let labels = [("p1", "invoice@far"), ("p2", "invoice"), ("p3", "@human@far"), ("p4", "p2@far")];
+    for (id, label) in labels {
+        let tab = format!("t-{id}");
+        let labeled = proto::pane_request::Create {
+            label: Some(label.to_string()),
+            ..create(id, in_new_tab(&tab))
+        };
+        make(&mut far_control, labeled);
+    }
+    let reaches = |control: &mut Control, to: &str| {
+        let posted =
+            expect(control, post(&named("berry"), None, &[to], "the totals"), proto::Outcome::Done);
+        let [(name, _)] = reached(&posted).try_into().unwrap_or_else(|r| panic!("{to}: {r:?}"));
+        name
+    };
+    assert_eq!(reaches(&mut far_control, "invoice@far"), "p1");
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let _holding = link(&near, &far, &mut near_log, 1);
+    // The far daemon learns what the near one calls it once it has linked too.
+    far_log.logged_until("msg.peer.linked", LINKING);
+    assert_eq!(reaches(&mut far_control, "invoice@far"), "p1", "the link moved its post");
+    assert_eq!(reaches(&mut far_control, "p2@far"), "p2", "a label took a pane id's post");
+    let human = reaches(&mut far_control, "@human@far");
+    assert!(human.starts_with("@human"), "a label took the person's post: {human}");
+}
+
 /// A maker that closes on the far machine while no link is up leaves its helpers' notice for
 /// the person waiting there, since the person is homed on the near machine; once the link is
 /// back the near daemon has it, with Muster's words for the banner (MIP-7, section 6).

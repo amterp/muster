@@ -246,8 +246,10 @@ for the process once a second while one is waited on (`messages/waits.rs`).
 
 A wait declared with `--until-message-from <pane>` also has no expiry: a message delivered from
 that sender ends it. Unrelated messages, compactions, and turn boundaries leave it standing.
-The daemon resolves the sender when declared, using a local pane id or the participant a linked
-machine names, so renaming the pane does not change who ends the wait. Delivery includes a typed
+The daemon resolves the sender when declared, as a post's `--to` resolves a name, and keeps a local
+pane id, the participant a linked machine names, or `@human`, so renaming the pane does not change
+who ends the wait. A message from the person ends a wait on `@human` whichever machine they posted
+from. Delivery includes a typed
 wake, a harness session command, an inbox wake, and messages fetched by hooks. Posting a message
 that cannot yet reach the agent does not end it. A replacement or explicit clearing still does.
 It also ends when that sender's pane closes on the daemon holding the waiting pane, silently: the

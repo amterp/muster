@@ -1759,14 +1759,14 @@ pub(crate) fn resolve_wait_sender(
     };
     let Some(sender) = report.waiting_until_message_from.as_deref() else { return Ok(()) };
     if sender.trim().is_empty() || report.waiting.as_deref().is_none_or(str::is_empty) {
-        return Err(Reply::refused("--until-message-from needs a pane and nonempty --waiting"));
+        return Err(Reply::refused("--until-message-from needs a sender and nonempty --waiting"));
     }
     if report.waiting_until_exits.is_some() {
         return Err(Reply::refused("use --until-message-from or --until-exits, not both"));
     }
     let panes = Panes::of(shared);
     let (sender, _) = finding(shared, &panes, &[sender.to_string()], |found| {
-        shared.messages().service.wait_sender(sender, found, &panes)
+        shared.messages().service.wait_sender(sender, &report.pane, found, &panes)
     })
     .map_err(|why| Reply::refused(words(&why)))?;
     if sender == report.pane {
