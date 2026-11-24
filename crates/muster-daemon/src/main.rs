@@ -205,6 +205,7 @@ fn run(
     let claim = claim(socket)?;
     // Only once the socket is this daemon's: the log beside it has one writer, and a second
     // daemon turned away must not touch it.
+    let unended = daemon_log::unended(socket);
     let log = DaemonLog::start(socket, false);
     // Logged as daemon.failed on the way out, with the message saying what is missing.
     let data = data::Data::locate(data).map_err(Failure::Other)?;
@@ -240,7 +241,7 @@ fn run(
         );
         0
     });
-    log::info(
+    daemon_log::lifecycle(
         "daemon.started",
         fields! {
             "socket" => shared.socket.path.display(),
@@ -249,6 +250,21 @@ fn run(
             "descriptors" => descriptors,
         },
     );
+    if let Some(last) = unended {
+        log::warn(
+            "daemon.previous.unclean",
+            fields! {
+                "last_record_at" => last.time,
+                "last_event" => last.event,
+                "impact" => "the daemon before this one was killed or crashed rather than \
+                             stopping, so it saved nothing on the way out: what changed in its \
+                             last second is lost",
+                "check" => "what ended it at about last_record_at: the machine shutting down or \
+                            restarting, a muster-daemon crash report, or the system log for a \
+                            kill",
+            },
+        );
+    }
     serve(&shared, signals, stopping).map_err(Failure::Other)?;
 
     // Once the socket is served: a shell starting in a directory on a hung mount must not keep
@@ -343,7 +359,7 @@ fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
     persister.wait_until_stopped(LAST_WRITE);
     pane::wait_for_kills(pane::KILL_GRACE + Duration::from_secs(1));
     let _ = std::fs::remove_file(socket);
-    log::info("daemon.stopped", fields! { "socket" => socket.display() });
+    daemon_log::last("daemon.stopped", fields! { "socket" => socket.display() });
 }
 
 /// Finds the state a previous run of this daemon saved, and what to write this run's with.

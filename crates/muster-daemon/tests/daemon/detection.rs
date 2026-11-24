@@ -1156,3 +1156,34 @@ fn a_silent_agent_reported_before_it_is_found_is_found() {
         );
     }
 }
+
+/// A pane that comes back from a restart as a shell needs the log to say when its agent went and
+/// when its resume went with it.
+#[test]
+fn the_log_says_an_agent_came_and_went_and_that_its_resume_went_with_it() {
+    let (daemon, mut control) = crate::resume::reported("--model opus", "s-logged");
+
+    daemon.type_into("p1", "quit");
+    until_some("p1's agent to leave", || {
+        snapshot(&mut control).panes[0].agent.is_none().then_some(())
+    });
+
+    let log = until_some("the log to say p1's resume was dropped", || {
+        std::fs::read_to_string(daemon.root().join("daemon.log"))
+            .ok()
+            .filter(|log| log.contains("session.resume.dropped"))
+    });
+    let line = |event: &str, with: &str| {
+        log.lines().any(|line| line.contains(event) && line.contains(with))
+    };
+    assert!(
+        line("daemon.agent.changed", "\"from\":\"\",\"pane\":\"p1\",\"to\":\"claude\""),
+        "{log}"
+    );
+    assert!(
+        line("daemon.agent.changed", "\"from\":\"claude\",\"pane\":\"p1\",\"to\":\"\""),
+        "{log}"
+    );
+    assert!(line("session.resume.dropped", "\"session\":\"s-logged\""), "{log}");
+    assert!(line("session.resume.dropped", "its agent left the pane"), "{log}");
+}

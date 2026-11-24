@@ -3705,9 +3705,15 @@ impl Session {
 
     /// Keeps what starts the pane's agent session again, saving it when it changed.
     fn resume_changed(&mut self, index: usize, resume: Option<persist::Resume>) {
-        if let Some(terminal) = self.panes[index].body.terminal_mut()
+        let pane = &mut self.panes[index];
+        if let Some(terminal) = pane.body.terminal_mut()
             && terminal.resume != resume
         {
+            let session = resume.as_ref().map(|resume| resume.session.as_str());
+            if let Some(old) = terminal.resume.as_ref().filter(|old| Some(&*old.session) != session)
+            {
+                resume_dropped(&pane.record.pane, old, RESUME_SESSION_CHANGED);
+            }
             terminal.resume = resume;
             self.persister.changed();
         }
@@ -3954,15 +3960,8 @@ impl Session {
             } => {
                 let before = record.clone();
                 let answered = std::mem::replace(&mut terminal.answering, answering) && !answering;
-                // What an agent said about itself leaves with it. Not when a pane with no agent
-                // is first recognised: its statusline can report before the first probe lands,
-                // and that report is the new agent's.
-                let replaced = record.agent.is_some() && record.agent != agent;
-                if replaced && agent_left(record, terminal, &name) {
+                if agent_changing(record, terminal, &name, agent.as_deref()) {
                     self.persister.changed();
-                }
-                if replaced || (record.agent.is_none() && agent.is_some()) {
-                    terminal.session_name.agent_changed(&name, replaced, record.label.as_deref());
                 }
                 let turn = Turn::between(record.agent_state(), state);
                 if turn == Turn::Started && record.agent == agent {
@@ -6578,9 +6577,61 @@ fn forget_compaction(compaction: &mut Compaction, pane: &str, agent: &str, resta
     compaction.cleared();
 }
 
+/// Detection found `agent` in `pane`, whose record still names the one found before. When they
+/// differ, says so in the log and forgets what the old one said about itself; true when that
+/// changed what a restart brings back.
+fn agent_changing(
+    record: &mut proto::Pane,
+    terminal: &mut TerminalPane,
+    pane: &str,
+    agent: Option<&str>,
+) -> bool {
+    if record.agent.as_deref() == agent {
+        return false;
+    }
+    log::info(
+        "daemon.agent.changed",
+        fields! {
+            "pane" => pane,
+            "from" => record.agent.as_deref().unwrap_or_default(),
+            "to" => agent.unwrap_or_default(),
+        },
+    );
+    // What an agent said about itself leaves with it. Not when a pane with no agent is first
+    // recognised: its statusline can report before the first probe lands, and that report is
+    // the new agent's.
+    let replaced = record.agent.is_some();
+    let unsaved = replaced && agent_left(record, terminal, pane, agent);
+    terminal.session_name.agent_changed(pane, replaced, record.label.as_deref());
+    unsaved
+}
+
+const RESUME_AGENT_LEFT: &str = "its agent left the pane";
+const RESUME_AGENT_REPLACED: &str = "another agent replaced its agent";
+const RESUME_SESSION_CHANGED: &str = "its agent reported another session";
+
+/// Says that `pane` no longer comes back in `resume`'s session after a restart, and why. A pane
+/// that comes back as a shell has otherwise nothing in the log to say when its resume went.
+fn resume_dropped(pane: &str, resume: &persist::Resume, reason: &str) {
+    log::info(
+        "session.resume.dropped",
+        fields! {
+            "pane" => pane,
+            "agent" => resume.agent,
+            "session" => resume.session,
+            "reason" => reason,
+        },
+    );
+}
+
 /// Forgets what the agent that has left `pane` said about itself, saying whether that took a
-/// resume the pane's restart would have run.
-fn agent_left(record: &mut proto::Pane, terminal: &mut TerminalPane, name: &str) -> bool {
+/// resume the pane's restart would have run. `replaced_by` is the agent detected in its place.
+fn agent_left(
+    record: &mut proto::Pane,
+    terminal: &mut TerminalPane,
+    name: &str,
+    replaced_by: Option<&str>,
+) -> bool {
     record.facts = None;
     record.session_transcript = None;
     record.set_adapter(proto::Adapter::Unsaid);
@@ -6588,7 +6639,12 @@ fn agent_left(record: &mut proto::Pane, terminal: &mut TerminalPane, name: &str)
     terminal.session_id = None;
     terminal.context_session = None;
     terminal.ran_out = None;
-    let resumed = terminal.resume.take().is_some();
+    let resume = terminal.resume.take();
+    if let Some(resume) = &resume {
+        let reason = if replaced_by.is_some() { RESUME_AGENT_REPLACED } else { RESUME_AGENT_LEFT };
+        resume_dropped(name, resume, reason);
+    }
+    let resumed = resume.is_some();
     (record.session_id, record.resume) = (None, None);
     let left = record.agent.as_deref().unwrap_or_default();
     let restarting = terminal.io.discards().is_restarting();

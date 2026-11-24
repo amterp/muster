@@ -193,3 +193,69 @@ fn a_daemon_told_to_end_with_a_process_stops_when_it_exits() {
     assert!(!daemon.socket_path().exists(), "the stopped daemon left its socket behind");
     assert!(gone_within(&pane, std::time::Duration::from_millis(500)), "pid {pane} outlived it");
 }
+
+fn log_of(daemon: &Daemon) -> String {
+    written(&daemon.root().join("daemon.log"))
+}
+
+/// A daemon killed outright writes nothing on the way out, so the next one says for it that it
+/// ended that way, and when its log went quiet.
+#[test]
+fn a_daemon_started_after_one_was_killed_says_the_last_run_did_not_stop() {
+    let mut daemon = daemon();
+    assert!(!log_of(&daemon).contains("daemon.previous.unclean"), "nothing ran before this one");
+    daemon.kill();
+    daemon.restart();
+
+    let log = until_some("the new daemon to say how the last one ended", || {
+        Some(log_of(&daemon)).filter(|log| log.contains("daemon.previous.unclean"))
+    });
+    let said = log.lines().find(|line| line.contains("daemon.previous.unclean")).unwrap();
+    assert!(said.contains("\"last_record_at\":\"20"), "{said}");
+}
+
+#[test]
+fn a_daemon_started_after_one_stopped_says_nothing_of_the_last_run() {
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    expect(
+        &mut control,
+        session(session_request::Request::Stop(session_request::Stop {})),
+        proto::Outcome::Done,
+    );
+    daemon.wait_for_exit();
+    daemon.restart();
+
+    let log = until_some("the new daemon to say it started", || {
+        Some(log_of(&daemon)).filter(|log| log.matches("daemon.started").count() == 2)
+    });
+    assert!(log.contains("daemon.stopped"), "{log}");
+    // Written before a daemon serves, so it would be there by now.
+    assert!(!log.contains("daemon.previous.unclean"), "{log}");
+}
+
+/// `MUSTER_LOG_LEVEL=warn` keeps info records out of the log, and a run's start and stop are
+/// info. They are written all the same, since the next daemon reads them to tell a stop from a
+/// kill.
+#[test]
+fn a_log_that_keeps_only_warnings_still_tells_a_stop_from_a_kill() {
+    let mut daemon = daemon_with(&[("MUSTER_LOG_LEVEL", "warn")]);
+    let mut control = daemon.connect();
+    expect(
+        &mut control,
+        session(session_request::Request::Stop(session_request::Stop {})),
+        proto::Outcome::Done,
+    );
+    daemon.wait_for_exit();
+    daemon.restart();
+    let log = until_some("the second daemon to say it started", || {
+        Some(log_of(&daemon)).filter(|log| log.matches("daemon.started").count() == 2)
+    });
+    assert!(!log.contains("daemon.previous.unclean"), "{log}");
+
+    daemon.kill();
+    daemon.restart();
+    until_some("the third daemon to say the second did not stop", || {
+        Some(log_of(&daemon)).filter(|log| log.contains("daemon.previous.unclean"))
+    });
+}

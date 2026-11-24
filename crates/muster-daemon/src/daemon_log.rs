@@ -9,12 +9,12 @@
 //! What a person typed is never in it: nothing in the daemon logs input's content, and
 //! `MUSTER_LOG_INPUT` does not change that here.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs::File;
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use muster_core::diagnostics::log::{self, LogLevel, LogRecord, LogSink};
 use muster_core::diagnostics::sink;
@@ -35,6 +35,116 @@ pub(crate) fn path_for(socket: &Path) -> PathBuf {
     socket.with_extension("log")
 }
 
+/// The last record of a log whose daemon never said it ended.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct LastRecord {
+    pub(crate) time: String,
+    pub(crate) event: String,
+}
+
+#[derive(serde::Deserialize)]
+struct Logged {
+    time: String,
+    pid: i32,
+    event: String,
+}
+
+const STARTED: &str = "daemon.started";
+const SERVING: &str = "daemon.handoff.serving";
+const STOPPED: &str = "daemon.stopped";
+const FAILED: &str = "daemon.failed";
+/// The first record of a file the log was rotated into, by the daemon writing the log, so each
+/// file says whose run it continues after that run's start has been rotated away.
+const CONTINUED: &str = "daemon.log.continued";
+
+/// The last record the daemon that last served `socket` wrote, when it ended without saying so:
+/// killed, crashed, or the machine went down under it. None when it stopped or failed in its own
+/// words, when the log does not say which daemon served, or when there is no log.
+///
+/// Read before this run's first record, by the daemon that holds the socket's lock.
+pub(crate) fn unended(socket: &Path) -> Option<LastRecord> {
+    let path = path_for(socket);
+    let mut rotated = path.clone().into_os_string();
+    rotated.push(".1");
+    let ending = [path, PathBuf::from(rotated)]
+        .iter()
+        .find_map(|file| ending_in(&String::from_utf8_lossy(&std::fs::read(file).ok()?)));
+    match ending {
+        Some(Ending::Unsaid(last)) => Some(last),
+        Some(Ending::Said | Ending::Unknown) | None => None,
+    }
+}
+
+/// How the daemon that last served ended, as far as a log says.
+#[derive(Debug, PartialEq, Eq)]
+enum Ending {
+    Said,
+    Unsaid(LastRecord),
+    /// No record says which daemon served: a log from before [`CONTINUED`] was written, rotated
+    /// past its run's start. Saying nothing beats sending somebody after a crash that was a stop.
+    Unknown,
+}
+
+/// How the daemon that last served ended, by one file's text, or None for a file with no record
+/// in it, which says nothing either way.
+///
+/// The daemon that served is the one that wrote the newest [`STARTED`], [`SERVING`] or
+/// [`CONTINUED`], and it ended in its own words when a [`STOPPED`] or [`FAILED`] after that is
+/// its own, matched by pid. Any other daemon's ending is not: a successor that failed to take
+/// over leaves its `daemon.failed` in this log, and so does a start that failed before serving.
+fn ending_in(log: &str) -> Option<Ending> {
+    let mut ended = Vec::new();
+    let mut newest: Vec<(i32, LastRecord)> = Vec::new();
+    for line in log.lines().rev() {
+        let Ok(Logged { time, pid, event }) = serde_json::from_str(line) else { continue };
+        if !newest.iter().any(|(by, _)| *by == pid) {
+            newest.push((pid, LastRecord { time, event: event.clone() }));
+        }
+        match event.as_str() {
+            STOPPED | FAILED => ended.push(pid),
+            STARTED | SERVING | CONTINUED if ended.contains(&pid) => return Some(Ending::Said),
+            STARTED | SERVING | CONTINUED => {
+                let last = newest.into_iter().find(|(by, _)| *by == pid).map(|(_, last)| last);
+                return last.map(Ending::Unsaid);
+            }
+            _ => {}
+        }
+    }
+    (!newest.is_empty()).then_some(Ending::Unknown)
+}
+
+/// The log of this process, for the records written whatever its level.
+static LOG: OnceLock<Arc<DaemonLog>> = OnceLock::new();
+
+/// Logs `event`, one of a run's lifecycle records, at info and whatever `MUSTER_LOG_LEVEL` says:
+/// the next daemon reads them to tell a stop from a kill ([`unended`]), and at a level above
+/// info a stop would otherwise read as one.
+pub(crate) fn lifecycle(event: &str, fields: BTreeMap<String, String>) {
+    match LOG.get() {
+        Some(log) => log.write(&this_process(event, fields)),
+        None => log::info(event, fields),
+    }
+}
+
+/// Logs `event` as [`lifecycle`] does, and writes nothing after it: the daemon's word that it
+/// stopped, which has to be the last record of its run whatever a thread still running logs. In
+/// one hold of the log's lock, since a record written between the two could rotate the log and
+/// leave the new file saying this daemon's run goes on.
+pub(crate) fn last(event: &str, fields: BTreeMap<String, String>) {
+    match LOG.get() {
+        Some(log) => log.write_then(&this_process(event, fields), true),
+        None => log::info(event, fields),
+    }
+}
+
+fn this_process(event: &str, fields: BTreeMap<String, String>) -> LogRecord {
+    let pid = i32::try_from(std::process::id()).unwrap_or_default();
+    LogRecord::now(LogLevel::Info, PROCESS, pid, event, fields)
+}
+
+/// What every record says its process is.
+const PROCESS: &str = "daemon";
+
 #[derive(Debug)]
 pub(crate) struct DaemonLog {
     inner: Mutex<Inner>,
@@ -53,6 +163,8 @@ struct Inner {
     /// Where a daemon taking over writes each record until its commit ([`handed_over_path`]),
     /// so a daemon that fails before then leaves them for the one handing over to take in.
     handing_over: Option<File>,
+    /// The daemon has said it stopped ([`last`]).
+    sealed: bool,
 }
 
 /// Beside the log's file: `<name>.log.handoff`.
@@ -93,7 +205,8 @@ impl DaemonLog {
                 .open(handed_over_path(&inner.file.path))
                 .ok();
         }
-        log::install(Box::new(Sink(Arc::clone(&log))), "daemon", level);
+        let _ = LOG.set(Arc::clone(&log));
+        log::install(Box::new(Sink(Arc::clone(&log))), PROCESS, level);
         Some(log)
     }
 
@@ -106,6 +219,7 @@ impl DaemonLog {
                 followers: Vec::new(),
                 withheld_from: None,
                 handing_over: None,
+                sealed: false,
             }),
         }
     }
@@ -116,8 +230,17 @@ impl DaemonLog {
     }
 
     fn write(&self, record: &LogRecord) {
+        self.write_then(record, false);
+    }
+
+    /// Writes `record`, and with `seal` nothing after it.
+    fn write_then(&self, record: &LogRecord, seal: bool) {
         let line = sink::line(record);
         let mut inner = self.inner();
+        if inner.sealed {
+            return;
+        }
+        inner.sealed = seal;
         if inner.withheld_from.is_none() {
             inner.file.append(line.as_bytes());
         } else if let Some(file) = &mut inner.handing_over {
@@ -288,6 +411,12 @@ impl Rotating {
             if self.size > 0 && self.size + length > self.limit {
                 return;
             }
+            let continued = sink::line(&this_process(CONTINUED, BTreeMap::new()));
+            if let Some(file) = &mut self.file
+                && file.write_all(continued.as_bytes()).is_ok()
+            {
+                self.size += continued.len() as u64;
+            }
         }
         if let Some(file) = &mut self.file
             && file.write_all(line).is_ok()
@@ -305,7 +434,6 @@ fn append_to(path: &Path) -> std::io::Result<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
 
     struct Scratch(PathBuf);
 
@@ -327,6 +455,121 @@ mod tests {
 
     fn record(event: &str) -> LogRecord {
         LogRecord::now(LogLevel::Info, "daemon", 1, event, BTreeMap::new())
+    }
+
+    /// A log's text: each record the event `pid` logged.
+    fn by(records: &[(i32, &str)]) -> String {
+        let line = |&(pid, event): &(i32, &str)| {
+            sink::line(&LogRecord::now(LogLevel::Info, "daemon", pid, event, BTreeMap::new()))
+        };
+        records.iter().map(line).collect()
+    }
+
+    /// A successor that fails to take over leaves its records, its `daemon.failed` among them,
+    /// in the log of the daemon that goes on serving.
+    #[test]
+    fn a_failed_successors_ending_is_not_the_serving_daemons() {
+        let log = by(&[
+            (1, "daemon.started"),
+            (2, "daemon.handoff.taking_over"),
+            (2, "daemon.failed"),
+            (1, "daemon.handoff.failed"),
+            (1, "test.last"),
+        ]);
+        assert_eq!(unsaid(&log), "test.last");
+    }
+
+    /// A daemon that failed before it served says nothing of the one killed before it.
+    #[test]
+    fn a_start_that_failed_does_not_end_the_run_before_it() {
+        let log = by(&[(1, "daemon.started"), (1, "test.last"), (3, "daemon.failed")]);
+        assert_eq!(unsaid(&log), "test.last");
+    }
+
+    fn lines(events: &[&str]) -> String {
+        events.iter().map(|event| sink::line(&record(event))).collect()
+    }
+
+    fn unsaid(log: &str) -> String {
+        match ending_in(log) {
+            Some(Ending::Unsaid(last)) => last.event,
+            other => panic!("expected a run that never said it ended, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_log_whose_last_run_wrote_no_ending_is_unended_and_names_its_last_record() {
+        let killed = lines(&[STARTED, STOPPED, STARTED, "test.last"]);
+        assert_eq!(unsaid(&killed), "test.last");
+        assert_eq!(unsaid(&lines(&[STARTED])), STARTED);
+        // A line cut short by the kill is no record.
+        let torn = format!("{killed}{{\"time\":\"2026-11");
+        assert_eq!(unsaid(&torn), "test.last");
+    }
+
+    #[test]
+    fn a_log_whose_last_run_stopped_or_failed_is_ended() {
+        assert_eq!(ending_in(&lines(&[STARTED, "test.work", STOPPED])), Some(Ending::Said));
+        assert_eq!(ending_in(&lines(&[STARTED, FAILED])), Some(Ending::Said));
+        assert_eq!(ending_in(""), None, "an empty file says nothing either way");
+    }
+
+    /// The daemon that took the panes over is the one whose ending counts, and the one that
+    /// handed them over never says it stopped.
+    #[test]
+    fn after_a_handoff_the_successors_ending_is_the_one_read() {
+        let handed = [(1, STARTED), (1, "daemon.handoff.committed"), (2, SERVING)];
+        let stopped = by(&[&handed[..], &[(2, STOPPED)]].concat());
+        assert_eq!(ending_in(&stopped), Some(Ending::Said));
+        let killed = by(&[&handed[..], &[(2, "test.last")]].concat());
+        assert_eq!(unsaid(&killed), "test.last");
+    }
+
+    /// A file the log was rotated into opens with whose run it continues, so a run older than
+    /// both files still has its ending told apart. A file with no such record cannot say.
+    #[test]
+    fn a_run_rotated_past_its_start_is_read_from_the_record_its_file_opens_with() {
+        assert_eq!(unsaid(&lines(&[CONTINUED, "test.last"])), "test.last");
+        assert_eq!(ending_in(&lines(&[CONTINUED, "test.work", STOPPED])), Some(Ending::Said));
+        assert_eq!(ending_in(&lines(&["test.first", "test.last"])), Some(Ending::Unknown));
+        assert_eq!(ending_in(&lines(&["test.work", STOPPED])), Some(Ending::Unknown));
+    }
+
+    #[test]
+    fn a_file_the_log_is_rotated_into_opens_by_saying_whose_run_it_continues() {
+        let scratch = Scratch::new("continued");
+        let path = scratch.0.join("daemon.log");
+        let log = DaemonLog::new(Rotating::open(path.clone(), 2000));
+        for index in 0..100 {
+            log.write(&record(&format!("test.record.{index}")));
+        }
+        let current = std::fs::read_to_string(&path).unwrap();
+        let first = current.lines().next().unwrap();
+        assert!(first.contains(CONTINUED), "{first}");
+        assert!(first.contains(&format!("\"pid\":{}", std::process::id())), "{first}");
+        assert!(matches!(ending_in(&current), Some(Ending::Unsaid(_))));
+    }
+
+    #[test]
+    fn nothing_is_written_after_the_record_that_seals_the_log() {
+        let scratch = Scratch::new("sealed");
+        let path = scratch.0.join("daemon.log");
+        let log = DaemonLog::new(Rotating::open(path.clone(), FILE_BYTES));
+        log.write_then(&record(STOPPED), true);
+        log.write(&record("test.straggler"));
+        let file = std::fs::read_to_string(&path).unwrap();
+        assert!(file.contains(STOPPED) && !file.contains("test.straggler"), "{file}");
+    }
+
+    #[test]
+    fn the_rotated_file_answers_when_the_current_one_holds_no_record() {
+        let scratch = Scratch::new("unended");
+        let socket = scratch.0.join("daemon.sock");
+        assert_eq!(unended(&socket), None, "no log at all");
+        std::fs::write(scratch.0.join("daemon.log.1"), lines(&["daemon.started"])).unwrap();
+        assert!(unended(&socket).is_some());
+        std::fs::write(scratch.0.join("daemon.log"), lines(&["daemon.stopped"])).unwrap();
+        assert_eq!(unended(&socket), None);
     }
 
     #[test]

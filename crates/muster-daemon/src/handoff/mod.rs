@@ -618,7 +618,7 @@ pub(crate) fn take_over(
     persister.changed();
     shared.start_doorbell();
     shared.socket.accepting.release();
-    log::info(
+    crate::daemon_log::lifecycle(
         "daemon.handoff.serving",
         fields! {
             "socket" => shared.socket.path.display(),
