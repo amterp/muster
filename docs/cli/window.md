@@ -247,6 +247,8 @@ One entry per pane every followed daemon holds, on screen or not.
   on an agent's, the state is `stuck`.
 - `session` - the id the agent's adapter reported for its session, which the harness's own
   commands take (`claude --resume <id>`); `null` until it reports one, and once the agent leaves.
+  Kept through `muster pane restart`, with `resume`, though the resumed agent has reported nothing
+  yet: Codex reports its session only at its first prompt.
 - `resume` - what the pane's daemon runs, in the pane's directory, to start that session again
   when a restart brings the pane back: `{"command", "uncarried"}`, the program and its arguments
   as one word each, and why the arguments the agent was started with did not all go along, `null`

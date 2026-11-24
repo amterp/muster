@@ -194,6 +194,7 @@ impl Target for Live {
     }
 
     fn terminate(&self) {
+        self.io.discards().set_ended_by_restart(true);
         pty::terminate_group(self.group);
     }
 
@@ -252,19 +253,41 @@ impl Restarting {
     /// an agent goes through here, so none of them forgets them.
     pub(crate) fn carried_out_for(self, shared: &crate::session::Shared) -> (Reply, bool) {
         let (pane, env) = (self.pane.clone(), self.env.clone());
-        let (reply, changed) = self.carried_out();
-        if changed {
-            shared.lock().restarted_with(&pane, env);
-        }
-        (reply, changed)
-    }
-
-    /// The answer to the restart, and whether it changed the pane: true unless it stopped before
-    /// ending anything.
-    fn carried_out(self) -> (Reply, bool) {
-        let Restarting { pane, program, session, line, target, .. } = self;
+        let Restarting { program, session, line, target, .. } = self;
         let outcome = restart(&target, &line, Timing::daemon());
+        match resume_coming(&outcome) {
+            Coming::Typed => shared.lock().restarted_with(&pane, env),
+            Coming::EndedUntyped => {
+                let mut held = shared.lock();
+                held.restarted_with(&pane, env);
+                held.restart_untyped(&pane, &session);
+            }
+            // Whenever this agent does leave, no restart ended it.
+            Coming::StillRunning => target.io.discards().set_ended_by_restart(false),
+            Coming::NothingEnded => {}
+        }
         (said(&pane, &program, &session, &line, &outcome), changed_the_pane(&outcome))
+    }
+}
+
+/// What a restart that came to an outcome left of its agent and of the resume.
+#[derive(Debug, PartialEq, Eq)]
+enum Coming {
+    /// The agent ended and its resume was typed at the shell.
+    Typed,
+    /// The agent ended and nothing was typed, so no agent is coming back in its session.
+    EndedUntyped,
+    /// The agent was signalled and runs on.
+    StillRunning,
+    NothingEnded,
+}
+
+fn resume_coming(outcome: &Result<Ended, Failed>) -> Coming {
+    match outcome {
+        Ok(_) => Coming::Typed,
+        Err(Failed::ShellAway | Failed::NotTyped(_)) => Coming::EndedUntyped,
+        Err(Failed::StillRunning) => Coming::StillRunning,
+        Err(Failed::NotFlushed(_)) => Coming::NothingEnded,
     }
 }
 
@@ -576,6 +599,16 @@ mod tests {
         assert_eq!(restart(&busy, "claude --resume s-5", FAST), Ok(Ended::Asked));
         assert!(started.elapsed() >= FAST.prompt_within, "it waited for the prompt");
         assert!(busy.0.steps().contains(&"type claude --resume s-5".to_string()));
+    }
+
+    #[test]
+    fn only_a_restart_that_typed_its_resume_has_an_agent_coming_back() {
+        assert_eq!(resume_coming(&Ok(Ended::Asked)), Coming::Typed);
+        assert_eq!(resume_coming(&Ok(Ended::Killed)), Coming::Typed);
+        assert_eq!(resume_coming(&Err(Failed::ShellAway)), Coming::EndedUntyped);
+        assert_eq!(resume_coming(&Err(Failed::NotTyped(String::new()))), Coming::EndedUntyped);
+        assert_eq!(resume_coming(&Err(Failed::StillRunning)), Coming::StillRunning);
+        assert_eq!(resume_coming(&Err(Failed::NotFlushed(String::new()))), Coming::NothingEnded);
     }
 
     #[test]

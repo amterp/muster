@@ -395,6 +395,11 @@ later, saying what it typed:
 Then wait for the agent as for any you have just started, with `muster pane wait --until idle`.
 A message waiting for the agent, or posted to it while it restarts, waits for the resumed one and
 rings it once it is idle. A compaction queued for it does not: `pane compact` asks again.
+The pane goes on showing the session and resume it was restarted with, so it can be restarted
+again before the resumed agent has reported anything. They go when the agent reports another
+session or leaves, or when no agent has started thirty seconds after the restart. Only the agent
+the resume started keeps them: one started afresh in the pane after a resume that failed shows no
+session until it reports its own. A pane closed meanwhile reopens in the session it showed.
 
 A pane whose agent has reported no session is refused with nothing ended, because there is
 nothing to resume; a harness's adapter is what reports the session. So is an agent whose harness

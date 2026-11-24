@@ -3567,7 +3567,16 @@ impl Session {
             return None;
         }
         let id = Some(said).filter(|id| !id.is_empty());
-        let changed = terminal.session_id != id;
+        // An empty id asks for the session to be forgotten, and the one a pane shows for a
+        // restarted agent is held apart from `session_id`.
+        let shown_for_restart = |left: &mut crate::pane::ResumeLeft| {
+            id.is_none() && left.restarted && left.resume.agent == agent
+        };
+        let forgotten = terminal.resume_left.take_if(shown_for_restart);
+        if let Some(left) = &forgotten {
+            resume_dropped(&pane.record.pane, &left.resume, RESUME_FORGOTTEN);
+        }
+        let changed = terminal.session_id != id || forgotten.is_some();
         // The same session again is worth another try at its resume when the last one could not
         // be built: the job was between processes, or its arguments would not read.
         if !changed && (id.is_none() || terminal.resume.is_some()) {
@@ -3579,6 +3588,14 @@ impl Session {
                 fields! { "pane" => pane.record.pane, "agent" => agent, "known" => id.is_some() },
             );
             terminal.session_id.clone_from(&id);
+            // Whether or not a resume can be built for the session reported: the one kept is
+            // another session's.
+            if let Some(left) =
+                terminal.resume_left.take_if(|left| Some(&left.resume.session) != id.as_ref())
+            {
+                resume_dropped(&pane.record.pane, &left.resume, RESUME_SESSION_CHANGED);
+                self.persister.changed();
+            }
         }
         let resume = id.as_deref().and_then(|session| self.resume_of(index, agent, session));
         if let Some(session) = id.as_deref().filter(|_| resume.is_none()) {
@@ -3674,13 +3691,59 @@ impl Session {
         })
     }
 
+    /// A restart ended the agent that ran `session` in `pane` and then could not type its
+    /// resume, so no agent is coming back in the session. The pane stops showing it now, and an
+    /// agent that starts there is not taken for a resumed one.
+    ///
+    /// Detection can go on naming the ended agent for some time, when the shell started another
+    /// job as it ended, so this does not wait to be told the agent left. The state file keeps
+    /// the resume for its wait, as for any agent that left. A session reported since by another
+    /// agent is not this one's and stays.
+    pub(crate) fn restart_untyped(&mut self, pane: &str, session: &str) {
+        let Some(index) = self.pane_index(pane) else { return };
+        let pane = &mut self.panes[index];
+        let Some(terminal) = pane.body.terminal_mut() else { return };
+        terminal.io.discards().set_ended_by_restart(false);
+        if let Some(resume) = terminal.resume.take_if(|resume| resume.session == session) {
+            let kept = resume_kept_after_agent_left();
+            log::info(
+                "session.resume.kept",
+                fields! {
+                    "pane" => pane.record.pane,
+                    "agent" => resume.agent,
+                    "session" => resume.session,
+                    "for_ms" => kept.as_millis(),
+                    "why" => "a restart ended its agent and could not type its resume; a daemon \
+                              that dies before the time is up brings the pane back in this session",
+                },
+            );
+            let until = std::time::Instant::now() + kept;
+            terminal.resume_left =
+                Some(crate::pane::ResumeLeft { resume, until, restarted: false });
+        } else if let Some(left) = &mut terminal.resume_left {
+            left.restarted = false;
+        }
+        if terminal.session_id.as_deref() == Some(session) {
+            terminal.session_id = None;
+        }
+        if terminal.describe_session(&mut pane.record) {
+            let record = pane.record.clone();
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        }
+        // The persister learns when the wait ends as it copies the session.
+        self.persister.changed();
+    }
+
     /// The agent in `pane` was restarted with `env`: it runs with those variables now, so each
     /// resume built for it sets them again.
     pub(crate) fn restarted_with(&mut self, pane: &str, env: persist::Environment) {
         let Some(index) = self.pane_index(pane) else { return };
         let pane = &mut self.panes[index];
         let Some(terminal) = pane.body.terminal_mut() else { return };
-        if let Some(resume) = &mut terminal.resume {
+        // The resume is the agent's again once it has started, and until then is the one kept
+        // for it.
+        let kept = terminal.resume_left.as_mut().filter(|left| left.restarted);
+        if let Some(resume) = terminal.resume.as_mut().or(kept.map(|left| &mut left.resume)) {
             resume.env.clone_from(&env);
             self.persister.changed();
         }
@@ -3714,9 +3777,9 @@ impl Session {
             {
                 resume_dropped(&pane.record.pane, old, RESUME_SESSION_CHANGED);
             }
-            // Reported before detection found the agent that reports it.
-            if let Some(left) = terminal.resume_left.take_if(|_| resume.is_some()) {
-                resume_dropped(&pane.record.pane, &left.resume, RESUME_AGENT_STARTED);
+            // The session kept for a restarted agent, reported before detection found it.
+            if resume.is_some() {
+                terminal.resume_left = None;
             }
             terminal.resume = resume;
             self.persister.changed();
@@ -3853,8 +3916,14 @@ impl Session {
         let (Some(index), Some(tab)) = (self.pane_index(pane), self.tab_of(pane)) else { return };
         let (held, tab) = (&self.panes[index], &self.tabs[tab]);
         let closed_at_ms = state_since::now_ms();
+        let mut saved = saved_pane(held);
+        // A restart ended its agent to resume this session, which the pane still showed.
+        let restarted = held.body.terminal().and_then(|terminal| terminal.resume_left.as_ref());
+        if let Some(left) = restarted.filter(|left| left.restarted && saved.resume.is_none()) {
+            saved.resume = Some(left.resume.clone());
+        }
         let closed = persist::ClosedPane {
-            pane: saved_pane(held),
+            pane: saved,
             agent: held.record.agent.clone(),
             closed_at_ms,
             until_ms: closed_at_ms.saturating_add(u64::from(minutes) * 60_000),
@@ -3964,7 +4033,9 @@ impl Session {
             } => {
                 let before = record.clone();
                 let answered = std::mem::replace(&mut terminal.answering, answering) && !answering;
-                if agent_changing(record, terminal, &name, agent.as_deref()) {
+                let manifests = self.detecting.manifests();
+                let resumed = resumed_by_restart(terminal, manifests.as_deref(), agent.as_deref());
+                if agent_changing(record, terminal, &name, agent.as_deref(), resumed) {
                     self.persister.changed();
                 }
                 let turn = Turn::between(record.agent_state(), state);
@@ -3997,7 +4068,6 @@ impl Session {
                             record.finished_unseen,
                         );
                 }
-                let manifests = self.detecting.manifests();
                 record.agent_compacts = agent_compacts(manifests.as_deref(), agent.as_deref());
                 record.agent_clears = agent_clears(manifests.as_deref(), agent.as_deref());
                 record.agent = agent;
@@ -5234,14 +5304,22 @@ impl Session {
             return None;
         }
         let mut next = None;
+        let mut shown = Vec::new();
         for pane in &mut self.panes {
             let Some(terminal) = pane.body.terminal_mut() else { continue };
             if let Some(left) = terminal.resume_left.take_if(|left| left.until <= now) {
-                resume_dropped(&pane.record.pane, &left.resume, RESUME_AGENT_LEFT);
+                let reason = if left.restarted { RESUME_NOT_BACK } else { RESUME_AGENT_LEFT };
+                resume_dropped(&pane.record.pane, &left.resume, reason);
+                if terminal.describe_session(&mut pane.record) {
+                    shown.push(pane.record.clone());
+                }
             } else {
                 let until = terminal.resume_left.as_ref().map(|left| left.until);
                 next = next.into_iter().chain(until).min();
             }
+        }
+        for record in shown {
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
         next
     }
@@ -6617,14 +6695,50 @@ fn forget_compaction(compaction: &mut Compaction, pane: &str, agent: &str, resta
     compaction.cleared();
 }
 
+/// Whether `agent`, which detection has just found in the pane, is the one a restart resumed in
+/// the session the pane kept for it ([`crate::pane::ResumeLeft::restarted`]): the same harness,
+/// started with that session among its arguments, as the resume the restart typed starts it.
+///
+/// The harness's name alone is not enough. The resume can fail and somebody start the harness
+/// afresh inside the wait, and a pane that claimed the old session for it would have a restart
+/// end the fresh session to resume the old one. So an agent whose arguments cannot be read, or
+/// that a wrapper started without passing the session on, is not taken for the resumed one, and
+/// its pane shows no session until it reports.
+fn resumed_by_restart(
+    terminal: &TerminalPane,
+    manifests: Option<&Manifests>,
+    agent: Option<&str>,
+) -> bool {
+    use muster_detect::Processes as _;
+    let (Some(left), Some(manifests), Some(agent)) =
+        (terminal.resume_left.as_ref().filter(|left| left.restarted), manifests, agent)
+    else {
+        return false;
+    };
+    let io = &terminal.io;
+    let Some(group) = io.foreground_group().and_then(|group| u32::try_from(group).ok()) else {
+        return false;
+    };
+    let shell = io.shell().and_then(|shell| u32::try_from(shell).ok()).unwrap_or(group);
+    muster_detect::System
+        .job(shell, group)
+        .and_then(|job| muster_detect::agent_arguments(&job, manifests))
+        .is_some_and(|(found, arguments)| {
+            agent == left.resume.agent
+                && found == muster_detect::Agent::new(agent)
+                && arguments.contains(&left.resume.session)
+        })
+}
+
 /// Detection found `agent` in `pane`, whose record still names the one found before. When they
 /// differ, says so in the log and forgets what the old one said about itself; true when that
-/// changed what a restart brings back.
+/// changed what a restart brings back. `resumed` is [`resumed_by_restart`]'s answer for it.
 fn agent_changing(
     record: &mut proto::Pane,
     terminal: &mut TerminalPane,
     pane: &str,
     agent: Option<&str>,
+    resumed: bool,
 ) -> bool {
     if record.agent.as_deref() == agent {
         return false;
@@ -6643,7 +6757,15 @@ fn agent_changing(
     let replaced = record.agent.is_some();
     let mut unsaved = replaced && agent_left(record, terminal, pane, agent);
     if let Some(left) = terminal.resume_left.take_if(|_| agent.is_some()) {
-        resume_dropped(pane, &left.resume, RESUME_AGENT_STARTED);
+        if resumed {
+            // The agent a restart resumed. A harness that reports its session only at its first
+            // prompt, as Codex does, runs this session unreported until then.
+            terminal.session_id = Some(left.resume.session.clone());
+            terminal.resume = Some(left.resume);
+        } else {
+            resume_dropped(pane, &left.resume, RESUME_AGENT_STARTED);
+            terminal.describe_session(record);
+        }
         unsaved = true;
     }
     terminal.session_name.agent_changed(pane, replaced, record.label.as_deref());
@@ -6681,6 +6803,8 @@ const RESUME_AGENT_LEFT: &str = "its agent left the pane";
 const RESUME_AGENT_REPLACED: &str = "another agent replaced its agent";
 const RESUME_SESSION_CHANGED: &str = "its agent reported another session";
 const RESUME_AGENT_STARTED: &str = "an agent started in the pane after its agent left";
+const RESUME_FORGOTTEN: &str = "its agent asked for the session to be forgotten";
+const RESUME_NOT_BACK: &str = "its agent was restarted and did not come back";
 
 /// Says that `pane` no longer comes back in `resume`'s session after a restart, and why. A pane
 /// that comes back as a shell has otherwise nothing in the log to say when its resume went.
@@ -6701,7 +6825,8 @@ fn resume_dropped(pane: &str, resume: &persist::Resume, reason: &str) {
 
 /// Forgets what the agent that has left `pane` said about itself, saying whether it had a resume,
 /// which the state file now loses: at once when `replaced_by`, the agent detected in its place,
-/// is one, and otherwise once [`RESUME_KEPT_AFTER_AGENT_LEFT`] has passed.
+/// is one, and otherwise once [`RESUME_KEPT_AFTER_AGENT_LEFT`] has passed. An agent a restart
+/// ended is coming back in its session, so until then the pane's record goes on showing it.
 fn agent_left(
     record: &mut proto::Pane,
     terminal: &mut TerminalPane,
@@ -6715,6 +6840,8 @@ fn agent_left(
     terminal.session_id = None;
     terminal.context_session = None;
     terminal.ran_out = None;
+    let ended_by_restart = terminal.io.discards().take_ended_by_restart();
+    let restarting = ended_by_restart || terminal.io.discards().is_restarting();
     let resume = terminal.resume.take();
     let resumed = resume.is_some();
     match resume {
@@ -6723,6 +6850,13 @@ fn agent_left(
         }
         Some(resume) => {
             let kept = resume_kept_after_agent_left();
+            let why = if restarting {
+                "a restart ended its agent to resume this session, which the pane still shows \
+                 until the resumed agent starts or the time is up"
+            } else {
+                "its agent left the pane, which a machine shutting down also causes; a daemon \
+                 that dies before the time is up brings the pane back in this session"
+            };
             log::info(
                 "session.resume.kept",
                 fields! {
@@ -6730,19 +6864,19 @@ fn agent_left(
                     "agent" => resume.agent,
                     "session" => resume.session,
                     "for_ms" => kept.as_millis(),
-                    "why" => "its agent left the pane, which a machine shutting down also \
-                              causes; a daemon that dies before the time is up brings the pane \
-                              back in this session",
+                    "why" => why,
                 },
             );
-            terminal.resume_left =
-                Some(crate::pane::ResumeLeft { resume, until: std::time::Instant::now() + kept });
+            terminal.resume_left = Some(crate::pane::ResumeLeft {
+                resume,
+                until: std::time::Instant::now() + kept,
+                restarted: restarting,
+            });
         }
         None => {}
     }
-    (record.session_id, record.resume) = (None, None);
+    terminal.describe_session(record);
     let left = record.agent.as_deref().unwrap_or_default();
-    let restarting = terminal.io.discards().is_restarting();
     if !restarting {
         terminal.restart_env = persist::Environment::default();
     }

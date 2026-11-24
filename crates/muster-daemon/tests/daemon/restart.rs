@@ -226,3 +226,163 @@ fn a_compaction_waiting_for_a_restarted_agent_is_dropped_and_logged() {
     let p1 = record(&snapshot(&mut control), "p1").clone();
     assert_eq!(p1.pending_compaction(), proto::PendingCompaction::None, "{p1:?}");
 }
+
+fn session_and_resume(control: &mut Control) -> (Option<String>, bool) {
+    let p1 = record(&snapshot(control), "p1").clone();
+    (p1.session_id, p1.resume.is_some())
+}
+
+/// A harness that reports its session only at its first prompt, as Codex does, says nothing
+/// after a restart until somebody types. The pane goes on showing the session it was restarted
+/// in, so it can be restarted again before then.
+#[test]
+fn a_restarted_agent_that_has_not_reported_keeps_its_session_and_restarts_again() {
+    let (daemon, mut control) = reported(&[], "--model opus", "s-twice");
+    let first = std::fs::read_to_string(home(&daemon, "fake-agent-pid")).expect("a pid");
+
+    expect(&mut control, restart("p1", &[]), proto::Outcome::Done);
+    let kept = (Some("s-twice".to_string()), true);
+    assert_eq!(session_and_resume(&mut control), kept, "as the restart answers");
+    let second = written_again(&daemon, "fake-agent-pid", &first);
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    assert_eq!(session_and_resume(&mut control), kept, "with the resumed agent back");
+
+    let asked = expect(&mut control, restart("p1", &[]), proto::Outcome::Done);
+
+    assert!(restarted(&asked).typed.ends_with("--model' 'opus' '--resume' 's-twice'"), "{asked:?}");
+    assert_ne!(written_again(&daemon, "fake-agent-pid", &second), second);
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    assert_eq!(session_and_resume(&mut control), kept, "after the second restart");
+}
+
+/// The session a restarted agent kept leaves with it, as any agent's does.
+#[test]
+fn a_restarted_agent_that_quits_before_reporting_takes_its_session_with_it() {
+    let (daemon, mut control) = reported(&[], "--model opus", "s-quit");
+    let before = std::fs::read_to_string(home(&daemon, "fake-agent-pid")).expect("a pid");
+    expect(&mut control, restart("p1", &[]), proto::Outcome::Done);
+    written_again(&daemon, "fake-agent-pid", &before);
+    daemon.until_agent("p1", proto::AgentState::Idle);
+
+    daemon.type_into("p1", "quit");
+
+    until_some("p1 to show no session once its agent quit", || {
+        (session_and_resume(&mut control) == (None, false)).then_some(())
+    });
+}
+
+/// A resume that starts no agent leaves a shell, and the pane stops showing a session nothing
+/// runs once the wait for the agent is over.
+#[test]
+fn a_restart_whose_agent_never_comes_back_stops_showing_its_session() {
+    let (daemon, mut control) =
+        reported(&[("MUSTER_DAEMON_RESUME_KEPT_MS", "50")], "--model opus", "s-gone");
+    std::fs::remove_file(daemon.agent_path()).expect("the test removes the agent's program");
+
+    expect(&mut control, restart("p1", &[]), proto::Outcome::Done);
+
+    until_some("p1 to stop showing the session", || {
+        (session_and_resume(&mut control) == (None, false)).then_some(())
+    });
+    let log = written(&daemon.root().join("daemon.log"));
+    assert!(log.contains("its agent was restarted and did not come back"), "{log}");
+}
+
+/// Longer than any test runs, so a session kept for a restarted agent goes only by what the test
+/// does.
+const KEPT_FOR_THE_WHOLE_TEST: (&str, &str) = ("MUSTER_DAEMON_RESUME_KEPT_MS", "3600000");
+
+/// The fake agent in `p1`, session reported, restarted with its program gone: the resume typed at
+/// the shell starts nothing, and the pane goes on showing the session it was restarted in.
+fn restarted_into_nothing(session: &str) -> (Daemon, Control) {
+    let (daemon, mut control) = reported(&[KEPT_FOR_THE_WHOLE_TEST], "--model opus", session);
+    let program = daemon.agent_path();
+    let agent = std::fs::read_link(&program).expect("the fake agent is a link");
+    std::fs::remove_file(&program).expect("the test removes the agent's program");
+    expect(&mut control, restart("p1", &[]), proto::Outcome::Done);
+    assert_eq!(session_and_resume(&mut control), (Some(session.to_string()), true));
+    // However this shell says so: restoring the program any sooner lets the resume start it.
+    until_some("the shell to say the resume started nothing", || {
+        let screen = screen_text(&mut control, "p1");
+        (screen.contains("not found") || screen.contains("No such file")).then_some(())
+    });
+    std::os::unix::fs::symlink(agent, &program).expect("the test puts the program back");
+    (daemon, control)
+}
+
+/// The resume a restart typed can fail, and somebody then starts the harness afresh. That one
+/// was not started in the old session, so the pane must not say it runs it: Restart Agent would
+/// end the fresh session to resume the old one.
+#[test]
+fn a_fresh_agent_started_after_a_failed_resume_is_not_given_the_old_session() {
+    let (daemon, mut control) = restarted_into_nothing("s-old");
+
+    daemon.run_agent("p1");
+
+    assert_eq!(session_and_resume(&mut control), (None, false));
+}
+
+/// A harness can report its session before detection has found it, and from a process whose
+/// arguments say nothing of how to resume it. The pane then shows the session reported, and not
+/// the resume kept for another.
+#[test]
+fn a_session_reported_after_a_restart_replaces_the_one_kept_for_it() {
+    let (_daemon, mut control) = restarted_into_nothing("s-kept");
+
+    let report = pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        session_id: Some("s-new".to_string()),
+        ..Default::default()
+    };
+    expect(&mut control, pane(pane_request::Request::Report(report)), proto::Outcome::Done);
+
+    assert_eq!(session_and_resume(&mut control), (Some("s-new".to_string()), false));
+}
+
+/// A pane closed while it shows the session its agent was restarted in comes back in that
+/// session, as one closed with its agent running does.
+#[test]
+fn a_pane_closed_during_a_restart_reopens_in_the_session_it_showed() {
+    let (_daemon, mut control) = restarted_into_nothing("s-closed");
+
+    expect(&mut control, close_request("p1"), proto::Outcome::Done);
+    crate::reopen::reopened(&mut control, "p1", "t2");
+
+    let command = record(&snapshot(&mut control), "p1").command.clone().unwrap_or_default();
+    assert!(command.ends_with("--model opus --resume s-closed"), "reopened as {command:?}");
+}
+
+/// An empty session id is a harness asking for its session to be forgotten, and that covers the
+/// one a pane still shows for a restarted agent.
+#[test]
+fn an_empty_session_report_forgets_the_session_kept_for_a_restart() {
+    let (_daemon, mut control) = restarted_into_nothing("s-forgotten");
+
+    let report = pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        session_id: Some(String::new()),
+        ..Default::default()
+    };
+    control.ask(pane(pane_request::Request::Report(report)));
+
+    assert_eq!(session_and_resume(&mut control), (None, false));
+}
+
+/// A job the shell starts as the agent ends keeps the terminal, so the restart cannot type its
+/// resume, and detection can go on naming the ended agent for a while. The restart knows the
+/// agent ended: its answer leaves the pane showing no session, with the resume still saved for
+/// a daemon that dies now.
+#[test]
+fn a_restart_that_could_not_type_its_resume_stops_showing_the_ended_agents_session() {
+    let kept = [KEPT_FOR_THE_WHOLE_TEST];
+    let (daemon, mut control) = reported(&kept, "--model opus; /bin/sleep 12", "s-untyped");
+
+    let asked = control.ask(restart("p1", &[]));
+
+    assert_ne!(asked.outcome(), proto::Outcome::Done, "the resume was typed: {asked:?}");
+    assert_eq!(session_and_resume(&mut control), (None, false));
+    let saved = written(&crate::persistence::state_file(&daemon));
+    assert!(saved.contains("s-untyped"), "the state file lost the resume: {saved}");
+}

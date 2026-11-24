@@ -1306,6 +1306,9 @@ impl Pane {
 pub(crate) struct ResumeLeft {
     pub(crate) resume: crate::persist::Resume,
     pub(crate) until: Instant,
+    /// A restart ended the agent and typed this resume at its shell, so the pane's record still
+    /// shows the session, and the agent that starts takes the resume back as its own.
+    pub(crate) restarted: bool,
 }
 
 impl TerminalPane {
@@ -1341,9 +1344,11 @@ impl TerminalPane {
 
     /// Puts the agent's session and how it resumes on the record, as `session_id` and `resume`
     /// stand; true when that changed the record, which the caller then publishes. The session is
-    /// the resume's when a wake has forgotten the id, since the agent still runs that session.
+    /// the resume's when a wake has forgotten the id, since the agent still runs that session,
+    /// and when a restart has ended the agent to resume it ([`ResumeLeft::restarted`]).
     pub(crate) fn describe_session(&self, record: &mut proto::Pane) -> bool {
-        let resume = self.resume.as_ref();
+        let restarted = self.resume_left.as_ref().filter(|left| left.restarted);
+        let resume = self.resume.as_ref().or(restarted.map(|left| &left.resume));
         let session_id =
             self.session_id.clone().or_else(|| resume.map(|resume| resume.session.clone()));
         let resume = resume.map(crate::persist::Resume::record);

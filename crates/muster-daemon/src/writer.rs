@@ -366,6 +366,10 @@ pub(crate) struct Discards {
     /// The pane's agent is being restarted, so typed input is refused as it arrives: it would
     /// reach the shell ahead of the resume, or be typed into the resume's own line.
     restarting: AtomicBool,
+    /// A restart has signalled the pane's agent to end, and the session has not yet seen it
+    /// leave. Apart from `restarting`, which ends once the resume is typed: detection's word
+    /// that the agent left can reach the session after that.
+    ended_by_restart: AtomicBool,
 }
 
 impl Discards {
@@ -425,6 +429,15 @@ impl Discards {
 
     pub(crate) fn is_restarting(&self) -> bool {
         self.restarting.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_ended_by_restart(&self, ended: bool) {
+        self.ended_by_restart.store(ended, Ordering::Release);
+    }
+
+    /// Whether a restart ended the agent whose leaving is being seen now. True once per restart.
+    pub(crate) fn take_ended_by_restart(&self) -> bool {
+        self.ended_by_restart.swap(false, Ordering::AcqRel)
     }
 }
 
