@@ -7,6 +7,9 @@ and this refuses to start without it. Then './release minor' bumps the version, 
 gate and the contract tier, commits, pushes main, waits for CI, tags, waits for the
 notarized build, checks the artifact, and points both casks at it.
 
+The working tree has to be clean apart from those notes and board edits under .kan/, which
+the release leaves uncommitted as it found them.
+
 It pushes main, a tag and both casks without asking: running it is the decision to publish.
 Run the same command again after an interruption and it picks up where it stopped.
 ---
@@ -204,12 +207,14 @@ fn point_cask_at(target, sha):
     write_file(CASK, join(lines, "\n") + "\n")
     $`git add {CASK}`
     subject = "chore: the cask names the artifact v{target} ships"
-    $`git commit -q -m {subject}`
+    $`git commit -q -m {subject} -- {CASK}`
     code = $`git push origin HEAD:main`.code
     if code != 0:
         // Most likely somebody's board commit landed during the wait. The cask commit
         // touches one file, so it replays onto theirs unless they edited the cask too.
-        if not $`git pull --rebase -q origin main`.ok:
+        // --autostash because this checkout may hold uncommitted board edits, which a rebase
+        // refuses to start over where rebase.autoStash is unset.
+        if not $`git pull --rebase --autostash -q origin main`.ok:
             $`git rebase --abort` catch:
                 pass
             fail(["The cask commit conflicts with something pushed to main meanwhile.",
@@ -282,8 +287,11 @@ if not quiet $`test -f {notes}`.ok:
 
 if not resuming:
     step("{latest} -> {target}")
-    if quiet $`git status --porcelain -- . :!{notes}`.stdout.trim() != "":
-        fail(["The working tree has changes besides {notes}.",
+    // .kan/ is the board, which a factory run leaves edited and uncommitted on purpose. Nothing
+    // built or tagged reads it, and both commits this makes name their paths, so board edits
+    // stay out of them, staged or not.
+    if quiet $`git status --porcelain -- . :!{notes} :!.kan`.stdout.trim() != "":
+        fail(["The working tree has changes besides {notes} and the board in .kan/.",
               "Impact: the release commit would carry them, or the gate would judge a tree that is not the one tagged.",
               "Commit or stash them, then run this again."])
 
@@ -365,7 +373,7 @@ if not committed:
     baselines = [schema["baseline"] for schema in SCHEMAS]
     shipped = [schema["shipped"] for schema in SHIPPED]
     $`git add Cargo.toml Cargo.lock {CASK} {baselines} {shipped} {notes}`
-    $`git commit -q -F {message_file}`
+    $`git commit -q -F {message_file} -- Cargo.toml Cargo.lock {CASK} {baselines} {shipped} {notes}`
 
 step("publish v{target}")
 
