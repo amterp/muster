@@ -85,6 +85,32 @@ fn a_program_that_stops_reading_is_published_until_it_reads_again() {
     });
 }
 
+/// An agent started through a wrapper script is named as detection knows it, not by the wrapper
+/// that leads its process group.
+#[test]
+fn an_agent_under_a_wrapper_that_stops_reading_is_named_as_the_agent() {
+    let daemon = Daemon::start_detecting_with(&[("MUSTER_DAEMON_STUCK_MS", STUCK_MS)]);
+    let mut control = daemon.connect();
+    let wrapped = proto::pane_request::Create {
+        command: Some(format!("sh -c '{}; true'", daemon.agent_path().display())),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(&mut control, wrapped);
+    until_text(&mut control, "p1", "PROBE-STATE:IDLE");
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    daemon.type_into("p1", "deaf 30");
+    // Long enough for the daemon to have looked and found the line taken, which is the evidence
+    // that the agent reads.
+    std::thread::sleep(Duration::from_millis(1500));
+    let mut input = Input::connect(daemon.socket_path());
+    send(&mut input, "p1", "hello", true);
+
+    let stopped = until_some("p1 to be published stopped", || unread(&mut control, "p1"));
+    assert_eq!(stopped.program, "claude", "{stopped:?}");
+    let agent_pid = std::fs::read_to_string(daemon.root().join("home/fake-agent-pid")).unwrap();
+    assert_eq!(stopped.pid.to_string(), agent_pid.trim(), "the agent's pid, not the wrapper's");
+}
+
 /// A program that has not read anything yet - an agent still starting, with input sent as it
 /// was launched - is never called stopped, however long that input waits.
 #[test]

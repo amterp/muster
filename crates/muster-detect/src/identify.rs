@@ -24,6 +24,8 @@ pub struct Probe {
     /// The pane's own shell is in the foreground: whatever ran has returned to it.
     pub shell_in_foreground: bool,
     pub agent: Option<Agent>,
+    /// The process the agent was found as, by its name or its hint.
+    pub pid: Option<u32>,
     /// The name the agent was recognised by, for a log line.
     pub process_name: Option<String>,
 }
@@ -38,27 +40,34 @@ pub fn probe(
     manifests: &Manifests,
 ) -> Probe {
     let hint = |pid| processes.agent_hint(pid).and_then(|name| manifests.agent_named(&name));
-    let found = |job: &Job, agent: Agent, process_name: String| Probe {
+    let found = |job: &Job, agent: Agent, pid: u32, process_name: String| Probe {
         group: Some(job.group),
         shell_in_foreground: job.processes.iter().any(|process| process.pid == shell),
         agent: Some(agent),
+        pid: Some(pid),
         process_name: Some(process_name),
     };
-    let hinted = |job: &Job, agent: Agent| {
+    let hinted = |job: &Job, agent: Agent, pid: u32| {
         let name = agent.id().to_string();
-        found(job, agent, name)
+        found(job, agent, pid, name)
     };
 
     let Some(group) = group else {
-        return Probe { group: None, shell_in_foreground: false, agent: None, process_name: None };
+        return Probe {
+            group: None,
+            shell_in_foreground: false,
+            agent: None,
+            pid: None,
+            process_name: None,
+        };
     };
 
     if let Some(job) = processes.leader(group) {
         if let Some(agent) = hint(job.group) {
-            return hinted(&job, agent);
+            return hinted(&job, agent, job.group);
         }
         if let Some((agent, name)) = identify_in_job(&job, manifests) {
-            return found(&job, agent, name);
+            return found(&job, agent, job.group, name);
         }
     }
 
@@ -67,31 +76,41 @@ pub fn probe(
             group: Some(group),
             shell_in_foreground: false,
             agent: None,
+            pid: None,
             process_name: None,
         };
     };
     if let Some(agent) = hint(job.group) {
-        return hinted(&job, agent);
+        return hinted(&job, agent, job.group);
     }
     let leader_alone =
         job.leader().map(|leader| Job { group: job.group, processes: vec![leader.clone()] });
     if let Some((agent, name)) = leader_alone.and_then(|leader| identify_in_job(&leader, manifests))
     {
-        return found(&job, agent, name);
+        return found(&job, agent, job.group, name);
     }
-    if let Some(agent) = job
+    if let Some((agent, pid)) = job
         .processes
         .iter()
         .filter(|process| process.pid != job.group)
-        .find_map(|process| hint(process.pid))
+        .find_map(|process| hint(process.pid).map(|agent| (agent, process.pid)))
     {
-        return hinted(&job, agent);
+        return hinted(&job, agent, pid);
     }
     let identified = identify_in_job(&job, manifests);
+    let pid = identified.as_ref().and_then(|(agent, _)| {
+        let process = job
+            .leader()
+            .into_iter()
+            .chain(&job.processes)
+            .find(|process| identify_process(process, manifests).as_ref() == Some(agent))?;
+        Some(process.pid)
+    });
     Probe {
         group: Some(job.group),
         shell_in_foreground: job.processes.iter().any(|process| process.pid == shell),
         agent: identified.as_ref().map(|(agent, _)| agent.clone()),
+        pid,
         process_name: identified.map(|(_, name)| name),
     }
 }
@@ -448,6 +467,46 @@ mod tests {
             let script = process(1, shell, &[&format!("/bin/{shell}"), "/home/a/bin/claude"]);
             assert_eq!(normalized_process_name(&script, &manifests), "claude", "under {shell}");
         }
+    }
+
+    /// The process a probe found its agent as is the agent's own, under a wrapper that leads
+    /// the group: a renamed binary its `MUSTER_AGENT` hint names, or one named for the agent.
+    #[test]
+    fn a_probe_says_which_process_its_agent_is() {
+        struct Wrapped {
+            members: Vec<Process>,
+            hinted: Option<u32>,
+        }
+        impl Processes for Wrapped {
+            fn leader(&self, group: u32) -> Option<Job> {
+                let leader = self.members.iter().find(|process| process.pid == group)?.clone();
+                Some(Job { group, processes: vec![leader] })
+            }
+            fn job(&self, _shell: u32, group: u32) -> Option<Job> {
+                Some(Job { group, processes: self.members.clone() })
+            }
+            fn agent_hint(&self, pid: u32) -> Option<String> {
+                (Some(pid) == self.hinted).then(|| "claude".to_string())
+            }
+        }
+        let manifests = Manifests::built_in();
+        let wrapper = process(10, "rad", &["rad", "/home/a/bin/start-agent"]);
+        let renamed = Wrapped {
+            members: vec![wrapper.clone(), process(11, "my-claude", &["my-claude"])],
+            hinted: Some(11),
+        };
+        let found = probe(1, Some(10), &renamed, &manifests);
+        assert_eq!(
+            (found.agent.map(|a| a.id().to_string()), found.pid),
+            (Some("claude".into()), Some(11))
+        );
+        let named =
+            Wrapped { members: vec![wrapper, process(12, "claude", &["claude"])], hinted: None };
+        let found = probe(1, Some(10), &named, &manifests);
+        assert_eq!(
+            (found.agent.map(|a| a.id().to_string()), found.pid),
+            (Some("claude".into()), Some(12))
+        );
     }
 
     #[test]

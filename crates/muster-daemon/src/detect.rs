@@ -282,6 +282,13 @@ impl Detection {
     pub(crate) fn image_paste_ready(&self) -> bool {
         self.detector.image_paste_ready()
     }
+
+    /// The agent detection found in the pane, the group it was found in and the process it was
+    /// found as, the hint that names it included.
+    pub(crate) fn agent_found(&self) -> Option<(&Agent, u32, u32)> {
+        let agent = self.detector.agent()?;
+        Some((agent, self.detector.agent_group()?, self.detector.agent_pid()?))
+    }
     /// Detection for a pane whose shell is `shell`, when this daemon started one.
     pub(crate) fn new(shell: Option<i32>, now: Instant) -> Detection {
         let shell = shell.and_then(|pid| u32::try_from(pid).ok()).unwrap_or(0);

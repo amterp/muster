@@ -1648,9 +1648,28 @@ impl Reader {
                 }
                 unread::Change::Cleared { .. } => self.io.discards.reading_again(),
             };
-            Reported::UnreadInput(said_unread(&self.pane, change, group, dropped, now))
+            let stopped = match change {
+                unread::Change::Stopped { .. } => {
+                    group.and_then(|group| self.stopped_program(group))
+                }
+                unread::Change::Cleared { .. } => None,
+            };
+            Reported::UnreadInput(said_unread(&self.pane, change, stopped, dropped, now))
         });
         publish_agent(&self.reports, self.io.serial, published, &mut self.unread_unsent);
+    }
+
+    /// The program in the process group `group` that the pane is said to be waiting on, and its
+    /// pid: the agent detection found in the pane, when that group is the one it was found in,
+    /// so the label names what the pane says its agent is, rather than a wrapper script that
+    /// leads the group. Otherwise the group's leader.
+    fn stopped_program(&self, group: i32) -> Option<(String, i32)> {
+        if let Some((agent, agent_group, pid)) = self.detection.agent_found()
+            && i32::try_from(agent_group).ok() == Some(group)
+        {
+            return Some((agent.id().to_string(), i32::try_from(pid).ok()?));
+        }
+        leader(group)
     }
 
     /// Publishes the directory the pane's program is in: the kernel's word for a shell that
@@ -1671,13 +1690,13 @@ impl Reader {
 fn said_unread(
     pane: &str,
     change: unread::Change,
-    group: Option<i32>,
+    stopped: Option<(String, i32)>,
     pointer_dropped: u64,
     now: Instant,
 ) -> Option<proto::UnreadInput> {
     match change {
         unread::Change::Stopped { bytes, since } => {
-            let (program, pid) = group.and_then(leader).unwrap_or_default();
+            let (program, pid) = stopped.unwrap_or_default();
             let waited = now.saturating_duration_since(since);
             log::warn(
                 "daemon.pane.unread_input",
