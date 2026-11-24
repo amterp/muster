@@ -57,7 +57,8 @@ impl Scratch {
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).unwrap();
         let program = directory.join("daemon");
-        std::fs::write(&program, "#!/bin/sh\necho \"$*\" >> \"$0.asked\"\n").unwrap();
+        let records = "#!/bin/sh\necho \"$*\" >> \"$0.asked\"\ncat >> \"$0.stdin\"\n";
+        std::fs::write(&program, records).unwrap();
         std::fs::set_permissions(&program, Permissions::from_mode(0o755)).unwrap();
         Self(directory)
     }
@@ -72,6 +73,14 @@ impl Scratch {
         let asked = std::fs::read_to_string(&path).unwrap_or_default();
         let _ = std::fs::remove_file(&path);
         asked.lines().map(str::to_string).collect()
+    }
+
+    /// What the daemon program read on its stdin since the last call.
+    fn read(&self) -> String {
+        let path = self.0.join("daemon.stdin");
+        let read = std::fs::read_to_string(&path).unwrap_or_default();
+        let _ = std::fs::remove_file(&path);
+        read
     }
 }
 
@@ -131,6 +140,72 @@ fn a_subagents_tool_call_says_nothing_about_its_parent() {
                     &["report --agent claude --state working"]
                 };
                 assert_eq!(scratch.asked(), expected, "{shell}, {event}, {payload}");
+            }
+        }
+    }
+}
+
+/// Claude Code 2.1.323 runs the compaction hooks for a sub-agent's compaction too, with its
+/// `agent_id`. The session itself is not compacting then, so they report nothing, while the
+/// session's own compaction still reports, and `PostCompact` still hands the daemon its input.
+#[test]
+fn a_subagents_compaction_says_nothing_about_its_parent() {
+    let scratch = Scratch::new("compaction");
+    let session = |event: &str| {
+        json!({
+            "hook_event_name": event,
+            "session_id": "3ae927cb-2f4b-4a8e-9a51-6c1d0b7e2f10",
+            "transcript_path": "/tmp/session.jsonl",
+            "trigger": "auto",
+        })
+    };
+    let subagents = |event: &str| {
+        let mut payload = session(event);
+        payload["agent_id"] = json!("a9e7b710705d7b985");
+        payload["agent_type"] = json!("general-purpose");
+        payload
+    };
+    for shell in shells() {
+        let pre = command("PreCompact");
+        run(shell, &pre, Some(&scratch.program()), &subagents("PreCompact"));
+        assert_eq!(scratch.asked(), Vec::<String>::new(), "{shell}, PreCompact");
+        run(shell, &pre, Some(&scratch.program()), &session("PreCompact"));
+        assert_eq!(scratch.asked(), ["report --agent claude --compacting"], "{shell}");
+        scratch.read();
+
+        let post = command("PostCompact");
+        run(shell, &post, Some(&scratch.program()), &subagents("PostCompact"));
+        assert_eq!(scratch.asked(), Vec::<String>::new(), "{shell}, PostCompact");
+        let payload = session("PostCompact");
+        run(shell, &post, Some(&scratch.program()), &payload);
+        let reported = "report --agent claude --from compacted-in=/transcript_path";
+        assert_eq!(scratch.asked(), [reported], "{shell}");
+        let read: Value = serde_json::from_str(&scratch.read()).expect("the hook's input");
+        assert_eq!(read, payload, "{shell}");
+    }
+}
+
+/// A string value of the session's own that ends in `"agent_id`, such as a directory named so or
+/// a compaction summary, is not the field: the hooks that skip a sub-agent's input still report.
+#[test]
+fn a_value_ending_in_the_fields_name_still_reports() {
+    let scratch = Scratch::new("value");
+    let reports = [
+        ("PreCompact", "report --agent claude --compacting"),
+        ("PostCompact", "report --agent claude --from compacted-in=/transcript_path"),
+        ("PostToolUse", "report --agent claude --state working"),
+        ("PostToolUseFailure", "report --agent claude --state working"),
+    ];
+    for (event, reported) in reports {
+        let payloads = [
+            json!({ "hook_event_name": event, "cwd": "/tmp/x\"agent_id" }),
+            json!({ "hook_event_name": event, "compact_summary": "it said \"agent_id" }),
+        ];
+        for shell in shells() {
+            for payload in &payloads {
+                run(shell, &command(event), Some(&scratch.program()), payload);
+                assert_eq!(scratch.asked(), [reported], "{shell}, {payload}");
+                scratch.read();
             }
         }
     }

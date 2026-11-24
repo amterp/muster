@@ -69,10 +69,12 @@ maker as having gone idle without posting. A compaction that comes when the cont
 through a turn leaves that turn work.
 
 `SessionStart`'s `source` and `PostCompact` tell Muster the agent's context was cleared or compacted,
-which the API gives a client on the pane (`muster docs api`). `PostCompact` also fires for a
-sub-agent's compaction, with nothing in its input to say so, so its hook runs asynchronously and
-reports only once the session's own transcript records a compaction, which takes up to five
-seconds to give up (`docs/observations/claude-code-2.1.319.md`).
+which the API gives a client on the pane (`muster docs api`). `PreCompact` and `PostCompact` also
+fire for a sub-agent's compaction. Claude Code 2.1.323 passes the sub-agent's `agent_id` to them,
+and both hooks report nothing for such input, as `PostToolUse` does. Before that version nothing
+in the input said so, so the `PostCompact` hook also runs asynchronously and reports only once the
+session's own transcript records a compaction, which takes up to five seconds to give up
+(`docs/observations/claude-code-2.1.319.md`).
 
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Claude Code ends
 a turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`,

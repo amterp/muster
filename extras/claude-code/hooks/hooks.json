@@ -72,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; case \"$(cat)\" in *'\"agent_id\"'*) exit 0 ;; esac; \"$MUSTER_DAEMON\" report --agent claude --state working >/dev/null 2>&1 || true"
+            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; case \"$(cat)\" in *'\"agent_id\":'*|*'\"agent_id\" :'*) exit 0 ;; esac; \"$MUSTER_DAEMON\" report --agent claude --state working >/dev/null 2>&1 || true"
           }
         ]
       }
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; case \"$(cat)\" in *'\"agent_id\"'*) exit 0 ;; esac; \"$MUSTER_DAEMON\" report --agent claude --state working >/dev/null 2>&1 || true"
+            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; case \"$(cat)\" in *'\"agent_id\":'*|*'\"agent_id\" :'*) exit 0 ;; esac; \"$MUSTER_DAEMON\" report --agent claude --state working >/dev/null 2>&1 || true"
           }
         ]
       }
@@ -114,7 +114,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --compacting >/dev/null 2>&1 || true"
+            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; case \"$(cat)\" in *'\"agent_id\":'*|*'\"agent_id\" :'*) exit 0 ;; esac; \"$MUSTER_DAEMON\" report --agent claude --compacting >/dev/null 2>&1 || true"
           }
         ]
       }
@@ -125,7 +125,7 @@
           {
             "type": "command",
             "async": true,
-            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --from compacted-in=/transcript_path >/dev/null 2>&1 || true"
+            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; input=$(cat); case \"$input\" in *'\"agent_id\":'*|*'\"agent_id\" :'*) exit 0 ;; esac; printf '%s' \"$input\" | \"$MUSTER_DAEMON\" report --agent claude --from compacted-in=/transcript_path >/dev/null 2>&1 || true"
           }
         ]
       }
