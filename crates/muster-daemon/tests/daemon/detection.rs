@@ -1161,7 +1161,8 @@ fn a_silent_agent_reported_before_it_is_found_is_found() {
 /// when its resume went with it.
 #[test]
 fn the_log_says_an_agent_came_and_went_and_that_its_resume_went_with_it() {
-    let (daemon, mut control) = crate::resume::reported("--model opus", "s-logged");
+    let (daemon, mut control) =
+        crate::resume::reported_keeping_a_left_resume("--model opus", "s-logged", "50");
 
     daemon.type_into("p1", "quit");
     until_some("p1's agent to leave", || {

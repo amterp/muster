@@ -1655,7 +1655,7 @@ impl Session {
     /// one told to forget its tabs.
     pub(crate) fn close_everything(&mut self) {
         if !self.stopping {
-            self.persister.stopping(self.persisted());
+            self.persister.stopping(self.saved());
             self.emit(Payload::Stopping(proto::Stopping {}));
             self.api.end_all(muster_api::ended::Reason::Stopping);
         }
@@ -3714,6 +3714,10 @@ impl Session {
             {
                 resume_dropped(&pane.record.pane, old, RESUME_SESSION_CHANGED);
             }
+            // Reported before detection found the agent that reports it.
+            if let Some(left) = terminal.resume_left.take_if(|_| resume.is_some()) {
+                resume_dropped(&pane.record.pane, &left.resume, RESUME_AGENT_STARTED);
+            }
             terminal.resume = resume;
             self.persister.changed();
         }
@@ -5202,8 +5206,44 @@ impl Session {
     /// What a restart needs of the session now, unless the daemon has begun to stop: then the
     /// session is being closed, and what it held was handed to the persister first
     /// ([`Session::close_everything`]).
-    pub(crate) fn persisted_unless_stopping(&self) -> Option<persist::State> {
-        (!self.stopping).then(|| self.persisted())
+    pub(crate) fn saved_unless_stopping(&self) -> Option<persist::State> {
+        (!self.stopping).then(|| self.saved())
+    }
+
+    /// What the state file holds of the session now: [`Session::persisted`], and for a pane whose
+    /// agent has just left, the resume it had ([`RESUME_KEPT_AFTER_AGENT_LEFT`]).
+    fn saved(&self) -> persist::State {
+        let mut state = self.persisted();
+        for (saved, pane) in state.panes.iter_mut().zip(&self.panes) {
+            let left = pane.body.terminal().and_then(|terminal| terminal.resume_left.as_ref());
+            if let Some(left) = left.filter(|_| saved.resume.is_none()) {
+                saved.resume = Some(left.resume.clone());
+            }
+        }
+        state
+    }
+
+    /// Drops each resume kept for an agent that left its pane, once its time is up at `now`, and
+    /// says when the next one's is. Not while the daemon stops, which has already handed over
+    /// what it leaves written down.
+    pub(crate) fn drop_resumes_left(
+        &mut self,
+        now: std::time::Instant,
+    ) -> Option<std::time::Instant> {
+        if self.stopping {
+            return None;
+        }
+        let mut next = None;
+        for pane in &mut self.panes {
+            let Some(terminal) = pane.body.terminal_mut() else { continue };
+            if let Some(left) = terminal.resume_left.take_if(|left| left.until <= now) {
+                resume_dropped(&pane.record.pane, &left.resume, RESUME_AGENT_LEFT);
+            } else {
+                let until = terminal.resume_left.as_ref().map(|left| left.until);
+                next = next.into_iter().chain(until).min();
+            }
+        }
+        next
     }
 
     /// What a restart needs of the session now.
@@ -6601,14 +6641,46 @@ fn agent_changing(
     // recognised: its statusline can report before the first probe lands, and that report is
     // the new agent's.
     let replaced = record.agent.is_some();
-    let unsaved = replaced && agent_left(record, terminal, pane, agent);
+    let mut unsaved = replaced && agent_left(record, terminal, pane, agent);
+    if let Some(left) = terminal.resume_left.take_if(|_| agent.is_some()) {
+        resume_dropped(pane, &left.resume, RESUME_AGENT_STARTED);
+        unsaved = true;
+    }
     terminal.session_name.agent_changed(pane, replaced, record.label.as_deref());
     unsaved
+}
+
+/// How long the state file holds a pane's resume after detection sees its agent leave the pane.
+///
+/// A machine shutting down ends every agent and can then kill the daemon with no signal for it to
+/// act on, so for a few seconds the daemon sees each agent leave exactly as one that quit. The
+/// daemon cannot tell the two apart as they happen: the agent is its shell's child, and its exit
+/// status never reaches the daemon. So the saved resume outlives the agent this long. A daemon
+/// that dies inside the window brings the pane back in its session, and one that lives through
+/// it drops the resume, as it did at once before. Thirty seconds because the wait costs only
+/// that a daemon restarted this soon after a `/exit` resumes the session that was quit, while
+/// too short a wait loses the session of every agent on the machine.
+pub(crate) const RESUME_KEPT_AFTER_AGENT_LEFT: std::time::Duration =
+    std::time::Duration::from_secs(30);
+
+/// A debug build's [`RESUME_KEPT_AFTER_AGENT_LEFT`] in milliseconds, when set, so a test need
+/// not wait for it, or can be sure it does not run out.
+const RESUME_KEPT_SAID: &str = "MUSTER_DAEMON_RESUME_KEPT_MS";
+
+fn resume_kept_after_agent_left() -> std::time::Duration {
+    if cfg!(debug_assertions)
+        && let Ok(said) = std::env::var(RESUME_KEPT_SAID)
+        && let Ok(millis) = said.trim().parse::<u64>()
+    {
+        return std::time::Duration::from_millis(millis);
+    }
+    RESUME_KEPT_AFTER_AGENT_LEFT
 }
 
 const RESUME_AGENT_LEFT: &str = "its agent left the pane";
 const RESUME_AGENT_REPLACED: &str = "another agent replaced its agent";
 const RESUME_SESSION_CHANGED: &str = "its agent reported another session";
+const RESUME_AGENT_STARTED: &str = "an agent started in the pane after its agent left";
 
 /// Says that `pane` no longer comes back in `resume`'s session after a restart, and why. A pane
 /// that comes back as a shell has otherwise nothing in the log to say when its resume went.
@@ -6620,12 +6692,16 @@ fn resume_dropped(pane: &str, resume: &persist::Resume, reason: &str) {
             "agent" => resume.agent,
             "session" => resume.session,
             "reason" => reason,
+            "impact" => "a restart stops bringing this pane back in the session once the state \
+                         file is next saved, within seconds; a daemon.state.not_written after \
+                         this record means the file still holds it",
         },
     );
 }
 
-/// Forgets what the agent that has left `pane` said about itself, saying whether that took a
-/// resume the pane's restart would have run. `replaced_by` is the agent detected in its place.
+/// Forgets what the agent that has left `pane` said about itself, saying whether it had a resume,
+/// which the state file now loses: at once when `replaced_by`, the agent detected in its place,
+/// is one, and otherwise once [`RESUME_KEPT_AFTER_AGENT_LEFT`] has passed.
 fn agent_left(
     record: &mut proto::Pane,
     terminal: &mut TerminalPane,
@@ -6640,11 +6716,30 @@ fn agent_left(
     terminal.context_session = None;
     terminal.ran_out = None;
     let resume = terminal.resume.take();
-    if let Some(resume) = &resume {
-        let reason = if replaced_by.is_some() { RESUME_AGENT_REPLACED } else { RESUME_AGENT_LEFT };
-        resume_dropped(name, resume, reason);
-    }
     let resumed = resume.is_some();
+    match resume {
+        Some(resume) if replaced_by.is_some() => {
+            resume_dropped(name, &resume, RESUME_AGENT_REPLACED);
+        }
+        Some(resume) => {
+            let kept = resume_kept_after_agent_left();
+            log::info(
+                "session.resume.kept",
+                fields! {
+                    "pane" => name,
+                    "agent" => resume.agent,
+                    "session" => resume.session,
+                    "for_ms" => kept.as_millis(),
+                    "why" => "its agent left the pane, which a machine shutting down also \
+                              causes; a daemon that dies before the time is up brings the pane \
+                              back in this session",
+                },
+            );
+            terminal.resume_left =
+                Some(crate::pane::ResumeLeft { resume, until: std::time::Instant::now() + kept });
+        }
+        None => {}
+    }
     (record.session_id, record.resume) = (None, None);
     let left = record.agent.as_deref().unwrap_or_default();
     let restarting = terminal.io.discards().is_restarting();
@@ -7345,9 +7440,9 @@ mod tests {
     fn a_stopping_session_hands_over_what_it_held_and_offers_nothing_after() {
         let dir = scratch("stopping");
         let (shared, _events) = session(&dir.join("daemon.state.json"));
-        assert!(shared.lock().persisted_unless_stopping().is_some());
+        assert!(shared.lock().saved_unless_stopping().is_some());
         shared.lock().close_everything();
-        assert_eq!(shared.lock().persisted_unless_stopping(), None);
+        assert_eq!(shared.lock().saved_unless_stopping(), None);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

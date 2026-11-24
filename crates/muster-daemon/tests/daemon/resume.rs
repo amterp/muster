@@ -9,7 +9,21 @@ use proto::{pane_request, session_request};
 /// The fake agent in `p1` of a fresh detecting daemon, started with `arguments`, its session
 /// reported as `session` and saved.
 pub(crate) fn reported(arguments: &str, session: &str) -> (Daemon, Control) {
-    let daemon = Daemon::start_detecting();
+    reported_keeping_a_left_resume(arguments, session, FOR_THE_WHOLE_TEST_MS)
+}
+
+/// Longer than any test runs, so a resume kept after its agent left is dropped only by what the
+/// test does.
+const FOR_THE_WHOLE_TEST_MS: &str = "3600000";
+
+/// [`reported`], on a daemon whose state file holds a resume for `kept_ms` after its agent leaves
+/// the pane, rather than the thirty seconds a release build holds it.
+pub(crate) fn reported_keeping_a_left_resume(
+    arguments: &str,
+    session: &str,
+    kept_ms: &str,
+) -> (Daemon, Control) {
+    let daemon = Daemon::start_detecting_with(&[("MUSTER_DAEMON_RESUME_KEPT_MS", kept_ms)]);
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
     daemon.run_agent_with_arguments("p1", arguments);
@@ -235,4 +249,116 @@ fn a_panes_record_carries_its_session_and_resume_while_its_agent_runs() {
         let p1 = record(&snapshot(&mut control), "p1").clone();
         (p1.agent.is_none() && p1.session_id.is_none() && p1.resume.is_none()).then_some(())
     });
+}
+
+/// Ends the fake agent in a pane of `daemon` with SIGTERM, as a machine shutting down ends every
+/// process, and waits until the daemon has seen it leave.
+fn end_agent_as_a_shutdown_does(daemon: &Daemon, control: &mut Control) {
+    let ended = std::process::Command::new("pkill")
+        .args(["-TERM", "-f"])
+        .arg(daemon.agent_path())
+        .status()
+        .expect("pkill runs");
+    assert!(ended.success(), "no fake agent was running to end");
+    until_some("the daemon to see p1's agent leave", || {
+        record(&snapshot(control), "p1").agent.is_none().then_some(())
+    });
+}
+
+/// Has the daemon save something of `p1` and waits for the file to hold it, so the file is known
+/// to have been written since whatever the test did before.
+fn save_again(daemon: &Daemon, control: &mut Control, label: &str) {
+    let rename = pane_request::Rename { pane: "p1".to_string(), label: Some(label.to_string()) };
+    expect(control, pane(pane_request::Request::Rename(rename)), proto::Outcome::Done);
+    until_saved(daemon, label);
+}
+
+/// A machine shutting down ends each agent and then the daemon, which is never told to stop. An
+/// agent that left moments before the daemon died did not quit, so its pane comes back in its
+/// session.
+#[test]
+fn an_agent_ended_moments_before_the_daemon_is_killed_comes_back_in_its_session() {
+    let (mut daemon, mut control) = reported("--model opus", "s-8");
+
+    end_agent_as_a_shutdown_does(&daemon, &mut control);
+    save_again(&daemon, &mut control, "saved-after-the-agent-left");
+    daemon.kill();
+    daemon.restart();
+    let mut control = daemon.connect();
+    until_restored(&mut control, 1);
+
+    let command = until_some("p1 to come back running its agent", || {
+        record(&snapshot(&mut control), "p1").command.clone()
+    });
+    assert!(command.ends_with("claude --model opus --resume s-8"), "resumed as {command:?}");
+    let log = std::fs::read_to_string(daemon.root().join("daemon.log")).unwrap_or_default();
+    assert!(log.contains("daemon.state.resumed"), "{log}");
+}
+
+/// An agent that quit, in a pane the person goes on using, did end its session: once the wait
+/// that covers a shutdown is over, its pane comes back as a shell.
+#[test]
+fn a_pane_whose_agent_quit_comes_back_as_a_shell_once_its_resume_is_no_longer_kept() {
+    let (mut daemon, mut control) = reported_keeping_a_left_resume("--model opus", "s-9", "50");
+
+    daemon.type_into("p1", "quit");
+    until(
+        "the state file to drop the session of the agent that quit",
+        || !written(&crate::persistence::state_file(&daemon)).contains("s-9"),
+        (),
+    );
+    let mut control = restarted(&mut daemon, &mut control);
+
+    assert_eq!(record(&snapshot(&mut control), "p1").command, None, "p1 resumed a session");
+    let log = std::fs::read_to_string(daemon.root().join("daemon.log")).unwrap_or_default();
+    let at = |event: &str| log.find(event).unwrap_or_else(|| panic!("no {event} in:\n{log}"));
+    assert!(at("session.resume.kept") < at("session.resume.dropped"), "{log}");
+}
+
+/// The wait is for a daemon that dies with its agents. Another agent starting in the pane says
+/// the daemon lived and the pane moved on, so the old session is dropped at once.
+#[test]
+fn an_agent_starting_where_one_quit_ends_the_wait_for_the_old_session() {
+    let (mut daemon, mut control) = reported("--model opus", "s-10");
+
+    daemon.type_into("p1", "quit");
+    until_some("p1's agent to leave", || {
+        record(&snapshot(&mut control), "p1").agent.is_none().then_some(())
+    });
+    daemon.run_agent("p1");
+    until(
+        "the state file to drop the old session",
+        || !written(&crate::persistence::state_file(&daemon)).contains("s-10"),
+        (),
+    );
+    daemon.kill();
+    daemon.restart();
+    let mut control = daemon.connect();
+    until_restored(&mut control, 1);
+
+    assert_eq!(record(&snapshot(&mut control), "p1").command, None, "p1 resumed a session");
+}
+
+/// The save that takes a quit agent's session out of the state file can fail, and nothing else
+/// may change afterwards to prompt another. The daemon tries again by itself, so the session is
+/// not left in the file for a later restart to resume.
+#[test]
+fn a_failed_save_of_a_dropped_resume_is_tried_again_without_another_change() {
+    let (daemon, _control) = reported_keeping_a_left_resume("--model opus", "s-11", "50");
+    let state = crate::persistence::state_file(&daemon);
+    // A directory where the daemon writes the file's next contents, so that write fails.
+    let in_the_way = state.with_extension("json.tmp");
+    std::fs::create_dir(&in_the_way).expect("the test blocks the state file's temporary");
+
+    daemon.type_into("p1", "quit");
+    let log = daemon.root().join("daemon.log");
+    until("the save to fail", || written(&log).contains("daemon.state.not_written"), ());
+    assert!(written(&state).contains("s-11"), "the failed save left the file as it was");
+    std::fs::remove_dir(&in_the_way).expect("the test unblocks the state file's temporary");
+
+    until(
+        "the state file to drop the session with nothing else changing",
+        || !written(&state).contains("s-11"),
+        (),
+    );
 }

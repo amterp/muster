@@ -1626,10 +1626,13 @@ harness hands over is metadata about a pane and is fine, and that is how an agen
 hooks report the session's id, the daemon reads the arguments the agent process was started with off the pane's
 foreground job, where detection already reads it, and the agent's manifest says how its harness resumes a session
 and which of those arguments may go along. The command that makes is saved with the pane, and a restart starts the
-pane with it (`resume_agents`). Built when the session is reported, because then the agent is running and its
-arguments can be read, and saved whole, because a restarting daemon restores before its manifests have loaded. The
-arguments come from the process rather than the command a pane was made with, so a wrapper has already expanded into
-the harness's own flags, which the manifest can describe, and an agent started by hand at the shell has them too.
+pane with it (`resume_agents`). It stays saved for thirty seconds after detection sees the agent leave the pane,
+because a machine shutting down ends the agents before the daemon, and the daemon cannot tell that from an agent
+somebody quit: the agent is its shell's child, so its exit status never reaches the daemon. Built when the session
+is reported, because then the agent is running and its arguments can be read, and saved whole, because a restarting
+daemon restores before its manifests have loaded. The arguments come from the process rather than the command a pane
+was made with, so a wrapper has already expanded into the harness's own flags, which the manifest can describe, and
+an agent started by hand at the shell has them too.
 
 ## The diagnostic log
 

@@ -1002,6 +1002,10 @@ pub(crate) struct TerminalPane {
     /// forgotten with it. Kept when a wake forgets the id: whether the session can be woken is
     /// a different question from whether it can be resumed.
     pub(crate) resume: Option<crate::persist::Resume>,
+    /// The resume of the agent that last left this pane, which the state file still holds
+    /// (`session::RESUME_KEPT_AFTER_AGENT_LEFT`). Not handed over: a daemon that took the pane
+    /// over saves it without one.
+    pub(crate) resume_left: Option<ResumeLeft>,
     /// The session a resume could not be built for, once that has been logged: later reports
     /// of the same session try again quietly.
     pub(crate) resume_missed: Option<String>,
@@ -1273,6 +1277,7 @@ impl Pane {
                 ran_out: None,
                 heard_from: HashSet::new(),
                 resume: None,
+                resume_left: None,
                 resume_missed: None,
                 maker_told: None,
                 stalls_told: Vec::new(),
@@ -1294,6 +1299,13 @@ impl Pane {
             terminal.hang_up(&self.record.pane, reason);
         }
     }
+}
+
+/// A resume whose agent left its pane, and when the state file stops holding it.
+#[derive(Debug)]
+pub(crate) struct ResumeLeft {
+    pub(crate) resume: crate::persist::Resume,
+    pub(crate) until: Instant,
 }
 
 impl TerminalPane {

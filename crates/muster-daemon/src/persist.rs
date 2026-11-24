@@ -63,6 +63,27 @@ pub(crate) fn version_for(tabs: &[Tab]) -> u32 {
 /// retitling itself every second cannot put the write off forever.
 const DELAY: Duration = Duration::from_secs(1);
 
+/// How long after a write fails it is tried again, doubling at each failure in a row, and how
+/// many times in a row before the next try waits for a change. A disk that was full or a
+/// directory that was away often comes back, and with no change to prompt another write an idle
+/// daemon would keep a file that says less than it knows: the resume of an agent that quit,
+/// which a restart then runs. Bounded, at about twenty minutes in all, so a disk that stays
+/// broken does not fill the log with the same warning.
+const RETRY_AFTER: Duration = Duration::from_secs(5);
+const RETRIES: u32 = 8;
+
+/// What became of a state the persister was to write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Wrote {
+    /// The file holds it.
+    Durable,
+    /// This daemon's next start would refuse it, or it would not encode: a bug, and no later
+    /// try fares better.
+    Refused,
+    /// The write failed.
+    Failed,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct State {
     pub(crate) version: u32,
@@ -626,7 +647,8 @@ pub(crate) struct Persister {
 
 /// What the persist thread took out of the session.
 pub(crate) enum Copied {
-    State(Box<State>),
+    /// The state, and when it next changes with nothing else to say so.
+    State(Box<State>, Option<Instant>),
     /// The daemon has begun to stop, and has handed over what to leave behind.
     Stopping,
     /// The session is gone.
@@ -688,10 +710,13 @@ impl Persister {
             persister.run(
                 || match shared.upgrade() {
                     None => Copied::Gone,
-                    Some(shared) => shared
-                        .lock()
-                        .persisted_unless_stopping()
-                        .map_or(Copied::Stopping, |state| Copied::State(Box::new(state))),
+                    Some(shared) => {
+                        let mut session = shared.lock();
+                        let due = session.drop_resumes_left(Instant::now());
+                        session
+                            .saved_unless_stopping()
+                            .map_or(Copied::Stopping, |state| Copied::State(Box::new(state), due))
+                    }
                 },
                 |state, durable| {
                     if let Some(shared) = shared.upgrade() {
@@ -818,6 +843,7 @@ impl Persister {
     fn run(&self, copy: impl Fn() -> Copied, collect: impl Fn(&State, bool)) {
         let mut written = Vec::new();
         let mut expiry = None;
+        let mut failed = 0;
         let mut pending = self.pending();
         loop {
             match pending.phase {
@@ -857,10 +883,14 @@ impl Persister {
             drop(pending);
             let copied = copy();
             expiry = None;
-            if let Copied::State(state) = &copied {
-                expiry = state.canvas_expiry();
-                let durable = self.write_if_changed(state, &mut written);
-                collect(state, durable);
+            if let Copied::State(state, due) = &copied {
+                let wrote = self.write_if_changed(state, &mut written);
+                failed = if wrote == Wrote::Failed { failed + 1 } else { 0 };
+                let retry = (1..=RETRIES)
+                    .contains(&failed)
+                    .then(|| Instant::now() + RETRY_AFTER * 2_u32.pow(failed - 1));
+                expiry = state.canvas_expiry().into_iter().chain(*due).chain(retry).min();
+                collect(state, wrote == Wrote::Durable);
             }
             pending = self.pending();
             pending.writing = false;
@@ -868,7 +898,7 @@ impl Persister {
             match copied {
                 // What the daemon held before it began to stop is the state to leave, and it
                 // was handed over in the same hold of the session's lock that this copy saw.
-                Copied::State(_) | Copied::Stopping => {}
+                Copied::State(..) | Copied::Stopping => {}
                 Copied::Gone => return,
             }
         }
@@ -877,7 +907,7 @@ impl Persister {
     /// Writes `state` unless it is exactly what was written last: a title changing moves no
     /// byte of the file, and costs no write. Never a state this daemon's next start would refuse:
     /// that would lose every tab, where keeping the last file loses only the latest change.
-    fn write_if_changed(&self, state: &State, written: &mut Vec<u8>) -> bool {
+    fn write_if_changed(&self, state: &State, written: &mut Vec<u8>) -> Wrote {
         if let Err(why) = validate(state) {
             log::error(
                 "daemon.state.invalid",
@@ -889,7 +919,7 @@ impl Persister {
                                 refuse",
                 },
             );
-            return false;
+            return Wrote::Refused;
         }
         let bytes = match serde_json::to_vec_pretty(state) {
             Ok(mut bytes) => {
@@ -905,18 +935,18 @@ impl Persister {
                         "check" => "this is a bug: every state the session holds should encode",
                     },
                 );
-                return false;
+                return Wrote::Refused;
             }
         };
         if bytes == *written {
-            return true;
+            return Wrote::Durable;
         }
         match write(&self.path, &bytes) {
             Ok(()) => {
                 *written = bytes;
                 #[cfg(test)]
                 poison::lock(&self.writes, "daemon.persist.writes").push(state.clone());
-                true
+                Wrote::Durable
             }
             Err(error) => {
                 written.clear();
@@ -927,11 +957,12 @@ impl Persister {
                         "error" => error,
                         "impact" => "a restart before the next write succeeds brings back the tabs \
                                      as they were at the last one",
-                        "check" => "whether the disk is full or the directory is writable; the next \
-                                    change tries again",
+                        "check" => "whether the disk is full or the directory is writable; the \
+                                    daemon tries again by itself a few times, and at the next \
+                                    change",
                     },
                 );
-                false
+                Wrote::Failed
             }
         }
     }
@@ -1104,7 +1135,7 @@ mod tests {
                     if session.0 {
                         Copied::Stopping
                     } else {
-                        Copied::State(Box::new(session.1.clone()))
+                        Copied::State(Box::new(session.1.clone()), None)
                     }
                 },
                 |_, _| {},
@@ -1147,8 +1178,9 @@ mod tests {
         persister.changed();
         persister.pending().changed = Instant::now().checked_sub(DELAY * 2);
         let writing = Arc::clone(&persister);
-        let thread =
-            std::thread::spawn(move || writing.run(|| Copied::State(Box::new(state())), |_, _| {}));
+        let thread = std::thread::spawn(move || {
+            writing.run(|| Copied::State(Box::new(state()), None), |_, _| {});
+        });
         std::thread::sleep(Duration::from_millis(100));
         assert!(persister.writes.lock().unwrap().is_empty(), "written while restoring");
         persister.arm();

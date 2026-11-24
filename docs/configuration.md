@@ -638,6 +638,14 @@ resumed, its program and the names of the flags that went along, never their val
 `muster window --json` gives each pane's whole command as `resume`. When the agent exits, or its
 session cannot be resumed, the pane drops back to its shell.
 
+An agent that leaves its pane keeps its saved resume for thirty seconds more, though its pane's
+record drops `resume` at once. A machine shutting down ends the agents first and the daemon a moment
+later, and to the daemon each of them looks like an agent somebody quit; one that dies within the
+thirty seconds brings its panes back in their sessions. So a daemon restarted that soon after you
+quit an agent yourself resumes the session you quit. Another agent starting in the pane ends the
+wait at once. The daemon's log says `session.resume.kept` when the wait starts and
+`session.resume.dropped`, with the reason, when a pane stops coming back in a session.
+
 It is on because an agent's work is the point of the pane. Turn it off with `false` and such a pane
 comes back as a shell, as every pane did before: a resumed agent runs unattended with the flags it
 had, a permission mode that skips prompts among them. A resumed agent is an agent like any other,
